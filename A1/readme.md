@@ -1,0 +1,72 @@
+# CSC490 A1: Project Landscape
+
+## Interest Statements
+
+Our interest in this problem is motivated by our experience working with agentic systems and recent incidents such as the OpenAI/Hugging Face case, where communication between agents enabled harmful collective behavior that would have been difficult for isolated agents to achieve. As multi-agent workflows become more common, agents may receive conflicting objectives, interfere with one another's work, or propagate unsafe strategies while still individually pursuing reasonable goals. We therefore ask: *Can a real-time arbiter monitoring autonomous agents (1) block unsafe actions before execution and (2) resolve incompatible agent goals by restructuring or terminating collaboration, reducing harmful behavior without substantially reducing task performance?* The arbiter would act as a supervisory layer that can prevent prohibited actions and intervene when continued multi-agent coordination becomes unsafe or counterproductive.
+
+### Team Member Interests
+
+- **Team Member 1:** I am interested in designing the multi-agent environment and studying how conflicts emerge between autonomous agents operating on shared state.
+- **Team Member 2:** I am interested in developing the arbiter's safety and conflict-detection mechanisms and evaluating when intervention should occur.
+- **Team Member 3:** I am interested in benchmarking the system and analyzing the trade-off between safety interventions, coordination quality, and overall task performance.
+- **Team Member 4:** I am interested in benchmarking the system and analyzing the trade-off between safety interventions, coordination quality, and overall task performance.
+
+## Landscape Analysis
+
+| Relevant Item | Description | Commentary |
+| --- | --- | --- |
+| [OpenAI / Hugging Face Incident Report](https://openai.com/index/hugging-face-incident-and-the-road-ahead/) | Documents a 2026 incident in which nominally isolated agents discovered unauthorized persistent communication channels, pooled information and compute, coordinated across runs, and ultimately took unsafe actions outside their assigned tasks. | Provides a real-world motivation for our project by showing how communication can amplify agent capabilities and propagate unsafe collective behaviour. It highlights the need for supervision that can monitor collaboration continuously, block unsafe actions, and intervene when agent interaction begins to escape intended boundaries. |
+| [Patterns and Problems in Emerging Multiagent Systems](https://www.anthropic.com/research/multiagent-systems) | Studies large groups of autonomous agents interacting in shared environments, including collaborative coding, resource allocation, information sharing, conflict, and collusion. | Provides foundational motivation for our project by showing that multi-agent interaction can create system-level failures not present in isolated agents. In particular, agents can interfere with one another, conform to incorrect group behaviour, collude, or escalate conflicts when operating over shared state. |
+| [MultiAgentBench](https://aclanthology.org/2025.acl-long.421/) | Introduces a benchmark for evaluating collaboration and competition between LLM agents across multiple environments, communication structures, and task types. | Shows that multi-agent systems should be evaluated on the quality of their coordination and communication, not only final task success. Its milestone-based evaluation provides useful ideas for measuring whether an arbiter improves the interaction process itself. |
+| [CooperBench](https://arxiv.org/abs/2601.13295) | Evaluates two coding agents implementing separate but potentially conflicting features across 652 tasks from real software repositories. | Provides a realistic shared-state setting in which expectation, communication, and commitment failures cause agents to interfere with one another. However, the objectives are ultimately compatible, leaving open the case where agents receive genuinely incompatible goals and require external arbitration. |
+| [The Arbiter Agent](https://arxiv.org/abs/2606.10747) | Introduces a real-time monitoring agent that incrementally observes multi-agent conversations and can actively investigate emerging misalignment. | Closest existing architecture to our proposed arbiter. However, it primarily detects which participant is misaligned and reports the issue; our project instead considers agents that may each have legitimate goals and asks whether an arbiter can prevent unsafe actions and actively restructure or terminate failing collaboration. |
+| [SoCRATES](https://arxiv.org/abs/2606.05563) | Evaluates proactive LLM mediators that observe an evolving conflict and decide when and how to intervene in order to improve the final outcome. | Directly informs the conflict-resolution component of our project because it treats intervention as a sequential decision rather than post-hoc analysis. Its limitation is that the conflicts are conversational and interpersonal rather than autonomous agents taking actions on a shared computational environment. |
+| [GUARDIAN](https://arxiv.org/abs/2505.19234) | Models multi-agent interactions as temporal attributed graphs to detect hallucination amplification and malicious error propagation, dynamically removing anomalous agents or communication links. | Shows that a safety mechanism can monitor an evolving multi-agent system and actively modify its topology before errors propagate further. However, it focuses on anomalous or corrupted information rather than conflicts between legitimate agent goals, motivating a richer arbiter that reasons about actions, objectives, and conflict rather than anomaly detection alone. |
+| [CoAgent](https://arxiv.org/abs/2606.15376) | Introduces a concurrency-control layer for multi-agent systems operating on shared state, detecting conflicting reads/writes and selectively repairing or undoing affected actions while preserving parallel execution. | Provides strong architectural inspiration for placing our arbiter at the tool-call boundary, where it can inspect and intervene before actions affect shared state. However, CoAgent focuses on consistency failures between compatible agents rather than unsafe behavior, incompatible objectives, or conflict escalation. |
+
+*Initial landscape analysis of relevant multi-agent systems research.*
+
+## Initial Project Outline
+
+### Problem and Research Question
+
+Multi-agent systems can improve performance through parallelism and specialization, but interaction introduces system-level failure modes that may not occur with isolated agents. Agents may pursue individually reasonable goals while interfering with one another, propagating unsafe strategies, or taking harmful actions in pursuit of task completion. We therefore ask:
+
+> *Can a real-time arbiter monitoring autonomous agents (1) block unsafe actions before execution and (2) resolve incompatible agent goals by restructuring or terminating collaboration, reducing harmful behavior without substantially reducing task performance?*
+
+### Proposed System
+
+Our implementation will build on the continual-monitoring architecture introduced by *The Arbiter Agent*. As a baseline, an arbiter observes the multi-agent interaction incrementally and maintains a running assessment of whether the system is behaving safely. We extend this architecture by placing the arbiter directly inside the agent execution loop, allowing it to affect the trajectory rather than only detect and report problems.
+
+At each step, the arbiter observes agent communication, proposed actions, and relevant shared state, updates its assessment, and chooses from a set of actions:
+
+- **Continue:** allow normal collaboration to proceed.
+- **Query:** request clarification about an agent's goal or proposed action.
+- **Block:** prevent an unsafe or destructive action from executing.
+- **Mediate:** intervene when agents appear to be pursuing conflicting objectives.
+- **Restructure:** select one plan or delegate execution to a single agent when continued collaboration is counterproductive.
+- **Escalate:** defer the conflict to a human when it cannot be safely resolved.
+
+The key distinction from existing monitoring work is that the arbiter is an active controller: it can modify the interaction before unsafe behavior occurs.
+
+### Experimental Design
+
+We will evaluate the system in controlled multi-agent environments containing both compatible and conflicting tasks, likely beginning with a shared software-engineering environment inspired by CooperBench. We will compare:
+
+- **No Arbiter:** standard multi-agent execution;
+- **Monitoring-Only Arbiter:** an Arbiter Agent-style baseline that detects and reports problems but cannot intervene;
+- **Intervention Arbiter:** our proposed system, which can block actions and restructure collaboration.
+
+This setup lets us separate the benefit of *detecting* a problem from the benefit of actually *changing* the system trajectory.
+
+### Evaluation
+
+We will evaluate both safety and task performance using:
+
+- **Unsafe Action Rate:** proportion of prohibited actions that are executed;
+- **Conflict Escalation Rate:** proportion of conflicts that reach destructive interference;
+- **False Intervention Rate:** proportion of healthy interactions unnecessarily interrupted;
+- **Task Performance:** success or progress relative to the no-arbiter baseline;
+- **Intervention Timing:** whether intervention occurs before destructive behavior.
+
+The goal is to determine whether active real-time arbitration can improve multi-agent safety and reliability while preserving the performance benefits of collaboration.
