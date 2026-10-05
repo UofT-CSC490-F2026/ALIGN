@@ -1,0 +1,12 @@
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+*.local.tfvars
+*.local.tfvars.json
+.env
+.env.*
+# Enabled locally only after the bootstrap resources exist.
+bootstrap/backend.tf
