@@ -126,5 +126,5 @@ resource "aws_s3_bucket_replication_configuration" "lake" {
     }
   }
 
-  depends_on = [aws_s3_bucket_versioning.lake]
+  depends_on = [aws_s3_bucket_versioning.lake, aws_iam_role_policy.replication]
 }
