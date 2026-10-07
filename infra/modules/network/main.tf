@@ -1,9 +1,9 @@
 locals {
   name = "${var.project}-${var.environment}"
   tags = {
-    Project     = var.project
-    Environment = var.environment
-    ManagedBy   = "Terraform"
+    project   = var.project
+    env       = var.environment
+    ManagedBy = "Terraform"
   }
   public_subnets  = zipmap(var.availability_zones, var.public_subnet_cidrs)
   private_subnets = zipmap(var.availability_zones, var.private_subnet_cidrs)
