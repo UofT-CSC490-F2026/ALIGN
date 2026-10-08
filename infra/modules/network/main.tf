@@ -31,7 +31,7 @@ resource "aws_subnet" "public" {
   vpc_id            = aws_vpc.this.id
   availability_zone = each.key
   cidr_block        = each.value
-  # Compute explicitly opts its instance into a public IP for direct SSH.
+  # Compute explicitly assigns a public IP for outbound SSM and API access.
   map_public_ip_on_launch = false
   tags                    = merge(local.tags, { Name = "${local.name}-public-${each.key}" })
 }
