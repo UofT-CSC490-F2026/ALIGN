@@ -1,0 +1,131 @@
+erDiagram
+    %% ALIGN PostgreSQL schema v3 (physical SQL representation)
+    %% Crow's-foot cardinality: || = exactly one, o| = zero or one, o{ = zero or many.
+
+    tasks ||--o{ task_goals : defines
+    tasks ||--o{ runs : executes_as
+    runs ||--o{ events : records
+    events ||--o| decision_log : decision_details
+    runs ||--o{ conflict_episodes : contains
+    conflict_episodes |o--o{ decision_log : primary_conflict_for
+    events |o--o{ decision_log : triggers
+    events |o--o{ conflict_episodes : begins
+    events |o--o{ conflict_episodes : detects
+    events |o--o{ conflict_episodes : resolves
+    runs ||--o| evaluations : evaluated_by
+    evaluations ||--o{ goal_results : includes
+    task_goals ||--o{ goal_results : assessed_in
+    events ||--o{ decision_labels : labeled_at
+
+    tasks {
+        int task_id PK
+        text task_key UK
+        text dataset_source
+        text external_task_id
+        int version
+        text repo_url
+        text base_commit
+        text shared_goal
+        text conflict_type
+        text expected_outcome
+        jsonb constraints
+        jsonb setup_spec
+        jsonb metadata
+        timestamptz created_at
+    }
+
+    task_goals {
+        int goal_id PK
+        int task_id FK
+        text goal_key
+        text owner_type
+        text owner_agent_id
+        text description
+        jsonb success_criteria
+        boolean is_critical
+    }
+
+    runs {
+        int run_id PK
+        int task_id FK
+        text trial_key
+        text arbiter_condition
+        jsonb agent_config
+        jsonb arbiter_config
+        int seed
+        text status
+        timestamptz started_at
+        timestamptz finished_at
+        text artifact_uri
+    }
+
+    events {
+        int event_id PK
+        int run_id FK
+        int sequence_number
+        text actor_type
+        text actor_id
+        text event_type
+        timestamptz occurred_at
+        timestamptz observed_at
+        jsonb payload
+        text artifact_uri
+    }
+
+    decision_log {
+        int event_id PK,FK
+        int run_id FK
+        int trigger_event_id FK
+        int conflict_id FK
+        text arbiter_action
+        text reason
+        text_array affected_agents
+        jsonb evidence
+        int decision_latency_ms
+    }
+
+    conflict_episodes {
+        int conflict_id PK
+        int run_id FK
+        text conflict_type
+        int onset_event_id FK
+        int detected_event_id FK
+        int resolution_event_id FK
+        text status
+        text label_source
+        text review_status
+        text description
+    }
+
+    evaluations {
+        int run_id PK,FK
+        text evaluator_version
+        boolean outcome_correct
+        boolean shared_goal_satisfied
+        boolean critical_constraints_passed
+        numeric runtime_seconds
+        int input_tokens
+        int output_tokens
+        numeric token_cost_usd
+        text evaluation_notes
+        timestamptz evaluated_at
+    }
+
+    goal_results {
+        int run_id PK,FK
+        int task_id FK
+        int goal_id PK,FK
+        text result
+        jsonb evidence
+        text notes
+    }
+
+    decision_labels {
+        int label_id PK
+        int checkpoint_event_id FK
+        text_array expected_actions
+        text label_source
+        text review_status
+        text rationale
+        timestamptz created_at
+    }

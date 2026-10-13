@@ -1,0 +1,44 @@
+# ALIGN development database. DO NOT point this file at a real AWS database.
+# Existing Compose projects/volumes are preserved as long as you run from
+# the original ALIGN/infra/modules/database directory.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: align
+      POSTGRES_USER: align_dev
+      POSTGRES_PASSWORD: local_dev_only_change_me # LOCAL DEV ONLY
+    ports:
+      - "127.0.0.1:${ALIGN_PG_HOST_PORT:-5433}:5432"
+    volumes:
+      - align_pgdata:/var/lib/postgresql/data
+      - ./scripts:/checks:ro
+      - ./fixtures:/fixtures:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U align_dev -d align"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # One-shot migration CLI; not started by `docker compose up -d postgres`.
+  # Works for fresh volumes AND existing v3 volumes after explicit baseline.
+  migrate:
+    image: flyway/flyway:11.17.2
+    profiles: ["tools"]
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/align
+      FLYWAY_USER: align_dev
+      FLYWAY_PASSWORD: local_dev_only_change_me # LOCAL DEV ONLY
+      FLYWAY_CONNECT_RETRIES: "30"
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_BASELINE_ON_MIGRATE: "false" # never silently adopt an unknown DB
+      FLYWAY_CLEAN_DISABLED: "true"       # prevent accidental schema deletion
+    volumes:
+      - ./migrations:/flyway/sql:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  align_pgdata:
