@@ -1,0 +1,368 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=0.8in]{geometry}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{xltabular}
+\usepackage{titling}
+\usepackage{caption}
+\usepackage{enumitem}
+\setlength{\LTcapwidth}{\textwidth}
+
+\captionsetup[table]{
+    justification=raggedright,
+    singlelinecheck=false
+}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue
+}
+
+% Better wrapping for table columns
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\setlength{\droptitle}{-2cm}
+\title{CSC490 A1: Project Landscape}
+\author{
+    Allaith Alzoubi1 (1009064744), Royce Luo (1010192391), \\ Yujie Zeng  (1009321020), 
+    Jinhao Zhang (1008870839)
+}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\vspace{-6em}
+% ============================================================
+% PART ONE
+% ============================================================
+
+\section{Interest Statements}
+
+Our interest in this problem is motivated by our experience working with agentic systems and recent incidents such as the OpenAI/Hugging Face case, where communication between agents enabled harmful collective behavior that would have been difficult for isolated agents to achieve. As multi-agent workflows become more common, agents may receive conflicting objectives, interfere with one another's work, or propagate unsafe strategies while still individually pursuing reasonable goals. AI has already been a source of friction in our own technical experiences, even when using frontier models, and these issues become more serious as agents gain more autonomy. We therefore ask: \textit{Can a real-time arbiter monitoring autonomous agents (1) block unsafe actions before execution and (2) resolve incompatible agent goals by restructuring or terminating collaboration, reducing harmful behavior without substantially reducing task performance?} The arbiter would act as a supervisory layer that can prevent prohibited actions and intervene when continued multi-agent coordination becomes unsafe or counterproductive.
+
+\paragraph{Team Member Interests.}
+\begin{itemize}
+
+    \item \textbf{Allaith:} I am especially interested in designing the real-time agent execution and intervention framework, particularly how the arbiter can monitor proposed actions, manage conflicting goals, and intervene before failures affect the shared environment..
+
+    \item \textbf{Royce:} My interests are in AI safety and reinforcement learning, especially how learning-based control and evaluation can improve the reliability and alignment of agentic and multi-agent systems.
+
+    \item \textbf{Yujie:} I am interested in benchmarking the
+    system and analyzing the trade-off between safety interventions,
+    coordination quality, and overall task performance.
+    
+    \item \textbf{Jinhao:} I am especially interested in the collaboration and AI safety aspects of the project, particularly how an arbiter can make agent coordination more reliable in practice.
+\end{itemize}
+\vspace{-1.5em}
+
+% ============================================================
+% PART TWO
+% ============================================================
+
+\section{Landscape Analysis}
+
+\small
+\renewcommand{\arraystretch}{1.2}
+
+\begin{xltabular}{\textwidth}{
+    >{\raggedright\arraybackslash}p{0.20\textwidth}
+    >{\raggedright\arraybackslash}p{0.28\textwidth}
+    >{\raggedright\arraybackslash}X
+}
+
+\caption{Initial landscape analysis of relevant multi-agent systems research.}
+\label{tab:landscape} \\
+
+\toprule
+\textbf{Relevant Item} &
+\textbf{Description} &
+\textbf{Commentary} \\
+\midrule
+\endfirsthead
+
+% Header repeated automatically on following pages
+\toprule
+\textbf{Relevant Item} &
+\textbf{Description} &
+\textbf{Commentary} \\
+\midrule
+\endhead
+
+\midrule
+\multicolumn{3}{r}{\small\textit{Continued on next page}} \\
+\endfoot
+
+\bottomrule
+\endlastfoot
+
+
+\href{https://openai.com/index/hugging-face-incident-and-the-road-ahead/}
+{\textbf{OpenAI / Hugging Face Incident Report}}
+&
+Documents a 2026 incident where isolated agents formed unauthorized communication channels, pooled information, and coordinated unsafe actions across runs.
+&
+Motivates our project by showing how agent communication can amplify unsafe collective behavior, highlighting the need for continuous supervision and intervention. \\
+
+\midrule
+
+\href{https://www.anthropic.com/research/multiagent-systems}
+{\textbf{Patterns and Problems in Emerging Multiagent Systems}}
+&
+Studies autonomous agents in shared environments, highlighting coordination failures, conflict, collusion, and resource interference.
+&
+Focuses on characterizing emergent multi-agent failures rather than preventing them. It does not provide real-time supervision capable of blocking unsafe actions, mediating conflicts, or restructuring collaboration. \\
+
+\midrule
+
+\href{https://arxiv.org/abs/2601.13295}
+{\textbf{CooperBench}}
+&
+Benchmarks two coding agents working on potentially conflicting features across 652 repository tasks.
+&
+Key gaps: studies coordination failures under shared state, but assumes compatible goals and provides no external mechanism for resolving true objective conflicts. \\
+
+\midrule
+
+\href{https://arxiv.org/abs/2606.10747}
+{\textbf{The Arbiter Agent}}
+&
+Introduces a real-time agent that monitors multi-agent interactions and investigates emerging misalignment.
+&
+Closest baseline to our work, but focuses on detecting misaligned agents rather than preventing unsafe actions or resolving conflicts between legitimate goals. \\
+
+\midrule
+
+\href{https://arxiv.org/abs/2606.05563}
+{\textbf{SoCRATES}}
+&
+Studies proactive LLM mediators that monitor evolving conflicts and decide when and how to intervene.
+&
+Shows that timely intervention can improve conflict outcomes, but focuses on conversational disputes rather than autonomous agents with incompatible goals acting on shared state. \\
+
+\midrule
+
+\href{https://aclanthology.org/2025.acl-long.421/}
+{\textbf{MultiAgentBench}}
+&
+Benchmarks multi-agent collaboration and competition across diverse tasks, communication structures, and coordination settings.
+&
+Provides useful evaluation methods for coordination quality and intermediate progress, but focuses on benchmarking agent interaction rather than preventing unsafe actions or resolving incompatible goals. \\
+
+\midrule
+
+\href{https://arxiv.org/abs/2505.19234}
+{\textbf{GUARDIAN}}
+&
+Uses temporal graphs to detect and contain anomalous information propagation in multi-agent systems.
+&
+Actively removes anomalous agents or links, but focuses on corrupted information rather than conflicts between legitimate agent goals. \\
+
+\midrule
+
+\href{https://arxiv.org/abs/2606.15376}
+{\textbf{CoAgent}}
+&
+Introduces concurrency control for multi-agent systems operating on shared state, detecting conflicting reads and writes and repairing affected actions.
+&
+Provides architectural inspiration for intervention at the tool-call boundary, but focuses on consistency failures between compatible agents rather than incompatible objectives or unsafe behavior. \\
+
+\midrule
+
+\href{https://github.com/jeeevan11/conflict-arbitration-env}
+{\textbf{The Referee -- Multi-Agent Arbitration Environment}}
+&
+Uses a referee agent to monitor parallel coding agents, detect divergence from a shared specification, and request corrections before merging.
+&
+One of the closest implementations to our system, but assumes one shared specification determines which agent is wrong rather than arbitrating between legitimate incompatible objectives. \\
+
+\midrule
+
+\href{https://arxiv.org/abs/2608.08210}
+{\textbf{Illusion of Alignment}}
+&
+Detects hidden disagreement where collaborators appear aligned despite differing goals, assumptions, or execution plans.
+&
+Motivates proactive querying by our arbiter, but focuses on detecting hidden disagreement rather than deciding how resulting conflicts should be resolved. \\
+
+\end{xltabular}
+
+\normalsize
+
+\newpage
+% ============================================================
+% PART THREE
+% ============================================================
+
+\section{Initial Project Outline}
+\paragraph{Problem and Research Question:} Can a real-time arbiter monitoring autonomous agents (1) block unsafe actions before execution and (2) resolve incompatible agent goals by restructuring or terminating collaboration, reducing harmful behavior without substantially reducing task performance?
+
+\vspace{-0.5em}
+
+\paragraph{Proposed System:}
+Our implementation will build on the continual-monitoring architecture introduced by \textit{The Arbiter Agent}. We extend this approach by placing the arbiter directly inside the agent execution loop so it can affect the trajectory before unsafe actions occur. At each step, the arbiter observes agent communication, proposed actions, and relevant shared state, then chooses among six actions: \textbf{Continue} normal collaboration, \textbf{Query} an agent for clarification, \textbf{Block} an unsafe action, \textbf{Mediate} conflicting objectives, \textbf{Restructure} collaboration by isolating agents or selecting a single plan, or \textbf{Escalate} an unresolved conflict to a human. 
+
+\vspace{-0.5em}
+
+
+\paragraph{High-Level Technical Approach:}
+We will use two or three autonomous coding agents operating in a controlled shared software repository with access to tools such as file editing, Git operations, and test execution. Tasks will include both compatible objectives and intentionally incompatible objectives where each instruction is individually reasonable but cannot be fully satisfied alongside the others. We will first run agents without intervention to establish baseline behavior and collect trajectories containing communication, tool calls, file changes, and test outcomes. The arbiter will then combine explicit safety rules with an off-the-shelf language model that reasons over agent goals, recent interaction history, proposed actions, and shared state.
+
+Using a software-engineering environment adapted from CooperBench, we will compare \textbf{No Arbiter}, \textbf{Monitoring-Only Arbiter}, \textbf{Rule-Based Arbiter}, and \textbf{Prompted LLM Arbiter} on held-out conflict scenarios. We will measure unsafe actions, conflict escalation, false interventions, task performance, intervention timing, and intervention cost. We considered RL-based arbitration, including GRPO, but given time constraints and limited compute, learned arbitration is a stretch goal not a core competency.
+
+\vspace{-0.5em}
+
+\paragraph{Milestones:}
+\begin{itemize}[leftmargin=1.4em,itemsep=0pt,topsep=2pt,parsep=0pt,partopsep=0pt]
+    \item \textbf{M1 -- Multi-Agent Environment:} Build a two-agent shared repository with communication, tool use, action interception, and trajectory logging.
+    \item \textbf{M2 -- Conflict Task Suite:} Create compatible and incompatible tasks with verifiable success criteria and defined unsafe actions.
+    \item \textbf{M3 -- Baselines:} Evaluate unrestricted and monitoring-only execution.
+    \item \textbf{M4 -- Pre-Execution Intervention:} Implement and evaluate action blocking.
+    \item \textbf{M5 -- Collaboration Intervention:} Add mediation, restructuring, and escalation for persistent goal conflicts.
+    \item \textbf{M6 -- Final Evaluation:} Compare arbitration approaches on held-out tasks using safety and task-performance metrics.
+    \item \textbf{Stretch -- Learned Arbitration:} Fine-tune or optimize the arbiter using collected trajectories.
+\end{itemize}
+
+\vspace{-0.5em}
+
+\paragraph{Unknowns to Investigate:}
+\begin{itemize}[leftmargin=1.4em,itemsep=0pt,topsep=2pt,parsep=0pt,partopsep=0pt]
+    \item Will models within our compute budget reliably exhibit meaningful conflict or escalation?
+    \item How do we distinguish unsafe interference from legitimate acts and set verifiable incompatible goals?
+    \item When should the arbiter block a single action versus restructure or terminate collaboration, and how much context is required?
+    \item Can rule-based arbitration perform as well as LLM-based arbitration, and how well will either generalize to unseen tasks, repositories, and models?
+\end{itemize}
+
+\newpage
+% ============================================================
+% PART FOURTH
+% ============================================================
+{
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.5\baselineskip}
+
+\section{Project Press Release}
+
+\subsection{Introducing ALIGN: Agent-Level Intervention for Goal Negotiation}
+
+\textit{A real-time collaboration controller that helps AI agents resolve conflicts before they become failures.}
+
+\vspace{0.5em}
+
+Autonomous AI agents are changing the way organizations solve complex problems. By working together, specialized agents can complete tasks faster, tackle larger projects, and produce higher-quality results than a single AI model alone. However, as more agents collaborate, they also become more likely to misunderstand one another, pursue conflicting objectives, or make decisions that unintentionally disrupt the team's progress. Existing systems can often detect these problems only after they have already affected the outcome.
+
+Today, we introduce \textbf{ALIGN (Agent-Level Intervention for Goal Negotiation)}, a real-time collaboration controller that helps autonomous AI agents work together safely and effectively. Rather than waiting for collaboration to fail, ALIGN continuously supervises interactions between agents, recognizes emerging conflicts, and intervenes before small disagreements become costly mistakes.
+
+With ALIGN, developers can deploy multi-agent AI systems with greater confidence. When agents begin working toward incompatible goals, ALIGN helps guide the conversation back toward a shared objective. If an action could negatively impact the rest of the team, ALIGN can pause execution, request clarification, recommend an alternative course of action, or involve a human when necessary. By resolving issues as they arise, ALIGN allows AI teams to remain productive without sacrificing safety or reliability.
+
+\begin{quote}
+\emph{"Our AI development team wanted the speed of multi-agent collaboration, but we were constantly dealing with agents producing conflicting changes. ALIGN keeps our agents aligned while they work, allowing us to spend less time resolving coordination issues and more time delivering new features."}
+
+\hfill--- \textbf{Emily Chen}, Lead Software Engineer at NovaSoft Technologies (fictional)
+\end{quote}
+
+Unlike traditional monitoring tools that simply report problems after they occur, ALIGN actively supports collaboration throughout the entire task. It enables developers to build AI systems that are not only capable of solving complex problems, but are also dependable enough for real-world applications such as software engineering, business automation, and intelligent decision support.
+
+\begin{quote}
+\emph{"As organizations begin relying on teams of AI agents instead of individual assistants, collaboration becomes one of the biggest challenges. ALIGN represents an important step toward making autonomous AI teams reliable enough to work alongside people in high-impact environments."}
+
+\hfill--- \textbf{Dr. Michael Johnson}, Director of Intelligent Systems Research (fictional)
+\end{quote}
+
+The future of AI is collaborative. As autonomous agents become increasingly common across industries, successful systems will depend not only on the intelligence of individual agents, but also on their ability to cooperate safely. ALIGN is designed to make that collaboration possible by helping AI agents stay focused on a common goal, resolve conflicts before they escalate, and work together with confidence.
+
+\newpage
+% ============================================================
+% Appendix for press release
+% ============================================================
+\appendix
+\section{Appendix: Press Release Iterations}
+
+\subsection{Iteration 1 -- Technical / Research-Focused}
+
+\textbf{Researchers Introduce ALIGN, a Real-Time Arbiter for Multi-Agent AI Systems}
+
+Researchers at the University of Toronto are developing \textbf{ALIGN (Agent-Level Intervention for Goal Negotiation)}, a real-time arbitration system for autonomous multi-agent systems. ALIGN monitors agent communication, proposed actions and shared state as multiple agents work together, then intervenes when unsafe behavior or conflicting goals emerge.
+
+The system can allow normal execution, request clarification, block unsafe actions, mediate conflicts, restructure collaboration or escalate unresolved conflicts to a human. The project will compare ALIGN against unrestricted multi-agent systems and monitoring-only approaches to determine whether active intervention reduces harmful behavior without substantially reducing task performance.
+
+\textbf{Reason for revision:} This version explained the architecture clearly but read more like a research abstract than an Amazon Working Backwards press release. It focused too heavily on the system itself rather than the customer problem, user experience, and practical benefit.
+
+\vspace{1em}
+
+\subsection{Iteration 2 -- Customer-Focused but Too Broad}
+
+\textbf{ALIGN Helps Organizations Deploy Autonomous AI Teams More Safely}
+
+Organizations are beginning to use teams of autonomous AI agents to complete complex tasks faster and with less human supervision. However, as agents collaborate, they may misunderstand one another, duplicate work, pursue conflicting objectives or take actions that interfere with shared systems.
+
+\textbf{ALIGN} provides a real-time supervisory layer that monitors agent collaboration and intervenes before coordination problems become costly failures. It can request clarification, prevent harmful actions, mediate disagreements and return unresolved decisions to a human operator.
+
+\begin{quote}
+\emph{"ALIGN gives us more confidence in autonomous agent teams without removing the speed and independence that made us want to use them in the first place."}
+
+\hfill--- Fictional Enterprise AI Engineering Lead
+\end{quote}
+
+\textbf{Reason for revision:} This version better followed the Working Backwards approach by focusing on customer pain and benefits, but the target problem remained too broad. The final version narrows the customer need to a more concrete failure mode: individually reasonable agents interfering with one another because their goals become incompatible.
+
+\vspace{1em}
+
+\subsection{Iteration 3 -- Final Direction}
+
+\textbf{ALIGN Helps Engineering Teams Deploy Collaborative AI Agents More Safely}
+
+The final press release focuses on the customer experience rather than the underlying architecture. It introduces ALIGN as a real-time safety layer for teams deploying collaborative autonomous agents, emphasizing the problem of agents pursuing individually reasonable but incompatible goals.
+
+The final version makes the core benefit explicit: ALIGN allows normal collaboration to continue when it is healthy, blocks unsafe actions before execution, and restructures or terminates collaboration when the agents' goals can no longer safely coexist. It also highlights the key product trade-off: improving safety without removing the autonomy and performance benefits that make multi-agent systems useful.
+
+\textbf{Reason for revision:} This version shows the direction but is not sufficient in content.
+
+\vspace{1em}
+
+\subsection{Iteration 4 -- Extended Version}
+
+\textit{A real-time collaboration controller that helps AI agents resolve conflicts before they become failures.}
+
+AI agents are becoming increasingly capable of solving complex problems by working together. From software engineering and customer support to scientific research, teams of specialized agents can accomplish tasks that would be difficult for a single model alone. However, collaboration also introduces a new challenge: agents with individually reasonable goals can unintentionally interfere with one another, leading to conflicting actions, duplicated work, unsafe decisions, or failed task execution. As organizations adopt multi-agent systems, ensuring that agents collaborate safely has become just as important as making them intelligent.
+
+Today, we introduce \textbf{ALIGN (Agent-Level Intervention for Goal Negotiation)}, a real-time collaboration controller that helps autonomous AI agents work together safely and effectively. Rather than simply detecting failures after they occur, ALIGN continuously supervises collaboration as it happens, identifies emerging conflicts, and intervenes before disagreements escalate into costly mistakes. The result is a multi-agent system that remains both productive and reliable, even as tasks become more complex.
+
+Unlike monitoring-only approaches, ALIGN takes an active role in guiding collaboration. It can request clarification when agents misunderstand one another, mediate incompatible goals, prevent potentially harmful actions from being executed, and redirect collaboration when necessary. When conflicts cannot be safely resolved, ALIGN can escalate the decision to a human operator, ensuring that critical tasks remain under appropriate oversight. By preventing small disagreements from becoming major failures, ALIGN enables developers to deploy multi-agent systems with greater confidence.
+
+\begin{quote}
+\emph{"Our AI coding agents used to produce conflicting code changes that required developers to step in and resolve merge conflicts manually. With ALIGN, conflicts are recognized and resolved while the agents are still working. Instead of repairing mistakes afterward, our team can focus on building new features."}
+
+\hfill--- \textbf{Emma Chen}, Lead AI Engineer at NovaSoft Technologies (fictional)
+\end{quote}
+
+The ALIGN project is designed to support a wide range of collaborative AI applications, including software engineering, business process automation, and other environments where multiple autonomous agents must coordinate their decisions. By actively managing collaboration rather than passively observing it, ALIGN reduces unnecessary interruptions while preserving the speed and specialization that make multi-agent systems valuable.
+
+\begin{quote}
+\emph{"One of the biggest barriers to deploying autonomous AI teams isn't whether individual agents are capable—it's whether they can consistently work together. ALIGN provides a practical way to keep collaborative AI systems aligned with their shared objectives without requiring constant human supervision."}
+
+\hfill--- \textbf{Dr. Sarah Patel}, Director of Intelligent Systems Research (fictional)
+\end{quote}
+
+The research team is evaluating ALIGN by comparing it against both traditional multi-agent systems and monitoring-only approaches. Success will be measured by its ability to reduce unsafe behavior, improve collaboration quality, and maintain task performance across collaborative software engineering benchmarks. These evaluations will help determine whether proactive intervention can provide a safer and more dependable foundation for the next generation of autonomous AI systems.
+
+\begin{quote}
+\emph{"As AI moves from individual assistants to collaborative teams, coordination will become one of the defining challenges of the field. ALIGN represents an important step toward making autonomous AI teams dependable enough for real-world deployment."}
+
+\hfill--- \textbf{Michael Johnson}, Product Manager for Enterprise AI Solutions (fictional)
+\end{quote}
+
+By shifting safety from passive observation to proactive collaboration management, ALIGN helps developers build AI systems that are not only more capable, but also more trustworthy. As organizations increasingly rely on autonomous AI teams to perform complex tasks, ALIGN aims to ensure that intelligent agents don't simply work in parallel—they work together.
+
+\textbf{Reason for revision:} This version is acceptable but the wording and length needs to be controlled
+
+\end{document}
