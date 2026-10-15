@@ -54,6 +54,16 @@ command. `arbiter_port` optionally publishes that port only on host `127.0.0.1` 
 SSM port forwarding. Public application ingress remains the networking owner's
 responsibility. No writable host volume or Docker socket is mounted.
 
+Service image preparation retries failed ECR authentication, Docker login and pull
+commands up to five total attempts, with 5/10/20/40-second backoffs and a shared
+15-minute preparation deadline. Each attempt refreshes ECR authentication.
+Missing executables, Python configuration errors and interruption signals fail
+immediately. Command failures can include permanent permission/image errors; after
+the attempt or time limit, startup fails and requires investigation. Container
+creation/start is attempted once, avoiding ambiguous duplicate launches. A failed
+first boot is recorded in the bootstrap/service logs; it does not automatically
+rerun cloud-init. Existing containers retain Docker's restart policy.
+
 ## Nightly smoke job
 
 Use a dedicated dev/test deployment. Service and smoke modes cannot both be enabled
@@ -72,6 +82,16 @@ nonblocking lock, refreshes ECR authentication, pulls the pinned image, and star
 uniquely named container with CPU/memory limits. It records the application's exit
 status and removes only that run's container, including on timeout. It never
 updates, stops, or replaces `align-arbiter`. Images are not automatically pruned.
+
+While holding the lock, the job first lists **all** containers labelled
+`align.workload=smoke`, before ECR authentication or image pulling. Any leftover
+container, running or stopped, blocks the new run with a logged failure. A Docker
+listing error also blocks the run. This catches containers left after interrupted
+runners or failed cleanup; the runner does not automatically delete previous jobs.
+An operator must review those containers and explicitly remove obsolete smoke
+containers before nightly execution resumes. Inspect them with
+`docker ps -a --filter label=align.workload=smoke`. The check and lock apply only
+to this host; they do not isolate shared application data or coordinate other hosts.
 
 The runner is `/opt/align/run_container.py`; its non-secret configuration is
 `/etc/align/config.json`. Logs are `/var/log/align-service.log` and
@@ -101,6 +121,11 @@ checked without arbiter code. Docker behavior can later be exercised with a smal
 fixture image. Actual Docker execution requires a running Docker engine; ECR,
 instance IAM, networking, and bootstrap require a separately approved dev test.
 The repository currently contains no real arbiter image.
+
+Run the command-mocked runtime tests locally without Docker or AWS credentials:
+`python3 -B -m unittest discover -s infra/modules/compute/tests -p 'test_*.py' -v`.
+They cover preparation retries/deadlines and smoke preflight ordering/failures;
+they do not replace a later real-container and approved dev test.
 
 Before deployment, obtain the pinned AL2023 x86_64 AMI, instance type and disk size;
 wire this account's networking/lake outputs; obtain its database secret ARN and any

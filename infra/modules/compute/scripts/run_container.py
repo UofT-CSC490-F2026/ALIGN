@@ -17,6 +17,8 @@ import uuid
 
 
 LOG = logging.getLogger("align")
+SERVICE_IMAGE_ATTEMPTS = 5
+SERVICE_IMAGE_TIMEOUT_SECONDS = 900
 
 
 def interrupted(signum, _frame):
@@ -49,6 +51,39 @@ def prepare_image(config, scratch, deadline):
     )
     execute(docker + ["pull", "--platform", "linux/amd64", config["image"]], deadline=deadline)
     return docker
+
+
+def prepare_service_image(config, scratch):
+    deadline = time.monotonic() + SERVICE_IMAGE_TIMEOUT_SECONDS
+    for attempt in range(1, SERVICE_IMAGE_ATTEMPTS + 1):
+        if time.monotonic() >= deadline:
+            raise subprocess.TimeoutExpired("ECR image preparation", SERVICE_IMAGE_TIMEOUT_SECONDS)
+        try:
+            return prepare_image(config, scratch, deadline)
+        except (RuntimeError, subprocess.TimeoutExpired):
+            remaining = deadline - time.monotonic()
+            if attempt == SERVICE_IMAGE_ATTEMPTS or remaining <= 0:
+                raise
+            delay = min(5 * 2 ** (attempt - 1), remaining)
+            LOG.warning(
+                "Image preparation attempt %s/%s failed; retrying in %.1f seconds",
+                attempt, SERVICE_IMAGE_ATTEMPTS, delay,
+            )
+            time.sleep(delay)
+
+
+def require_clean_smoke_host(deadline):
+    # The process lock disappears if the runner dies; its container may survive.
+    # Check all states, and leave previous containers untouched for review.
+    existing = execute([
+        "docker", "container", "ls", "--all", "--filter", "label=align.workload=smoke",
+        "--format", "{{.ID}}",
+    ], deadline=deadline, limit=30).stdout.split()
+    if existing:
+        raise RuntimeError(
+            f"Previous smoke containers remain ({', '.join(existing)}); "
+            "review containers labelled align.workload=smoke before retrying"
+        )
 
 
 def write_environment(config, scratch, run_id=None):
@@ -161,12 +196,14 @@ def main():
                 LOG.info("Skipped smoke job because a previous run is active")
                 return 0
             deadline = time.monotonic() + config["smoke_timeout_seconds"]
+            require_clean_smoke_host(deadline)
 
         with tempfile.TemporaryDirectory(prefix="align-runtime-", dir="/run") as directory:
             scratch = Path(directory)
-            docker = prepare_image(config, scratch, deadline)
             if arguments.mode == "service":
+                docker = prepare_service_image(config, scratch)
                 return start_service(config, docker, write_environment(config, scratch))
+            docker = prepare_image(config, scratch, deadline)
             run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex
             return run_smoke(config, docker, write_environment(config, scratch, run_id), run_id, deadline)
     except subprocess.TimeoutExpired:
