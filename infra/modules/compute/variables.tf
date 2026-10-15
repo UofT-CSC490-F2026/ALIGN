@@ -50,7 +50,7 @@ variable "lake_bucket_name" {
 }
 
 variable "lake_bucket_arn" {
-  description = "Data lake bucket ARN from the storage module, for scoped IAM permissions."
+  description = "Data lake bucket ARN from the storage module, for IAM access restricted to the deployment account's bucket."
   type        = string
   nullable    = false
 
@@ -66,7 +66,7 @@ variable "lake_bucket_arn" {
 }
 
 variable "db_secret_arn" {
-  description = "ARN of the database credentials secret supplied by the database module; never supply its secret value."
+  description = "ARN of the database credentials secret supplied by the database module in the deployment account; never supply its secret value."
   type        = string
   nullable    = false
 
@@ -82,7 +82,7 @@ variable "db_secret_arn" {
 }
 
 variable "db_secret_kms_key_arn" {
-  description = "Customer-managed KMS key ARN encrypting the database secret, or null for aws/secretsmanager. The database owner must also ensure its key policy allows this role to decrypt."
+  description = "Customer-managed KMS key ARN encrypting the database secret in the deployment account, or null for aws/secretsmanager. The database owner must also ensure its key policy allows this role to decrypt."
   type        = string
   default     = null
 

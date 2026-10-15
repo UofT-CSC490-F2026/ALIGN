@@ -7,6 +7,10 @@ mock_provider "aws" {
     defaults = { partition = "aws" }
   }
 
+  mock_data "aws_caller_identity" {
+    defaults = { account_id = "000000000000" }
+  }
+
   mock_data "aws_ami" {
     defaults = {
       id                  = "ami-00000000000000000"
@@ -100,6 +104,15 @@ run "scoped_workload_permissions" {
       ])
     )
     error_message = "Workload access must be limited to lake listing/read/write and reads of exactly the database and LLM secrets."
+  }
+
+  assert {
+    condition = alltrue([
+      for statement in jsondecode(aws_iam_role_policy.data_access.policy).Statement :
+      statement.Condition.StringEquals["aws:ResourceAccount"] == "000000000000"
+      if contains(statement.Action, "s3:ListBucket") || contains(statement.Action, "s3:GetObject")
+    ])
+    error_message = "Lake grants must require bucket ownership by the authenticated deployment account."
   }
 
   assert {
@@ -396,4 +409,46 @@ run "reject_database_key_in_other_region" {
   command = plan
   variables { db_secret_kms_key_arn = "arn:aws:kms:us-east-1:000000000000:key/00000000-0000-0000-0000-000000000000" }
   expect_failures = [var.db_secret_kms_key_arn]
+}
+
+run "references_follow_provider_account" {
+  command = plan
+
+  override_data {
+    target = data.aws_caller_identity.current
+    values = { account_id = "111111111111" }
+  }
+
+  variables {
+    db_secret_arn         = "arn:aws:secretsmanager:us-east-2:111111111111:secret:mock-database-ABC123"
+    db_secret_kms_key_arn = "arn:aws:kms:us-east-2:111111111111:key/00000000-0000-0000-0000-000000000000"
+  }
+
+  assert {
+    condition = (
+      local.runtime_config.environment.ALIGN_DB_SECRET_ARN == var.db_secret_arn &&
+      alltrue([
+        for statement in jsondecode(aws_iam_role_policy.data_access.policy).Statement :
+        statement.Condition.StringEquals["aws:ResourceAccount"] == "111111111111"
+        if contains(statement.Action, "s3:ListBucket") || contains(statement.Action, "s3:GetObject")
+      ])
+    )
+    error_message = "Same-account references must work when the provider account changes, without editing the module."
+  }
+}
+
+run "reject_database_secret_in_other_account" {
+  command = plan
+  variables {
+    db_secret_arn = "arn:aws:secretsmanager:us-east-2:111111111111:secret:mock-database-ABC123"
+  }
+  expect_failures = [aws_iam_role_policy.data_access]
+}
+
+run "reject_database_key_in_other_account" {
+  command = plan
+  variables {
+    db_secret_kms_key_arn = "arn:aws:kms:us-east-2:111111111111:key/00000000-0000-0000-0000-000000000000"
+  }
+  expect_failures = [aws_iam_role_policy.data_access]
 }

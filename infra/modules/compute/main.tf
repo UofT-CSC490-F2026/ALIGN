@@ -9,6 +9,7 @@ locals {
 
 # Provider configuration and account restrictions belong to the environment root.
 data "aws_partition" "current" {}
+data "aws_caller_identity" "current" {}
 
 resource "aws_iam_role" "compute" {
   name        = "${local.name}-compute"
@@ -50,12 +51,22 @@ resource "aws_iam_role_policy" "data_access" {
         Effect   = "Allow"
         Action   = ["s3:ListBucket"]
         Resource = [var.lake_bucket_arn]
+        Condition = {
+          StringEquals = {
+            "aws:ResourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
       },
       {
         Sid      = "ReadWriteLakeObjects"
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:PutObject"]
         Resource = ["${var.lake_bucket_arn}/*"]
+        Condition = {
+          StringEquals = {
+            "aws:ResourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
       },
       {
         Sid      = "ReadRequiredSecrets"
@@ -78,6 +89,19 @@ resource "aws_iam_role_policy" "data_access" {
       },
     ])
   })
+
+  # Reject references from a previous deployment account before attaching grants.
+  lifecycle {
+    precondition {
+      condition     = try(split(":", var.db_secret_arn)[4] == data.aws_caller_identity.current.account_id, false)
+      error_message = "Database secret must belong to the AWS account selected by the environment provider."
+    }
+
+    precondition {
+      condition     = var.db_secret_kms_key_arn == null ? true : try(split(":", var.db_secret_kms_key_arn)[4] == data.aws_caller_identity.current.account_id, false)
+      error_message = "Database secret KMS key must belong to the AWS account selected by the environment provider."
+    }
+  }
 }
 
 # Session Manager is the access method specified by the network environment roots.

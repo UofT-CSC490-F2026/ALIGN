@@ -8,6 +8,33 @@ EC2 runs a published `linux/amd64` image. It does not clone Git or build the arb
 The application and Dockerfile belong to the application owner. No Docker image
 or registry publishing identity is created by these source files.
 
+## Deployment account
+
+The dev/prod roots now target AWS account `710809468662` in `us-east-2`.
+Nothing was deployed to the previous account, so this is preparation for the first
+deployment; no existing compute resources or Terraform state need transferring.
+
+The environment root's AWS provider authenticates to the deployment account and
+checks its `allowed_account_ids`. Changing an account ID in configuration does not
+authenticate your local AWS CLI/Terraform session. Compute inherits that provider
+and reads its account with `aws_caller_identity`; no account ID is hardcoded into
+the module. IAM, ECR and the LLM secret entry are created in that account.
+
+The database secret and any supplied KMS key must belong to that same account;
+Terraform rejects mismatches before attaching the workload policy. Lake IAM
+permissions also require `aws:ResourceAccount` to match the provider's account,
+because an S3 bucket ARN contains no account ID. This condition applies only to
+the scoped lake grants. Use networking/storage/database outputs from this
+deployment when wiring the module, and publish the image to its ECR repository.
+See [AWS's bucket-owner condition documentation](https://docs.aws.amazon.com/AmazonS3/latest/userguide/amazon-s3-policy-keys.html).
+
+The environment files are named `dev.tfvars` and `prod.tfvars`, so pass the matching
+`-var-file` explicitly when planning from an environment root. Those files are not
+automatically loaded. The state bucket is now
+`align-tfstate-710809468662-us-east-2`; its bootstrap and locking resources must be
+ready before initializing the dev/prod backends. This module configures neither
+the backend nor the local AWS login.
+
 ## Image delivery and enabling workloads
 
 By default, Terraform creates an encrypted, environment-prefixed ECR repository
@@ -76,9 +103,9 @@ instance IAM, networking, and bootstrap require a separately approved dev test.
 The repository currently contains no real arbiter image.
 
 Before deployment, obtain the pinned AL2023 x86_64 AMI, instance type and disk size;
-wire the networking/lake outputs; obtain the database secret ARN and any customer
-KMS key ARN/key-policy access; configure AWS authentication and state access; and
-arrange secure population of the LLM secret before the application runs.
+wire this account's networking/lake outputs; obtain its database secret ARN and any
+customer KMS key ARN/key-policy access; configure AWS authentication and state
+access; and arrange secure population of the LLM secret before the application runs.
 
 Confirm who publishes the image, its entrypoint and test arguments, and whether the
 dev deployment and its dependencies are isolated from regular use. The module is
