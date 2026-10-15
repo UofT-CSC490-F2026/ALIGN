@@ -1,14 +1,9 @@
-# ALIGN — Phase 1: Safe, repeatable PostgreSQL schema migrations
+# ALIGN PostgreSQL database and AWS RDS
 
-**Target folder:** `ALIGN/infra/modules/database/` on branch `a2`. This package is a
-**local Docker/SQL migration setup**, alongside the RDS Terraform module described
-below. Designed from the tested `align_postgres_v3` package.
+This directory contains local Docker PostgreSQL, versioned Flyway SQL migrations,
+and the reusable AWS RDS Terraform module.
 
-> The linked GitHub repository's `a2` contents could not be read with the current
-> GitHub connection (404/not accessible). Review differences in your local branch
-> before overwriting any existing files. No remote repository files were changed.
-
-## What changed from your working v3
+## Schema and migration layout
 
 - **No database initialization scripts are mounted under `docker-entrypoint-initdb.d`.**
   Docker now only starts PostgreSQL; **Flyway explicitly applies versioned migrations**.
@@ -20,46 +15,13 @@ below. Designed from the tested `align_postgres_v3` package.
 - `scripts/verify_schema.sql` checks structure regardless of data; `verify_fixtures.sql`
   checks optional, explicitly synthetic data.
 
-## IMPORTANT: choose ONE path below
+## Local PostgreSQL setup
 
-Keep working in your original `ALIGN/infra/modules/database` folder. Do **NOT**
-rename the folder before `docker compose up -d postgres` if you want Docker Compose
- to reuse its existing `database_align_pgdata` volume.
-
-### Path A — your **existing populated v3 database** (the one you already tested)
-
-Open PowerShell in `ALIGN\infra\modules\database`. Copy this package's contents
-into that folder, replacing its `docker-compose.yml` and `README.md`, and **adding**
-`migrations/`, `fixtures/`, and the new verification scripts. The old `sql/` directory
-can stay temporarily, but it is no longer used by Compose. Do not delete Docker volumes.
-
-```powershell
-# Start/reuse the existing PostgreSQL volume; leaves existing fixture records untouched
-docker compose up -d postgres
-
-# Mandatory safety check of the pre-Flyway v3 schema
-docker compose exec -T postgres psql -U align_dev -d align -f /checks/verify_legacy_v3.sql
-
-# ONE TIME ONLY: tell Flyway that the existing schema is equivalent to V1 and V2.
-# This does not execute V1 or V2, nor does it erase existing rows.
-docker compose run --rm migrate -baselineVersion=2 baseline
-
-# Apply ONLY V3 and later changes. The command is safe to repeat.
-docker compose run --rm migrate migrate
-
-docker compose run --rm migrate validate
-
-docker compose exec -T postgres psql -U align_dev -d align -f /checks/verify_schema.sql
-
-docker compose exec -T postgres psql -U align_dev -d align -f /checks/verify_fixtures.sql
-```
-
-**Never run `baseline` against a fresh empty database.** On your existing database,
-run it only after the v3 preflight succeeds. `baseline` trusts that your old schema
-matches V1/V2 — it does not replay or checksum them. If you already changed the
-schema manually, compare it to those files and investigate before baselining.
-
-### Path B — a **fresh local database**
+Run these commands from `infra/modules/database`. Keeping the same Compose project
+directory preserves its existing local database volume. For a **fresh** database,
+Flyway installs V1, V2, and V3; for an **already Flyway-managed** database,
+`migrate` applies only outstanding changes. Do not automatically baseline an
+unmanaged, manually initialized database; review its schema separately.
 
 ```powershell
 docker compose up -d postgres
@@ -77,7 +39,7 @@ docker compose exec -T postgres psql -U align_dev -d align -f /fixtures/003_seed
 docker compose exec -T postgres psql -U align_dev -d align -f /checks/verify_fixtures.sql
 ```
 
-### Phase 1 acceptance test — update the schema without touching the volume
+### Isolated upgrade smoke test — preserve data across migrations
 
 **The strongest automated lifecycle test** creates an *isolated* temporary Compose
 project using host port 5434. It applies V1 and V2, inserts fixtures, applies V3
@@ -92,7 +54,7 @@ The isolated project is stopped afterward, but its volume is retained so nothing
 deleted. To run it from scratch again, remove **only** the isolated test project
 volume intentionally after confirming the project name `align_phase1_smoke`.
 
-After completing Path A or B, run `docker compose run --rm migrate migrate` **again**.
+After migrating, run `docker compose run --rm migrate migrate` **again**.
 It should report that the schema is already up to date. Then check:
 
 ```powershell
@@ -139,8 +101,8 @@ not be used to mask migration problems, and `flyway clean` is disabled.
 
 | Symptom | What it means / what to do |
 |---|---|
-| `Found non-empty schema(s) without schema history table` | Existing v3 volume; perform Path A preflight and explicit baseline. |
-| `relation "tasks" already exists` | You ran fresh migrations against an existing schema; stop and use Path A instead. |
+| `Found non-empty schema(s) without schema history table` | Unmanaged legacy schema; inspect it separately before choosing a migration/baseline strategy. |
+| `relation "tasks" already exists` | Tables already exist; stop and investigate Flyway history and schema compatibility before retrying. |
 | `Validate failed: migration checksum mismatch` | An applied file changed; restore that migration or add a new version. |
 | `Table count = 10` | 9 ALIGN domain tables + Flyway's own `flyway_schema_history`. |
 | `Port 5433 already allocated` | Another Compose project/container uses the same local port. Stop that container, not the volume. |
