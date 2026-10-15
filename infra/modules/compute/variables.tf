@@ -21,6 +21,18 @@ variable "aws_region" {
   type        = string
 }
 
+variable "deployment_suffix" {
+  description = "Optional stable, unique name suffix for compute deployments in the same environment. Empty preserves existing names."
+  type        = string
+  default     = ""
+  nullable    = false
+
+  validation {
+    condition     = var.deployment_suffix == "" || can(regex("^[a-z0-9]([a-z0-9-]{0,18}[a-z0-9])?$", var.deployment_suffix))
+    error_message = "Leave deployment_suffix empty, or use 1-20 lowercase letters, digits or hyphens, starting and ending with a letter or digit."
+  }
+}
+
 variable "subnet_id" {
   description = "EC2 subnet ID from network.public_subnet_ids; the current network design requires an explicit public IP for outbound access."
   type        = string

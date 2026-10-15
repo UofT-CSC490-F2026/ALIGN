@@ -1,5 +1,5 @@
 locals {
-  name = "${var.project}-${var.environment}"
+  name = join("-", compact([var.project, var.environment, var.deployment_suffix]))
   tags = {
     project   = var.project
     env       = var.environment

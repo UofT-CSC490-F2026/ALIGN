@@ -130,6 +130,7 @@ run "scoped_workload_permissions" {
       aws_iam_role.compute.name == "align-dev-compute" &&
       aws_iam_instance_profile.compute.name == "align-dev-compute" &&
       aws_iam_role_policy.data_access.name == "align-dev-data-access" &&
+      aws_iam_role_policy.ecr_pull.name == "align-dev-ecr-pull" &&
       aws_secretsmanager_secret.llm_api_key.name == "align-dev-llm-api-key" &&
       alltrue([for tags in [aws_iam_role.compute.tags, aws_iam_instance_profile.compute.tags, aws_secretsmanager_secret.llm_api_key.tags] :
         tags.project == "align" && tags.env == "dev" && tags.ManagedBy == "Terraform"
@@ -279,17 +280,26 @@ run "image_delivery_and_disabled_defaults" {
 
 run "use_existing_ecr_repository" {
   command = plan
-  variables { existing_ecr_repository_name = "mock-existing" }
+  variables {
+    deployment_suffix            = "smoke"
+    existing_ecr_repository_name = "mock-existing"
+  }
 
   assert {
-    condition     = length(aws_ecr_repository.arbiter) == 0 && output.ecr_repository_arn == data.aws_ecr_repository.existing[0].arn
-    error_message = "An existing repository must be consumed rather than recreated."
+    condition = (
+      length(aws_ecr_repository.arbiter) == 0 &&
+      data.aws_ecr_repository.existing[0].name == "mock-existing" &&
+      output.ecr_repository_arn == data.aws_ecr_repository.existing[0].arn &&
+      aws_iam_role.compute.name == "align-dev-smoke-compute"
+    )
+    error_message = "A suffixed deployment must consume the selected existing repository without renaming or recreating it."
   }
 }
 
 run "dedicated_dev_smoke_schedule" {
   command = plan
   variables {
+    deployment_suffix    = "smoke"
     smoke_test_enabled   = true
     arbiter_image_digest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
     smoke_test_command   = ["mock-smoke"]
@@ -306,6 +316,23 @@ run "dedicated_dev_smoke_schedule" {
       local.runtime_config.environment.ALIGN_LLM_SECRET_ARN == output.llm_secret_arn
     )
     error_message = "The dedicated smoke deployment must receive its daily schedule, bounded timeout, and secret ARNs only."
+  }
+
+  assert {
+    condition = (
+      aws_iam_role.compute.name == "align-dev-smoke-compute" &&
+      aws_iam_instance_profile.compute.name == "align-dev-smoke-compute" &&
+      aws_iam_role_policy.data_access.name == "align-dev-smoke-data-access" &&
+      aws_iam_role_policy.ecr_pull.name == "align-dev-smoke-ecr-pull" &&
+      aws_secretsmanager_secret.llm_api_key.name == "align-dev-smoke-llm-api-key" &&
+      aws_ecr_repository.arbiter[0].name == "align-dev-smoke-arbiter" &&
+      aws_instance.compute.tags.Name == "align-dev-smoke-compute" &&
+      aws_instance.compute.root_block_device[0].tags.Name == "align-dev-smoke-compute-root" &&
+      alltrue([for tags in [aws_iam_role.compute.tags, aws_iam_instance_profile.compute.tags, aws_secretsmanager_secret.llm_api_key.tags, aws_ecr_repository.arbiter[0].tags, aws_instance.compute.tags, aws_instance.compute.root_block_device[0].tags] :
+        tags.project == "align" && tags.env == "dev" && tags.ManagedBy == "Terraform"
+      ])
+    )
+    error_message = "Smoke resource names must differ from regular dev deployments while preserving shared project/environment tags."
   }
 }
 
@@ -451,4 +478,91 @@ run "reject_database_key_in_other_account" {
     db_secret_kms_key_arn = "arn:aws:kms:us-east-2:111111111111:key/00000000-0000-0000-0000-000000000000"
   }
   expect_failures = [aws_iam_role_policy.data_access]
+}
+
+run "suffixed_service_deployment" {
+  command = plan
+  variables {
+    deployment_suffix    = "service"
+    arbiter_enabled      = true
+    arbiter_image_digest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  }
+
+  assert {
+    condition = (
+      local.runtime_config.service_enabled && !local.runtime_config.smoke_enabled &&
+      aws_iam_role.compute.name == "align-dev-service-compute" &&
+      aws_iam_instance_profile.compute.name == "align-dev-service-compute" &&
+      aws_iam_role_policy.data_access.name == "align-dev-service-data-access" &&
+      aws_iam_role_policy.ecr_pull.name == "align-dev-service-ecr-pull" &&
+      aws_secretsmanager_secret.llm_api_key.name == "align-dev-service-llm-api-key" &&
+      aws_ecr_repository.arbiter[0].name == "align-dev-service-arbiter" &&
+      aws_instance.compute.tags.Name == "align-dev-service-compute" &&
+      aws_instance.compute.root_block_device[0].tags.Name == "align-dev-service-compute-root" &&
+      alltrue([for tags in [aws_iam_role.compute.tags, aws_iam_instance_profile.compute.tags, aws_secretsmanager_secret.llm_api_key.tags, aws_ecr_repository.arbiter[0].tags, aws_instance.compute.tags, aws_instance.compute.root_block_device[0].tags] :
+        tags.project == "align" && tags.env == "dev" && tags.ManagedBy == "Terraform"
+      ])
+    )
+    error_message = "The dev service must use distinct suffixed names without changing project/environment tags or workload behavior."
+  }
+}
+
+run "single_character_deployment_suffix" {
+  command = plan
+  variables { deployment_suffix = "s" }
+
+  assert {
+    condition     = aws_iam_role.compute.name == "align-dev-s-compute" && aws_ecr_repository.arbiter[0].name == "align-dev-s-arbiter"
+    error_message = "A one-character suffix must be accepted and included once in owned names."
+  }
+}
+
+run "maximum_length_deployment_names" {
+  command = plan
+  variables {
+    project           = "abcdefghijklmnopqrst"
+    environment       = "prod"
+    deployment_suffix = "abcdefghijklmnopqrst"
+  }
+
+  assert {
+    condition = (
+      aws_iam_role.compute.name == "abcdefghijklmnopqrst-prod-abcdefghijklmnopqrst-compute" &&
+      length(aws_iam_role.compute.name) == 54 &&
+      length(aws_iam_instance_profile.compute.name) <= 128 &&
+      length(aws_iam_role_policy.data_access.name) <= 128 &&
+      length(aws_ecr_repository.arbiter[0].name) <= 256
+    )
+    error_message = "Maximum permitted project and suffix lengths must produce valid AWS name lengths."
+  }
+}
+
+run "reject_deployment_suffix_with_path_separator" {
+  command = plan
+  variables { deployment_suffix = "smoke/test" }
+  expect_failures = [var.deployment_suffix]
+}
+
+run "reject_uppercase_deployment_suffix" {
+  command = plan
+  variables { deployment_suffix = "Smoke" }
+  expect_failures = [var.deployment_suffix]
+}
+
+run "reject_leading_hyphen_in_deployment_suffix" {
+  command = plan
+  variables { deployment_suffix = "-smoke" }
+  expect_failures = [var.deployment_suffix]
+}
+
+run "reject_trailing_hyphen_in_deployment_suffix" {
+  command = plan
+  variables { deployment_suffix = "smoke-" }
+  expect_failures = [var.deployment_suffix]
+}
+
+run "reject_long_deployment_suffix" {
+  command = plan
+  variables { deployment_suffix = "abcdefghijklmnopqrstu" }
+  expect_failures = [var.deployment_suffix]
 }

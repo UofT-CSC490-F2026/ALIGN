@@ -8,6 +8,39 @@ EC2 runs a published `linux/amd64` image. It does not clone Git or build the arb
 The application and Dockerfile belong to the application owner. No Docker image
 or registry publishing identity is created by these source files.
 
+## Naming separate compute deployments
+
+`deployment_suffix` optionally distinguishes multiple compute module instances in
+the same environment. It defaults to `""`, preserving all existing names. A
+non-empty suffix accepts 1-20 lowercase letters, digits or hyphens, starting and
+ending with a letter or digit.
+
+For `project = "align"` and `environment = "dev"`:
+
+| Suffix | IAM role / instance profile | Managed ECR repository | LLM secret entry |
+| --- | --- | --- | --- |
+| `""` (default) | `align-dev-compute` | `align-dev-arbiter` | `align-dev-llm-api-key` |
+| `"service"` | `align-dev-service-compute` | `align-dev-service-arbiter` | `align-dev-service-llm-api-key` |
+| `"smoke"` | `align-dev-smoke-compute` | `align-dev-smoke-arbiter` | `align-dev-smoke-llm-api-key` |
+
+The suffix also applies to owned inline policy names and EC2/root-volume Name
+tags. The required `project` and `env` tags retain their original values. The
+maximum generated IAM role name is 54 characters, within the
+[64-character IAM limit](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-quotas.html).
+
+Choose unique suffixes across module instances and state files, and keep them
+stable after deployment. Changing a suffix renames resources and can require
+replacement, including the secret and managed ECR repository. Existing images or
+a secret recovery window can complicate replacement; review the plan first.
+
+Each module instance still defines one EC2 instance. A second host requires a
+second module call in an environment root; a suffix alone does not create one.
+Service and smoke flags remain mutually exclusive on each host. Host-local
+container names, paths and locks stay unchanged because they run on separate hosts.
+Separate test data, database credentials and LLM usage remain required. To consume
+an already-created shared image repository, use `existing_ecr_repository_name`;
+the suffix does not rename or recreate that repository.
+
 ## Deployment account
 
 The dev/prod roots now target AWS account `710809468662` in `us-east-2`.
