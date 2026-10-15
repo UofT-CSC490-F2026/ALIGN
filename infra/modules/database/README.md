@@ -1,8 +1,8 @@
 # ALIGN — Phase 1: Safe, repeatable PostgreSQL schema migrations
 
 **Target folder:** `ALIGN/infra/modules/database/` on branch `a2`. This package is a
-**drop-in replacement for the local Docker/SQL setup**; it does not modify Terraform,
-AWS, or your GitHub branch. Designed from the tested `align_postgres_v3` package.
+**local Docker/SQL migration setup**, alongside the RDS Terraform module described
+below. Designed from the tested `align_postgres_v3` package.
 
 > The linked GitHub repository's `a2` contents could not be read with the current
 > GitHub connection (404/not accessible). Review differences in your local branch
@@ -154,3 +154,99 @@ docker compose run --rm migrate info
 ```
 
 Do not use `docker compose down -v` unless intentionally destroying **throwaway** data.
+
+## Milestone 2: RDS integration
+
+Terraform creates one `aws_db_subnet_group` and one `aws_db_instance`. RDS creates
+and maintains its master credential in Secrets Manager; Terraform exposes only
+the secret ARN, never its password. No additional VPC, subnet, security group,
+ingress rule, or independently managed password secret is created here.
+
+`infra/envs/dev/main.tf` instantiates this module with the inherited root AWS
+provider, project/environment/region variables, both
+`module.network.private_subnet_ids`, and `module.network.rds_security_group_id`.
+The subnet IDs must be distinct and belong to two different availability zones in
+the same VPC; mocked tests cannot verify their actual AWS placement. The shared
+`var.db_port` keeps the database listener and network rule consistent. Network
+output references establish implicit dependencies.
+
+Dev uses PostgreSQL 16, `db.t4g.micro`, 20 GiB gp3 encrypted storage, seven-day
+automated backups, and Single-AZ placement. Public access is disabled. Module
+outputs are `db_address`, `db_port`, `db_name`, `db_instance_identifier`,
+`db_master_secret_arn`, and `db_subnet_group_name`; dev re-exports the first five
+alongside its existing network outputs. An ARN is metadata, not a credential.
+
+### Local Terraform validation (no deployment)
+
+Use Terraform `~> 1.16.0` and AWS provider `~> 6.0`. From this module directory:
+
+```powershell
+terraform init -backend=false
+terraform fmt -check -recursive
+terraform validate
+terraform test
+```
+
+Tests use a mocked AWS provider and plan-only runs, including production deletion
+protection and invalid-input cases. No AWS credentials are needed for those tests;
+initialization requires registry access or a populated provider cache. Then, from
+`infra/envs/dev`:
+
+```powershell
+terraform init -backend=false
+terraform fmt -check
+terraform validate
+```
+
+These checks establish configuration validity, not deployability. Do not use an
+empty-state or offline plan as a deployment decision. Before a future authorized
+deployment, initialize the team's shared remote backend with its approved backend
+configuration and credentials for the allowed account in `us-east-2`, then review
+an AWS-backed plan. Confirm PostgreSQL 16 / `db.t4g.micro` regional availability,
+quotas, subnet AZ placement, existing resources/state, and current pricing. This
+milestone does not run apply or destroy or change shared state.
+
+### Access and schema migrations after deployment
+
+Local Docker PostgreSQL is a separate development database on localhost (default
+host port 5433) with local-only credentials. RDS is private, uses managed credentials,
+and is not initialized by Docker or Terraform SQL scripts. Keep the existing
+Compose configuration unchanged and never point it at RDS.
+
+Use an authorized EC2 host attached to the network module's EC2 security group,
+with routing and DNS access to the RDS endpoint. Session Manager requires the SSM
+agent, instance IAM permissions, operator session permissions, and connectivity to
+SSM endpoints (via permitted egress or VPC endpoints). Compute/SSM setup is a team
+prerequisite, not provisioned by this database module. No public RDS access or
+additional database ingress is needed. A workstation may use an authorized Session
+Manager remote-host port-forwarding session through that EC2 host.
+
+Run a separately configured Flyway client on the authorized host (or through the
+approved tunnel), using the existing `migrations/` directory and an RDS JDBC URL.
+Require TLS with server certificate and hostname verification using the AWS RDS
+CA bundle; tunneled clients must preserve verification of the RDS hostname. Retrieve
+credentials at runtime with narrowly scoped Secrets Manager access (and KMS access
+if applicable), without logging or committing secret values. Prefer a dedicated
+migration role once bootstrap is complete. Set `baselineOnMigrate=false` and
+`cleanDisabled=true`; for a fresh RDS database run `info`, `migrate`, then `validate`
+and the schema verification SQL. Do not baseline a fresh database, replay local
+fixtures, edit existing migrations, or use the local Compose credentials. Terraform
+owns infrastructure state; Flyway owns schema history.
+
+### Data protection and costs
+
+Automated backups retain seven days by default (validated range 1-35). Normal
+deletion requires a final snapshot; the default name is
+`<project>-<environment>-postgres-final`. Before a later deletion after recreation,
+choose a new `final_snapshot_identifier` if that name already exists. Production
+always enables RDS deletion protection even when the optional flag is false;
+disabling it requires an intentional code change and team review. Dev can opt into
+protection too. Final snapshots do not replace a tested restore procedure.
+
+RDS incurs instance, storage, backup/snapshot, Secrets Manager, and potentially
+transfer and supporting EC2/endpoint costs. Retained final snapshots continue to
+cost money after instance deletion. Single-AZ and the micro instance reduce dev
+cost but provide no standby failover. Confirm current pricing and burstable-instance
+CPU credit charges with the team; do not assume free-tier eligibility. Production
+availability decisions and any network/SSM changes require teammate coordination;
+the production root is unchanged in this milestone.

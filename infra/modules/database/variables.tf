@@ -3,8 +3,11 @@ variable "project" {
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{1,19}$", var.project))
-    error_message = "Project must be 2-20 lowercase letters, digits or hyphens, starting with a letter."
+    condition = (
+      can(regex("^[a-z][a-z0-9-]{1,19}$", var.project)) &&
+      !endswith(var.project, "-") && !strcontains(var.project, "--")
+    )
+    error_message = "Project must be 2-20 lowercase letters, digits or hyphens, starting with a letter, with no trailing or consecutive hyphens."
   }
 }
 

@@ -44,11 +44,62 @@ run "secure_dev_configuration" {
       aws_db_instance.this.engine == "postgres" &&
       aws_db_instance.this.engine_version == "16" &&
       aws_db_instance.this.instance_class == "db.t4g.micro" &&
+      aws_db_instance.this.allocated_storage == 20 &&
+      aws_db_instance.this.storage_type == "gp3" &&
+      aws_db_instance.this.final_snapshot_identifier == "align-dev-postgres-final" &&
       aws_db_instance.this.multi_az == false &&
       aws_db_instance.this.deletion_protection == false
     )
     error_message = "Development database settings do not match the expected baseline."
   }
+}
+
+run "reject_three_private_subnets" {
+  command = plan
+  variables { private_subnet_ids = ["subnet-0123456789abcdef0", "subnet-0123456789abcdef1", "subnet-0123456789abcdef2"] }
+  expect_failures = [var.private_subnet_ids]
+}
+
+run "reject_project_with_consecutive_hyphens" {
+  command = plan
+  variables { project = "align--test" }
+  expect_failures = [var.project]
+}
+
+run "reject_project_with_trailing_hyphen" {
+  command = plan
+  variables { project = "align-" }
+  expect_failures = [var.project]
+}
+
+run "reject_excessive_backup_retention" {
+  command = plan
+  variables { backup_retention_days = 36 }
+  expect_failures = [var.backup_retention_days]
+}
+
+run "reject_fractional_backup_retention" {
+  command = plan
+  variables { backup_retention_days = 7.5 }
+  expect_failures = [var.backup_retention_days]
+}
+
+run "reject_fractional_storage" {
+  command = plan
+  variables { allocated_storage = 20.5 }
+  expect_failures = [var.allocated_storage]
+}
+
+run "reject_zero_database_port" {
+  command = plan
+  variables { db_port = 0 }
+  expect_failures = [var.db_port]
+}
+
+run "reject_fractional_database_port" {
+  command = plan
+  variables { db_port = 5432.5 }
+  expect_failures = [var.db_port]
 }
 
 run "production_requires_deletion_protection" {
