@@ -1,3 +1,10 @@
+# This filename is not auto-loaded by Terraform; pass -var-file when planning.
+# Run from infra/envs/prod with your AWS credentials configured:
+# terraform init -backend-config=backend.hcl
+# terraform plan -var-file=prod.tfvars -out=prod.tfplan
+# Review the plan before applying; the saved plan includes these variables.
+# terraform apply prod.tfplan
+
 project              = "align"
 environment          = "prod"
 aws_account_id       = "183754987292"
