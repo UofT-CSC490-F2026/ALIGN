@@ -13,11 +13,11 @@ variable "environment" {
 }
 
 variable "aws_account_id" {
-  description = "Selected deployment account. Each account requires isolated state; backend authentication is configured separately."
+  description = "Deployment account matching this environment's backend."
   type        = string
   validation {
-    condition     = contains(["183754987292", "710809468662"], var.aws_account_id)
-    error_message = "Select an approved ALIGN account: 183754987292 or 710809468662."
+    condition     = var.aws_account_id == "710809468662"
+    error_message = "Use AWS account 710809468662."
   }
 }
 

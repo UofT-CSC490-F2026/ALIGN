@@ -7,7 +7,7 @@
 
 project              = "align"
 environment          = "dev"
-aws_account_id       = "183754987292"
+aws_account_id       = "710809468662"
 aws_region           = "us-east-2"
 vpc_cidr             = "10.10.0.0/16"
 availability_zones   = ["us-east-2a", "us-east-2b"]
