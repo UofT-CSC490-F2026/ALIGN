@@ -13,11 +13,11 @@ variable "environment" {
 }
 
 variable "aws_account_id" {
-  description = "Allowed AWS account."
+  description = "Deployment account matching this environment's backend."
   type        = string
   validation {
-    condition     = var.aws_account_id == "183754987292"
-    error_message = "This backend belongs to account 183754987292."
+    condition     = var.aws_account_id == "710809468662"
+    error_message = "Use AWS account 710809468662."
   }
 }
 
