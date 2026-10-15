@@ -10,3 +10,23 @@ module "network" {
   allowed_ssh_cidrs    = var.allowed_ssh_cidrs
   db_port              = var.db_port
 }
+
+module "database" {
+  source = "../../modules/database"
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  private_subnet_ids    = module.network.private_subnet_ids
+  rds_security_group_id = module.network.rds_security_group_id
+
+  db_name = "align"
+  db_port = var.db_port
+
+  instance_class        = "db.t4g.micro"
+  allocated_storage     = 20
+  backup_retention_days = 7
+
+  multi_az = false
+}
