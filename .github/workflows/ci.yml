@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [a2]
+  workflow_dispatch:
+
+# Tests never access AWS or deploy infrastructure.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform:
+    name: Terraform checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.6
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive infra
+
+      - name: Initialize and validate all Terraform roots and modules
+        run: |
+          for directory in \
+            infra/bootstrap \
+            infra/backup \
+            infra/envs/dev \
+            infra/envs/prod \
+            infra/modules/network \
+            infra/modules/storage \
+            infra/modules/database; do
+            echo "::group::${directory}"
+            terraform -chdir="${directory}" init -backend=false -input=false -no-color
+            terraform -chdir="${directory}" validate -no-color
+            echo "::endgroup::"
+          done
+
+      - name: Run mocked network module tests
+        run: terraform -chdir=infra/modules/network test -no-color
+
+      - name: Run mocked RDS module tests
+        run: terraform -chdir=infra/modules/database test -no-color
+
+  database:
+    name: PostgreSQL and Flyway checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: infra/modules/database
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose configuration
+        run: docker compose config --quiet
+
+      - name: Test fresh schema, fixtures, and V2-to-V3 upgrade
+        shell: pwsh
+        run: ./scripts/fresh_demo_test.ps1
+
+      # Safe on the ephemeral CI runner: never touches a developer's local volume.
+      - name: Clean up isolated CI database and test volume
+        if: always()
+        run: docker compose -p align_phase1_smoke down --volumes --remove-orphans
