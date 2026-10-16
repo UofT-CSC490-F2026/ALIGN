@@ -228,6 +228,30 @@ resource "aws_instance" "compute" {
       ])), false)
       error_message = "Root volume size must be at least as large as the selected AMI's root disk."
     }
+
+    precondition {
+      condition     = var.arbiter_memory_mb == null ? true : var.arbiter_memory_mb <= data.aws_ec2_instance_type.selected.memory_size
+      error_message = "The service memory limit cannot exceed the selected instance's memory."
+    }
+
+    precondition {
+      condition = !var.smoke_test_enabled || (
+        coalesce(var.smoke_test_memory_mb, 0) + coalesce(var.smoke_test_host_memory_reserve_mb, 0) + (
+          var.arbiter_enabled ? coalesce(var.arbiter_memory_mb, 0) : 0
+        ) <= data.aws_ec2_instance_type.selected.memory_size
+      )
+      error_message = "Smoke memory, host memory reserve and any shared service memory limit must fit within the selected instance's memory."
+    }
+
+    precondition {
+      condition     = !var.smoke_test_enabled || coalesce(var.smoke_test_cpus, 0) < data.aws_ec2_instance_type.selected.default_vcpus
+      error_message = "The smoke CPU limit must leave capacity below the selected instance's vCPU count."
+    }
+
+    precondition {
+      condition     = !var.smoke_test_enabled || coalesce(var.smoke_test_host_disk_reserve_mb, 0) < var.root_volume_size * 1024
+      error_message = "The smoke free-disk reserve must be smaller than the root volume's total size in MiB."
+    }
   }
 }
 

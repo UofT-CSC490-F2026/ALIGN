@@ -8,6 +8,7 @@ fi
 
 require_smoke_contract() {
     if [ "${ALIGN_ENVIRONMENT-}" != dev ] ||
+       [ "${ALIGN_SMOKE_OFFLINE-}" != true ] ||
        [ -z "${ALIGN_RUN_ID-}" ] ||
        [ "${ALIGN_OUTPUT_PREFIX-}" != "smoke/${ALIGN_RUN_ID-}/" ]; then
         printf '%s\n' 'Invalid fixture smoke environment.' >&2

@@ -28,17 +28,22 @@ locals {
   arbiter_image      = var.arbiter_image_digest == null ? "" : "${local.ecr_repository_url}@${var.arbiter_image_digest}"
 
   runtime_config = {
-    region                = var.aws_region
-    registry              = split("/", local.ecr_repository_url)[0]
-    image                 = local.arbiter_image
-    service_enabled       = var.arbiter_enabled
-    smoke_enabled         = var.smoke_test_enabled
-    service_command       = var.arbiter_command
-    smoke_command         = var.smoke_test_command
-    service_port          = var.arbiter_port
-    smoke_cpus            = var.smoke_test_cpus
-    smoke_memory_mb       = var.smoke_test_memory_mb
-    smoke_timeout_seconds = var.smoke_test_timeout_seconds
+    region                       = var.aws_region
+    registry                     = split("/", local.ecr_repository_url)[0]
+    image                        = local.arbiter_image
+    service_enabled              = var.arbiter_enabled
+    smoke_enabled                = var.smoke_test_enabled
+    service_command              = var.arbiter_command
+    smoke_command                = var.smoke_test_command
+    service_port                 = var.arbiter_port
+    service_memory_mb            = var.arbiter_memory_mb
+    smoke_cpus                   = var.smoke_test_cpus
+    smoke_memory_mb              = var.smoke_test_memory_mb
+    smoke_host_memory_reserve_mb = var.smoke_test_host_memory_reserve_mb
+    smoke_host_disk_reserve_mb   = var.smoke_test_host_disk_reserve_mb
+    smoke_tmpfs_mb               = var.smoke_test_tmpfs_mb
+    smoke_pids_limit             = var.smoke_test_pids_limit
+    smoke_timeout_seconds        = var.smoke_test_timeout_seconds
     environment = merge(var.container_environment, {
       AWS_REGION           = var.aws_region
       AWS_DEFAULT_REGION   = var.aws_region
@@ -46,6 +51,10 @@ locals {
       ALIGN_LAKE_BUCKET    = var.lake_bucket_name
       ALIGN_DB_SECRET_ARN  = var.db_secret_arn
       ALIGN_LLM_SECRET_ARN = aws_secretsmanager_secret.llm_api_key.arn
+    })
+    smoke_environment = merge(var.smoke_test_environment, {
+      ALIGN_ENVIRONMENT   = var.environment
+      ALIGN_SMOKE_OFFLINE = "true"
     })
   }
 

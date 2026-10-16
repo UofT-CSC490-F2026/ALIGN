@@ -28,6 +28,8 @@ mock_provider "aws" {
 
   mock_data "aws_ec2_instance_type" {
     defaults = {
+      memory_size                    = 1024
+      default_vcpus                  = 2
       supported_architectures        = ["x86_64"]
       supported_root_device_types    = ["ebs"]
       supported_virtualization_types = ["hvm"]
@@ -299,12 +301,14 @@ run "use_existing_ecr_repository" {
 run "dedicated_dev_smoke_schedule" {
   command = plan
   variables {
-    deployment_suffix    = "smoke"
-    smoke_test_enabled   = true
-    arbiter_image_digest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-    smoke_test_command   = ["mock-smoke"]
-    smoke_test_cpus      = 0.5
-    smoke_test_memory_mb = 128
+    deployment_suffix                 = "smoke"
+    smoke_test_enabled                = true
+    arbiter_image_digest              = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    smoke_test_command                = ["mock-smoke"]
+    smoke_test_cpus                   = 0.5
+    smoke_test_memory_mb              = 128
+    smoke_test_host_memory_reserve_mb = 256
+    smoke_test_host_disk_reserve_mb   = 128
   }
 
   assert {
@@ -312,10 +316,12 @@ run "dedicated_dev_smoke_schedule" {
       local.runtime_config.smoke_enabled && !local.runtime_config.service_enabled &&
       strcontains(local.smoke_cron, "CRON_TZ=America/Toronto\n0 3 * * * root /usr/bin/python3 /opt/align/run_container.py smoke\n") &&
       local.runtime_config.smoke_timeout_seconds == 900 &&
-      local.runtime_config.environment.ALIGN_DB_SECRET_ARN == var.db_secret_arn &&
-      local.runtime_config.environment.ALIGN_LLM_SECRET_ARN == output.llm_secret_arn
+      tomap(local.runtime_config.smoke_environment) == tomap({
+        ALIGN_ENVIRONMENT   = "dev"
+        ALIGN_SMOKE_OFFLINE = "true"
+      })
     )
-    error_message = "The dedicated smoke deployment must receive its daily schedule, bounded timeout, and secret ARNs only."
+    error_message = "The dedicated smoke deployment must receive its daily schedule, bounded timeout and separate offline environment without service secret references."
   }
 
   assert {
@@ -336,30 +342,178 @@ run "dedicated_dev_smoke_schedule" {
   }
 }
 
-run "reject_service_and_smoke_on_same_instance" {
+run "shared_dev_service_and_offline_smoke" {
   command = plan
   variables {
-    arbiter_enabled      = true
-    smoke_test_enabled   = true
-    arbiter_image_digest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-    smoke_test_command   = ["mock-smoke"]
-    smoke_test_cpus      = 0.5
-    smoke_test_memory_mb = 128
+    arbiter_enabled                   = true
+    smoke_test_enabled                = true
+    arbiter_image_digest              = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    smoke_test_command                = ["mock-smoke"]
+    smoke_test_cpus                   = 0.5
+    smoke_test_memory_mb              = 128
+    arbiter_memory_mb                 = 256
+    smoke_test_host_memory_reserve_mb = 256
+    smoke_test_host_disk_reserve_mb   = 128
+    container_environment = {
+      SERVICE_ONLY_FLAG = "service-only"
+    }
+    smoke_test_environment = {
+      FIXTURE_MODE        = "offline"
+      ALIGN_ENVIRONMENT   = "prod"
+      ALIGN_SMOKE_OFFLINE = "false"
+    }
   }
-  expect_failures = [var.arbiter_enabled]
+
+  assert {
+    condition = (
+      local.runtime_config.service_enabled && local.runtime_config.smoke_enabled &&
+      local.runtime_config.service_memory_mb == 256 &&
+      local.runtime_config.smoke_memory_mb == 128 &&
+      local.runtime_config.smoke_host_memory_reserve_mb == 256 &&
+      local.runtime_config.smoke_host_disk_reserve_mb == 128 &&
+      local.runtime_config.smoke_tmpfs_mb == 32 &&
+      local.runtime_config.smoke_pids_limit == 64 &&
+      local.runtime_config.environment.SERVICE_ONLY_FLAG == "service-only" &&
+      local.runtime_config.environment.ALIGN_DB_SECRET_ARN == var.db_secret_arn &&
+      local.runtime_config.environment.ALIGN_LLM_SECRET_ARN == output.llm_secret_arn &&
+      tomap(local.runtime_config.smoke_environment) == tomap({
+        FIXTURE_MODE        = "offline"
+        ALIGN_ENVIRONMENT   = "dev"
+        ALIGN_SMOKE_OFFLINE = "true"
+      }) &&
+      aws_instance.compute.tags.Name == "align-dev-compute"
+    )
+    error_message = "A shared dev host must preserve names, carry explicit memory/headroom budgets and keep the managed offline smoke environment separate from service settings and secrets."
+  }
 }
 
 run "reject_smoke_on_prod" {
   command = plan
   variables {
-    environment          = "prod"
+    environment                       = "prod"
+    smoke_test_enabled                = true
+    arbiter_image_digest              = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    smoke_test_command                = ["mock-smoke"]
+    smoke_test_cpus                   = 0.5
+    smoke_test_memory_mb              = 128
+    smoke_test_host_memory_reserve_mb = 256
+    smoke_test_host_disk_reserve_mb   = 128
+  }
+  expect_failures = [var.smoke_test_enabled]
+}
+
+run "reject_shared_smoke_without_service_memory_budget" {
+  command = plan
+  variables {
+    arbiter_enabled                   = true
+    smoke_test_enabled                = true
+    arbiter_image_digest              = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    smoke_test_command                = ["mock-smoke"]
+    smoke_test_cpus                   = 0.5
+    smoke_test_memory_mb              = 128
+    smoke_test_host_memory_reserve_mb = 256
+    smoke_test_host_disk_reserve_mb   = 128
+  }
+  expect_failures = [var.arbiter_memory_mb]
+}
+
+run "reject_smoke_without_explicit_host_reserves" {
+  command = plan
+  variables {
     smoke_test_enabled   = true
     arbiter_image_digest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
     smoke_test_command   = ["mock-smoke"]
     smoke_test_cpus      = 0.5
     smoke_test_memory_mb = 128
   }
-  expect_failures = [var.smoke_test_enabled]
+  expect_failures = [var.smoke_test_host_memory_reserve_mb, var.smoke_test_host_disk_reserve_mb]
+}
+
+run "reject_shared_memory_budgets_exceeding_instance" {
+  command = plan
+  variables {
+    arbiter_enabled                   = true
+    arbiter_memory_mb                 = 768
+    smoke_test_enabled                = true
+    arbiter_image_digest              = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    smoke_test_command                = ["mock-smoke"]
+    smoke_test_cpus                   = 0.5
+    smoke_test_memory_mb              = 128
+    smoke_test_host_memory_reserve_mb = 256
+    smoke_test_host_disk_reserve_mb   = 128
+  }
+  expect_failures = [aws_instance.compute]
+}
+
+run "reject_service_memory_limit_exceeding_instance" {
+  command = plan
+  variables {
+    arbiter_enabled      = true
+    arbiter_memory_mb    = 2048
+    arbiter_image_digest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  }
+  expect_failures = [aws_instance.compute]
+}
+
+run "reject_smoke_cpu_limit_consuming_all_vcpus" {
+  command = plan
+  variables {
+    smoke_test_enabled                = true
+    arbiter_image_digest              = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    smoke_test_command                = ["mock-smoke"]
+    smoke_test_cpus                   = 2
+    smoke_test_memory_mb              = 128
+    smoke_test_host_memory_reserve_mb = 256
+    smoke_test_host_disk_reserve_mb   = 128
+  }
+  expect_failures = [aws_instance.compute]
+}
+
+run "reject_smoke_disk_reserve_at_total_volume_size" {
+  command = plan
+  variables {
+    smoke_test_enabled                = true
+    arbiter_image_digest              = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    smoke_test_command                = ["mock-smoke"]
+    smoke_test_cpus                   = 0.5
+    smoke_test_memory_mb              = 128
+    smoke_test_host_memory_reserve_mb = 256
+    smoke_test_host_disk_reserve_mb   = 20480
+  }
+  expect_failures = [aws_instance.compute]
+}
+
+run "reject_smoke_tmpfs_exceeding_memory_limit" {
+  command = plan
+  variables {
+    smoke_test_enabled                = true
+    arbiter_image_digest              = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    smoke_test_command                = ["mock-smoke"]
+    smoke_test_cpus                   = 0.5
+    smoke_test_memory_mb              = 128
+    smoke_test_tmpfs_mb               = 129
+    smoke_test_host_memory_reserve_mb = 256
+    smoke_test_host_disk_reserve_mb   = 128
+  }
+  expect_failures = [var.smoke_test_tmpfs_mb]
+}
+
+run "reject_nonpositive_smoke_tmpfs" {
+  command = plan
+  variables { smoke_test_tmpfs_mb = 0 }
+  expect_failures = [var.smoke_test_tmpfs_mb]
+}
+
+run "reject_noninteger_smoke_pid_limit" {
+  command = plan
+  variables { smoke_test_pids_limit = 1.5 }
+  expect_failures = [var.smoke_test_pids_limit]
+}
+
+run "reject_smoke_environment_with_newline" {
+  command = plan
+  variables { smoke_test_environment = { FIXTURE_MODE = "offline\nextra" } }
+  expect_failures = [var.smoke_test_environment]
 }
 
 run "reject_arm_instance_type" {

@@ -10,6 +10,7 @@ from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
 import signal
+import shutil
 import subprocess
 import tempfile
 import time
@@ -19,11 +20,21 @@ import uuid
 LOG = logging.getLogger("align")
 SERVICE_IMAGE_ATTEMPTS = 5
 SERVICE_IMAGE_TIMEOUT_SECONDS = 900
+LOG_DIRECTORY = Path("/var/log")
+LOCK_PATH = Path("/run/lock/align-smoke.lock")
+SCRATCH_DIRECTORY = Path("/run")
+MEMINFO_PATH = Path("/proc/meminfo")
+# Bootstrap uses Docker's default data directory on Amazon Linux 2023.
+DOCKER_DATA_DIRECTORY = Path("/var/lib/docker")
+
+
+class RunnerInterrupted(Exception):
+    """Cancellation must escape selectors' retry handling for InterruptedError."""
 
 
 def interrupted(signum, _frame):
     # Unwind through the smoke cleanup block when the runner is stopped.
-    raise InterruptedError(f"Runner received signal {signum}")
+    raise RunnerInterrupted(f"Runner received signal {signum}")
 
 
 def execute(arguments, *, deadline=None, input_text=None, check=True, limit=300):
@@ -86,10 +97,55 @@ def require_clean_smoke_host(deadline):
         )
 
 
+def require_host_headroom(config):
+    available_kib = None
+    for line in MEMINFO_PATH.read_text().splitlines():
+        fields = line.split()
+        if fields and fields[0] == "MemAvailable:" and len(fields) == 3 and fields[2] == "kB":
+            available_kib = int(fields[1])
+            break
+    if available_kib is None:
+        raise RuntimeError("Cannot determine available host memory; smoke job was not started")
+    required_kib = (config["smoke_memory_mb"] + config["smoke_host_memory_reserve_mb"]) * 1024
+    if available_kib < required_kib:
+        raise RuntimeError("Insufficient host memory headroom; smoke job was not started")
+    free_bytes = shutil.disk_usage(DOCKER_DATA_DIRECTORY).free
+    if free_bytes < config["smoke_host_disk_reserve_mb"] * 1024 * 1024:
+        raise RuntimeError("Insufficient Docker disk headroom; smoke job was not started")
+
+
+def validate_service(config, details):
+    labels = details["Config"].get("Labels") or {}
+    if labels.get("align.workload") != "service" or details["Config"]["Image"] != config["image"]:
+        raise RuntimeError("An existing arbiter container differs; use an explicit deployment to replace it")
+    memory_mb = config.get("service_memory_mb")
+    if memory_mb is not None:
+        host = details["HostConfig"]
+        memory = memory_mb * 1024 * 1024
+        if host["Memory"] != memory or host["MemorySwap"] != memory:
+            raise RuntimeError("Arbiter memory settings differ; use an explicit deployment to replace it")
+
+
+def require_running_service(config, deadline):
+    details = json.loads(execute([
+        "docker", "inspect", "--type", "container", "align-arbiter",
+    ], deadline=deadline, limit=30).stdout)[0]
+    validate_service(config, details)
+    if not details["State"]["Running"]:
+        raise RuntimeError("Regular arbiter is stopped; smoke job will not start or restart it")
+    image = json.loads(execute([
+        "docker", "image", "inspect", config["image"],
+    ], deadline=deadline, limit=30).stdout)[0]
+    if image["Id"] != details["Image"]:
+        raise RuntimeError("Cached image differs from the running arbiter; smoke job was not started")
+
+
 def write_environment(config, scratch, run_id=None):
-    environment = dict(config["environment"])
+    environment = dict(config["environment"] if run_id is None else config["smoke_environment"])
     if run_id is not None:
-        environment.update(ALIGN_RUN_ID=run_id, ALIGN_OUTPUT_PREFIX=f"smoke/{run_id}/")
+        environment.update(
+            ALIGN_SMOKE_OFFLINE="true", ALIGN_RUN_ID=run_id, ALIGN_OUTPUT_PREFIX=f"smoke/{run_id}/",
+        )
     path = scratch / "runtime.env"
     path.write_text("".join(f"{key}={value}\n" for key, value in environment.items()))
     path.chmod(0o600)
@@ -103,9 +159,7 @@ def start_service(config, docker, environment_file):
     ]).stdout.strip()
     if existing:
         details = json.loads(execute(["docker", "inspect", existing]).stdout)[0]
-        labels = details["Config"].get("Labels") or {}
-        if labels.get("align.workload") != "service" or details["Config"]["Image"] != config["image"]:
-            raise RuntimeError("An existing arbiter container differs; use an explicit deployment to replace it")
+        validate_service(config, details)
         if not details["State"]["Running"]:
             execute(["docker", "start", existing])
         LOG.info("Regular arbiter container is running")
@@ -116,6 +170,9 @@ def start_service(config, docker, environment_file):
         "--label", "align.workload=service", "--env-file", str(environment_file),
         "--log-driver", "local", "--log-opt", "max-size=10m", "--log-opt", "max-file=3",
     ]
+    if config.get("service_memory_mb") is not None:
+        memory = f"{config['service_memory_mb']}m"
+        arguments += ["--memory", memory, "--memory-swap", memory]
     if config["service_port"] is not None:
         port = config["service_port"]
         arguments += ["--publish", f"127.0.0.1:{port}:{port}"]
@@ -125,14 +182,25 @@ def start_service(config, docker, environment_file):
 
 
 def run_smoke(config, docker, environment_file, run_id, deadline):
+    image = json.loads(execute([
+        "docker", "image", "inspect", config["image"],
+    ], deadline=deadline, limit=30).stdout)[0]
+    # Dockerfile VOLUME declarations create writable anonymous volumes even with
+    # --read-only. Reject them so the test cannot consume unbounded host storage.
+    if image["Config"].get("Volumes"):
+        raise RuntimeError("Offline smoke images must not declare Dockerfile VOLUME paths")
     name = f"align-smoke-{run_id}"
     created = False
     try:
         memory = f"{config['smoke_memory_mb']}m"
         arguments = docker + [
-            "create", "--name", name, "--label", "align.workload=smoke",
+            "create", "--pull", "never", "--name", name, "--label", "align.workload=smoke",
             "--label", f"align.run_id={run_id}",
-            "--cpus", str(config["smoke_cpus"]), "--memory", memory, "--memory-swap", memory,
+            "--cpus", str(config["smoke_cpus"]), "--cpu-shares", "128",
+            "--memory", memory, "--memory-swap", memory,
+            "--network", "none", "--read-only", "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges=true", "--pids-limit", str(config["smoke_pids_limit"]),
+            "--tmpfs", f"/tmp:rw,noexec,nosuid,nodev,size={config['smoke_tmpfs_mb']}m",
             "--env-file", str(environment_file), "--log-driver", "local",
             "--log-opt", "max-size=10m", "--log-opt", "max-file=3",
             config["image"],
@@ -168,7 +236,7 @@ def main():
     arguments = parser.parse_args()
     os.umask(0o077)
     handler = RotatingFileHandler(
-        f"/var/log/align-{arguments.mode}.log", maxBytes=10 * 1024 * 1024, backupCount=3,
+        LOG_DIRECTORY / f"align-{arguments.mode}.log", maxBytes=10 * 1024 * 1024, backupCount=3,
     )
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", handlers=[handler])
     signal.signal(signal.SIGTERM, interrupted)
@@ -176,8 +244,9 @@ def main():
     lock_file = None
     try:
         config = json.loads(Path(arguments.config).read_text())
-        if config["service_enabled"] and config["smoke_enabled"]:
-            raise RuntimeError("Service and smoke workloads must use separate deployments")
+        shared = config["service_enabled"] and config["smoke_enabled"]
+        if shared and (config["environment"]["ALIGN_ENVIRONMENT"] != "dev" or not config.get("service_memory_mb")):
+            raise RuntimeError("Shared workloads require dev and an explicit arbiter memory budget")
         enabled = config["service_enabled"] if arguments.mode == "service" else config["smoke_enabled"]
         if not enabled:
             LOG.info("%s workload is disabled", arguments.mode)
@@ -188,8 +257,8 @@ def main():
         deadline = None
         if arguments.mode == "smoke":
             if config["environment"]["ALIGN_ENVIRONMENT"] != "dev" or not config["smoke_command"]:
-                raise RuntimeError("Smoke jobs need a dedicated dev deployment and an explicit command")
-            lock_file = open("/run/lock/align-smoke.lock", "a")
+                raise RuntimeError("Offline smoke jobs require dev and an explicit test command")
+            lock_file = open(LOCK_PATH, "a")
             try:
                 fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
@@ -197,13 +266,18 @@ def main():
                 return 0
             deadline = time.monotonic() + config["smoke_timeout_seconds"]
             require_clean_smoke_host(deadline)
+            require_host_headroom(config)
+            if shared:
+                require_running_service(config, deadline)
 
-        with tempfile.TemporaryDirectory(prefix="align-runtime-", dir="/run") as directory:
+        with tempfile.TemporaryDirectory(prefix="align-runtime-", dir=SCRATCH_DIRECTORY) as directory:
             scratch = Path(directory)
             if arguments.mode == "service":
                 docker = prepare_service_image(config, scratch)
                 return start_service(config, docker, write_environment(config, scratch))
-            docker = prepare_image(config, scratch, deadline)
+            # Shared jobs use exactly the running service's cached image. No ECR
+            # authentication, pulling, building or image pruning competes with it.
+            docker = ["docker"] if shared else prepare_image(config, scratch, deadline)
             run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex
             return run_smoke(config, docker, write_environment(config, scratch, run_id), run_id, deadline)
     except subprocess.TimeoutExpired:

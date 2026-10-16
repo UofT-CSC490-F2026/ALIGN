@@ -169,10 +169,16 @@ variable "arbiter_enabled" {
   type        = bool
   default     = false
   nullable    = false
+}
+
+variable "arbiter_memory_mb" {
+  description = "Optional hard service memory limit in MiB, required when the dev service shares its host with offline smoke tests. Swap is capped to the same amount."
+  type        = number
+  default     = null
 
   validation {
-    condition     = !(var.arbiter_enabled && var.smoke_test_enabled)
-    error_message = "The regular arbiter and smoke job must use separate compute deployments."
+    condition     = var.arbiter_memory_mb == null ? !(var.arbiter_enabled && var.smoke_test_enabled) : var.arbiter_memory_mb >= 6 && floor(var.arbiter_memory_mb) == var.arbiter_memory_mb
+    error_message = "Supply an integer service memory limit of at least 6 MiB; it is required when service and smoke are both enabled."
   }
 }
 
@@ -214,7 +220,7 @@ variable "container_environment" {
 }
 
 variable "smoke_test_enabled" {
-  description = "Enable the nightly job only on a dedicated dev/test compute deployment with isolated test dependencies."
+  description = "Enable the nightly offline smoke job in dev, optionally alongside the regular service with explicit memory and host reserve budgets."
   type        = bool
   default     = false
   nullable    = false
@@ -222,6 +228,20 @@ variable "smoke_test_enabled" {
   validation {
     condition     = !var.smoke_test_enabled || var.environment == "dev"
     error_message = "Nightly smoke tests are restricted to dev; never enable them on the production deployment."
+  }
+}
+
+variable "smoke_test_environment" {
+  description = "Additional non-secret offline test settings, separate from the service environment. Never supply credentials or secret values. Managed environment/offline markers take precedence."
+  type        = map(string)
+  default     = {}
+  nullable    = false
+
+  validation {
+    condition = alltrue([for key, value in var.smoke_test_environment :
+      can(regex("^[A-Za-z_][A-Za-z0-9_]*$", key)) && try(length(regexall("[\\r\\n\\x00]", value)) == 0, false)
+    ])
+    error_message = "Smoke environment entries need valid names and non-null values without newlines or NUL characters."
   }
 }
 
@@ -297,5 +317,56 @@ variable "smoke_test_memory_mb" {
   validation {
     condition     = var.smoke_test_memory_mb == null ? !var.smoke_test_enabled : var.smoke_test_memory_mb >= 6 && floor(var.smoke_test_memory_mb) == var.smoke_test_memory_mb
     error_message = "An enabled smoke job needs an integer memory limit of at least 6 MiB."
+  }
+}
+
+variable "smoke_test_host_memory_reserve_mb" {
+  description = "Available host memory in MiB to preserve beyond the smoke budget. Required before enabling smoke; the runtime skips when measured headroom is insufficient."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.smoke_test_host_memory_reserve_mb == null ? !var.smoke_test_enabled : var.smoke_test_host_memory_reserve_mb > 0 && floor(var.smoke_test_host_memory_reserve_mb) == var.smoke_test_host_memory_reserve_mb
+    error_message = "An enabled smoke job needs an explicit positive integer host memory reserve in MiB."
+  }
+}
+
+variable "smoke_test_host_disk_reserve_mb" {
+  description = "Minimum available Docker filesystem space in MiB before smoke runs. Required before enabling smoke; this is a free-space guard, not a disk allocation."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.smoke_test_host_disk_reserve_mb == null ? !var.smoke_test_enabled : var.smoke_test_host_disk_reserve_mb > 0 && floor(var.smoke_test_host_disk_reserve_mb) == var.smoke_test_host_disk_reserve_mb
+    error_message = "An enabled smoke job needs an explicit positive integer host disk reserve in MiB."
+  }
+}
+
+variable "smoke_test_tmpfs_mb" {
+  description = "Size limit in MiB for the offline smoke container's writable /tmp; its root filesystem is read-only."
+  type        = number
+  default     = 32
+  nullable    = false
+
+  validation {
+    condition     = var.smoke_test_tmpfs_mb > 0 && floor(var.smoke_test_tmpfs_mb) == var.smoke_test_tmpfs_mb
+    error_message = "Smoke tmpfs size must be a positive integer in MiB."
+  }
+
+  validation {
+    condition     = !var.smoke_test_enabled || try(var.smoke_test_tmpfs_mb <= var.smoke_test_memory_mb, false)
+    error_message = "Enabled smoke tmpfs size cannot exceed its container memory limit."
+  }
+}
+
+variable "smoke_test_pids_limit" {
+  description = "Maximum number of processes/threads in the offline smoke container."
+  type        = number
+  default     = 64
+  nullable    = false
+
+  validation {
+    condition     = var.smoke_test_pids_limit > 0 && floor(var.smoke_test_pids_limit) == var.smoke_test_pids_limit
+    error_message = "Smoke PID limit must be a positive integer."
   }
 }

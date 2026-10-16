@@ -1,6 +1,6 @@
 """Opt-in integration tests against an empty, explicitly selected local engine.
 
-These run the production container helpers with real Docker and a fixture image.
+These run the production helpers and main() with real Docker and a fixture image.
 They do not invoke ECR, EC2 bootstrap, cron, or the application's entrypoint.
 """
 
@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -21,6 +22,30 @@ MODULE = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("align_docker_runtime", MODULE / "scripts/run_container.py")
 runtime = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(runtime)
+
+# Redirect only host paths and service image preparation. Docker commands, signals,
+# flock, container execution, and cleanup remain real. Linux MemAvailable is a
+# fixture because this client-side runner also executes on macOS.
+MAIN_WRAPPER = """
+import importlib.util
+from pathlib import Path
+import sys
+spec = importlib.util.spec_from_file_location('align_main_integration', sys.argv[1])
+runner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runner)
+root = Path(sys.argv[2])
+runner.LOG_DIRECTORY = root / 'logs'
+runner.LOCK_PATH = root / 'locks' / 'smoke.lock'
+runner.SCRATCH_DIRECTORY = root / 'scratch'
+runner.MEMINFO_PATH = root / 'meminfo'
+runner.DOCKER_DATA_DIRECTORY = root
+runner.prepare_service_image = lambda config, scratch: ['docker']
+def unexpected_preparation(*args):
+    raise RuntimeError('Shared smoke attempted image preparation')
+runner.prepare_image = unexpected_preparation
+sys.argv = [sys.argv[1], sys.argv[3], '--config', sys.argv[4]]
+raise SystemExit(runner.main())
+"""
 
 
 @unittest.skipUnless(
@@ -97,17 +122,41 @@ class DockerIntegrationTests(unittest.TestCase):
         print(f"\nReal Docker engine {engine['Version']}; fixture linux/amd64; context {context}", flush=True)
         cls.config = {
             "image": cls.image,
-            "environment": {"ALIGN_ENVIRONMENT": "dev"},
+            "service_enabled": True,
+            "smoke_enabled": True,
+            "environment": {"ALIGN_ENVIRONMENT": "dev", "ALIGN_SERVICE_ONLY": "fixture"},
+            "smoke_environment": {"ALIGN_ENVIRONMENT": "dev", "ALIGN_SMOKE_OFFLINE": "true"},
             "service_command": ["service"],
             "service_port": None,
+            "service_memory_mb": 128,
             "smoke_command": ["smoke-pass"],
             "smoke_cpus": 0.25,
             "smoke_memory_mb": 64,
             "smoke_timeout_seconds": 15,
+            "smoke_host_memory_reserve_mb": 64,
+            "smoke_host_disk_reserve_mb": 64,
+            "smoke_tmpfs_mb": 16,
+            "smoke_pids_limit": 32,
         }
+        cls.main_root = cls.scratch / "main"
+        for name in ("logs", "locks", "scratch"):
+            (cls.main_root / name).mkdir(parents=True)
+        (cls.main_root / "meminfo").write_text("MemAvailable: 1048576 kB\n")
         cls.docker = ["docker"]
-        runtime.start_service(cls.config, cls.docker, runtime.write_environment(cls.config, cls.scratch))
+        startup = cls.run_main("service")
+        if startup.returncode:
+            raise RuntimeError("Fixture main(service) failed: " + startup.stderr)
         cls.service_id = cls.inspect("align-arbiter")["Id"]
+
+    @classmethod
+    def main_arguments(cls, mode, config=None):
+        path = cls.main_root / f"config-{uuid.uuid4().hex}.json"
+        path.write_text(json.dumps(config if config is not None else cls.config))
+        return [sys.executable, "-B", "-c", MAIN_WRAPPER, str(MODULE / "scripts/run_container.py"), str(cls.main_root), mode, str(path)]
+
+    @classmethod
+    def run_main(cls, mode, config=None):
+        return subprocess.run(cls.main_arguments(mode, config), capture_output=True, text=True, timeout=30)
 
     @classmethod
     def restore_environment(cls):
@@ -226,10 +275,23 @@ class DockerIntegrationTests(unittest.TestCase):
             self.assertEqual(host["MemorySwap"], host["Memory"])
             self.assertEqual(host["LogConfig"], {"Type": "local", "Config": {"max-size": "10m", "max-file": "3"}})
             self.assertFalse(host["Privileged"])
-            self.assertEqual(details["Mounts"], [])
+            self.assertTrue(host["ReadonlyRootfs"])
+            self.assertEqual(host["NetworkMode"], "none")
+            self.assertEqual(host["PidsLimit"], 32)
+            self.assertEqual(host["CpuShares"], 128)
+            self.assertIn("ALL", host["CapDrop"])
+            self.assertIn("no-new-privileges=true", host["SecurityOpt"])
+            self.assertEqual(set(host["Tmpfs"]), {"/tmp"})
+            self.assertIn("size=16m", host["Tmpfs"]["/tmp"])
+            self.assertTrue(all(mount["Type"] == "tmpfs" and mount["Destination"] == "/tmp" for mount in details["Mounts"]))
             self.assertFalse(host.get("PortBindings"))
             self.assertEqual(details["Config"]["Labels"]["align.run_id"], run_id)
             self.assertIn(f"ALIGN_OUTPUT_PREFIX=smoke/{run_id}/", details["Config"]["Env"])
+            self.assertIn("ALIGN_SMOKE_OFFLINE=true", details["Config"]["Env"])
+            self.assertFalse(any(value.startswith("ALIGN_SERVICE_ONLY=") for value in details["Config"]["Env"]))
+            write_probe = self.command("exec", "--user", "0", details["Id"], "touch", "/align-write-probe", check=False)
+            self.assertNotEqual(write_probe.returncode, 0)
+            self.assertIn("read-only", write_probe.stderr.lower())
             self.command("exec", details["Id"], "touch", "/tmp/align-release")
             self.assertEqual(future.result(timeout=20), 0)
         self.assert_removed(run_id)
@@ -249,6 +311,7 @@ class DockerIntegrationTests(unittest.TestCase):
                     self.command("stop", "--time", "2", container)
                 with self.assertRaisesRegex(RuntimeError, container[:12]):
                     runtime.require_clean_smoke_host(time.monotonic() + 10)
+                self.assertEqual(self.run_main("smoke").returncode, 1)
                 self.assertEqual(self.inspect(container)["State"]["Running"], running)
                 self.assertEqual(self.service_state(), before)
         finally:
@@ -257,6 +320,115 @@ class DockerIntegrationTests(unittest.TestCase):
             self.assertEqual(details["Config"]["Labels"]["align.integration_run"], self.token)
             self.command("rm", "--force", container)
         runtime.require_clean_smoke_host(time.monotonic() + 10)
+
+    def test_main_service_reuses_existing_container(self):
+        before = self.service_state()
+        self.assertEqual(self.run_main("service").returncode, 0)
+        self.assertEqual(self.service_state(), before)
+
+    def test_main_smoke_exit_codes_and_timeout_preserve_service(self):
+        before = self.service_state()
+        for command, status in (("smoke-pass", 0), ("smoke-fail", 7), ("hold", 124)):
+            with self.subTest(command=command):
+                config = dict(self.config, smoke_command=[command], smoke_timeout_seconds=3)
+                self.assertEqual(self.run_main("smoke", config).returncode, status)
+                runtime.require_clean_smoke_host(time.monotonic() + 10)
+                self.assertEqual(self.service_state(), before)
+
+    def test_main_concurrent_smoke_process_skips_under_real_lock(self):
+        before = self.service_state()
+        config = dict(self.config, smoke_command=["hold"])
+        first = subprocess.Popen(self.main_arguments("smoke", config), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.monotonic() + 10
+            while True:
+                ids = self.command("container", "ls", "--quiet", "--filter", "label=align.workload=smoke").stdout.split()
+                if ids:
+                    break
+                if first.poll() is not None:
+                    self.fail(f"First smoke exited before starting: {first.communicate()}")
+                if time.monotonic() >= deadline:
+                    self.fail("First smoke process did not start its container")
+                time.sleep(0.1)
+            self.assertEqual(len(ids), 1)
+            self.assertEqual(self.run_main("smoke").returncode, 0)
+            self.assertIsNone(first.poll())
+            remaining = self.command("container", "ls", "--quiet", "--filter", "label=align.workload=smoke").stdout.split()
+            self.assertEqual(remaining, ids)
+            self.assertIn("Skipped smoke job", (self.main_root / "logs/align-smoke.log").read_text())
+            self.command("exec", ids[0], "touch", "/tmp/align-release")
+            first.communicate(timeout=20)
+            self.assertEqual(first.returncode, 0)
+        finally:
+            if first.poll() is None:
+                first.terminate()
+                first.communicate(timeout=30)
+        runtime.require_clean_smoke_host(time.monotonic() + 10)
+        self.assertEqual(self.service_state(), before)
+
+    def test_main_stopped_service_blocks_smoke_without_restarting_it(self):
+        self.command("stop", "--time", "2", self.service_id)
+        try:
+            self.assertEqual(self.run_main("smoke").returncode, 1)
+            self.assertFalse(self.inspect(self.service_id)["State"]["Running"])
+            runtime.require_clean_smoke_host(time.monotonic() + 10)
+        finally:
+            self.command("start", self.service_id)
+
+    def test_main_termination_cleans_up_smoke_and_preserves_service(self):
+        before = self.service_state()
+        child = subprocess.Popen(
+            self.main_arguments("smoke", dict(self.config, smoke_command=["hold"])),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        try:
+            deadline = time.monotonic() + 10
+            while True:
+                ids = self.command("container", "ls", "--quiet", "--filter", "label=align.workload=smoke").stdout.split()
+                if ids:
+                    break
+                if child.poll() is not None:
+                    self.fail(f"Smoke process exited before termination test: {child.communicate()}")
+                if time.monotonic() >= deadline:
+                    self.fail("Smoke container did not start before termination test")
+                time.sleep(0.1)
+            child.terminate()
+            # Cancellation must clean up before the 15-second smoke deadline.
+            child.communicate(timeout=10)
+            self.assertEqual(child.returncode, 1)
+        finally:
+            if child.poll() is None:
+                child.terminate()
+                child.communicate(timeout=30)
+        runtime.require_clean_smoke_host(time.monotonic() + 10)
+        self.assertEqual(self.service_state(), before)
+
+    def test_main_missing_service_blocks_smoke_without_recreating_it(self):
+        before = self.service_state()
+        self.command("rename", self.service_id, f"align-fixture-{self.token}")
+        try:
+            self.assertEqual(self.run_main("smoke").returncode, 1)
+            self.assertEqual(self.command("container", "ls", "--all", "--quiet", "--filter", "name=^/align-arbiter$").stdout.strip(), "")
+            runtime.require_clean_smoke_host(time.monotonic() + 10)
+            self.assertEqual(self.service_state(), before)
+        finally:
+            self.command("rename", self.service_id, "align-arbiter")
+
+    def test_main_wrong_service_image_blocks_smoke(self):
+        before = self.service_state()
+        config = dict(self.config, image="sha256:" + "0" * 64)
+        self.assertEqual(self.run_main("smoke", config).returncode, 1)
+        runtime.require_clean_smoke_host(time.monotonic() + 10)
+        self.assertEqual(self.service_state(), before)
+
+    def test_main_insufficient_headroom_blocks_smoke(self):
+        before = self.service_state()
+        for key in ("smoke_host_memory_reserve_mb", "smoke_host_disk_reserve_mb"):
+            with self.subTest(key=key):
+                config = dict(self.config, **{key: 10 ** 12})
+                self.assertEqual(self.run_main("smoke", config).returncode, 1)
+                runtime.require_clean_smoke_host(time.monotonic() + 10)
+                self.assertEqual(self.service_state(), before)
 
 
 if __name__ == "__main__":
