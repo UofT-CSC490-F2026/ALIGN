@@ -67,7 +67,7 @@ jobs:
       - name: Validate Docker Compose configuration
         run: docker compose config --quiet
 
-      - name: Test fresh schema, fixtures, and V2-to-V3 upgrade
+      - name: Test PostgreSQL schema, fixtures, and V2-to-V4 upgrade
         shell: pwsh
         run: ./scripts/fresh_demo_test.ps1
 
