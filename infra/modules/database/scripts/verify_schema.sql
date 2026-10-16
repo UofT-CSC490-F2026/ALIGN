@@ -1,5 +1,5 @@
 \set ON_ERROR_STOP on
-\echo '--- ALIGN schema verification (data-independent) ---'
+\echo '--- ALIGN initial schema verification ---'
 DO $$
 DECLARE
   domain_tables text[] := ARRAY[
@@ -33,18 +33,14 @@ BEGIN
     RAISE EXCEPTION 'Missing arbiter event constraint trigger';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM flyway_schema_history
-     WHERE version='3' AND success) THEN
-    RAISE EXCEPTION 'Flyway V3 migration not recorded as successful';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM flyway_schema_history
-     WHERE version='4' AND success) THEN
-    RAISE EXCEPTION 'Flyway V4 migration not recorded as successful';
+     WHERE version='2' AND success) THEN
+    RAISE EXCEPTION 'Reporting views migration missing';
   END IF;
   IF to_regclass('public.uq_one_reference_label_per_checkpoint') IS NULL OR
      to_regclass('public.idx_action_attempts_run') IS NULL THEN
     RAISE EXCEPTION 'Missing V4 reference/safety indexes';
   END IF;
-  RAISE NOTICE 'PASS: 10 domain tables, 2 views, Flyway V4, indexes and triggers';
+  RAISE NOTICE 'PASS: 10 domain tables, 2 views, indexes and triggers';
 END $$;
 \echo '--- Flyway applied migrations ---'
 SELECT installed_rank,version,description,type,success

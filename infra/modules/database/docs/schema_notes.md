@@ -1,4 +1,4 @@
-# ALIGN v4 implementation notes
+# ALIGN initial schema notes
 
 Matches the architectural agreement: 10 tables (`tasks`, `task_goals`, `runs`, `events`, `decision_log`, `conflict_episodes`, `evaluations`, `goal_results`, `decision_labels`, `action_attempts`) and 2 views.
 
@@ -29,7 +29,7 @@ The simple `FK(goal_id)` + `FK(run_id)` pattern permits mistakenly scoring a goa
 - `v_task_comparison` shows means grouped by task/condition, not randomized or paired causal effect estimates. Match baseline and treatment by task, trial, seed and agent configuration for formal analysis.
 - This is for small-scale research, so integer identity keys, standard B-tree indexes, no partitioning/streaming queue and no agents table yet.
 
-### V4 evaluation and missing-data semantics
+### Evaluation and missing-data semantics
 
 - Reviewed unsafe labels in `action_attempts` are counted as attempted. Blocked
   and dispatched are disjoint execution outcomes; unknown/cancelled outcomes remain

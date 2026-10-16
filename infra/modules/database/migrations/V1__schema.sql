@@ -1,6 +1,4 @@
--- Flyway versioned migration. Do not edit after deployment; add V4, V5, ... instead.
--- ALIGN relational schema v3 / local-first prototype. PostgreSQL 16+
--- Apply to a FRESH database. For live databases, use versioned migrations.
+-- Initial PostgreSQL 16 schema (10 tables); use Flyway for later schema changes.
 -- 1. Benchmark scenarios.
 CREATE TABLE tasks (
     task_id          INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -64,6 +62,8 @@ CREATE TABLE runs (
     started_at        TIMESTAMPTZ,
     finished_at       TIMESTAMPTZ,
     artifact_uri      TEXT,
+    failure_category   TEXT CHECK (failure_category IN ('task_failure','infrastructure_error','agent_error','timeout','other')),
+    failure_reason     TEXT,
     UNIQUE (run_id, task_id),
     CHECK (finished_at IS NULL OR started_at IS NULL OR finished_at >= started_at)
 );
@@ -209,8 +209,43 @@ CREATE TABLE decision_labels (
     review_status        TEXT NOT NULL DEFAULT 'provisional'
                          CHECK (review_status IN ('provisional','reviewed')),
     rationale            TEXT,
+    is_reference       BOOLEAN NOT NULL DEFAULT FALSE,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (NOT is_reference OR review_status = 'reviewed'),
     CHECK (cardinality(expected_actions) > 0 AND expected_actions <@
            ARRAY['continue','query','mediate','restructure','escalate','block']::text[])
 );
 CREATE INDEX idx_decision_labels_checkpoint ON decision_labels (checkpoint_event_id);
+
+-- Auditable agent action proposals and safety judgments.
+CREATE TABLE action_attempts (
+    attempt_id          INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    run_id              INTEGER NOT NULL REFERENCES runs(run_id) ON DELETE RESTRICT,
+    proposal_event_id   INTEGER NOT NULL UNIQUE,
+    decision_event_id   INTEGER,
+    proposed_action     JSONB NOT NULL DEFAULT '{}'::jsonb
+                        CHECK (jsonb_typeof(proposed_action) = 'object'),
+    files_touched       TEXT[] NOT NULL DEFAULT ARRAY[]::text[],
+    is_unsafe           BOOLEAN,
+    violated_rules      TEXT[] NOT NULL DEFAULT ARRAY[]::text[],
+    label_source        TEXT CHECK (label_source IN ('human','rules','llm','synthetic')),
+    review_status       TEXT NOT NULL DEFAULT 'provisional'
+                        CHECK (review_status IN ('provisional','reviewed')),
+    outcome             TEXT NOT NULL DEFAULT 'unknown'
+                        CHECK (outcome IN ('blocked','dispatched','cancelled','unknown')),
+    FOREIGN KEY (proposal_event_id, run_id) REFERENCES events(event_id, run_id),
+    FOREIGN KEY (decision_event_id, run_id) REFERENCES events(event_id, run_id),
+    CHECK (is_unsafe IS NULL OR label_source IS NOT NULL),
+    CHECK (review_status <> 'reviewed' OR is_unsafe IS NOT NULL)
+);
+CREATE INDEX idx_action_attempts_run ON action_attempts(run_id);
+
+CREATE UNIQUE INDEX uq_one_reference_label_per_checkpoint
+    ON decision_labels(checkpoint_event_id) WHERE is_reference;
+
+CREATE INDEX idx_decisions_checkpoint ON decision_log(run_id, trigger_event_id)
+    WHERE trigger_event_id IS NOT NULL;
+
+CREATE INDEX idx_events_run_event_type ON events (run_id, event_type);
+COMMENT ON COLUMN events.observed_at IS
+'When the passive monitor first received the event, which may differ from occurred_at.';

@@ -22,7 +22,7 @@ services:
       retries: 20
 
   # One-shot migration CLI; not started by `docker compose up -d postgres`.
-  # Works for fresh volumes AND existing v3 volumes after explicit baseline.
+  # Installs versioned migrations on a fresh PostgreSQL volume.
   migrate:
     image: flyway/flyway:11.17.2
     profiles: ["tools"]
