@@ -5,8 +5,8 @@ entry, and ECR image delivery. It consumes networking, lake storage, and databas
 secret outputs. Environment roots inherit the AWS provider into this module.
 
 EC2 runs a published `linux/amd64` image. It does not clone Git or build the arbiter.
-The application and Dockerfile belong to the application owner. No Docker image
-or registry publishing identity is created by these source files.
+The application and Dockerfile belong to the application owner. Terraform does
+not build or publish an image or create a registry publishing identity.
 
 ## Naming separate compute deployments
 
@@ -150,15 +150,74 @@ the runner's temporary directory while preparing the image.
 ## Validation and deployment dependencies
 
 Formatting, Terraform validation, shell/Python syntax, and mocked plans can be
-checked without arbiter code. Docker behavior can later be exercised with a small
-fixture image. Actual Docker execution requires a running Docker engine; ECR,
+checked without arbiter code. The opt-in Docker integration suite below exercises
+the runtime helpers with a small fixture image. ECR,
 instance IAM, networking, and bootstrap require a separately approved dev test.
 The repository currently contains no real arbiter image.
 
 Run the command-mocked runtime tests locally without Docker or AWS credentials:
 `python3 -B -m unittest discover -s infra/modules/compute/tests -p 'test_*.py' -v`.
 They cover preparation retries/deadlines and smoke preflight ordering/failures;
-they do not replace a later real-container and approved dev test.
+the Docker integration tests are skipped unless explicitly enabled.
+
+### Local Docker integration tests
+
+`tests/docker` is a test-only BusyBox image with a long-running service and smoke
+commands that pass, fail, or wait. It contains no arbiter code or credentials and
+is not an image to publish or deploy. The suite builds it for `linux/amd64`, matching
+the EC2 architecture, and calls the production container helpers with real Docker.
+No AWS credentials or teammate resources are needed.
+
+Use a dedicated, empty local Docker engine. The suite requires an explicit Docker
+context with a Unix socket and refuses to start if that engine has any containers.
+It uses a temporary Docker client configuration, selects the socket for every
+command, and restores the process environment afterward. It never changes the
+default Docker context. Cleanup checks this run's unique image label and image ID;
+it removes only its fixture containers and image, without pruning other resources.
+
+For an Apple Silicon Mac, Docker CLI, Buildx and Colima can provide the local
+engine. Colima runs Docker inside a Linux VM. Install the tools if needed:
+
+```sh
+brew install docker colima docker-buildx
+```
+
+Start a dedicated VM without sharing the home directory, forwarding the SSH agent,
+or switching the default Docker context:
+
+```sh
+colima start align-integration --vm-type vz --arch aarch64 --cpus 2 --memory 2 --disk 10 --runtime docker --mount none --ssh-agent=false --ssh-config=false --activate=false --template=false
+```
+
+From the repository root, explicitly enable the integration suite:
+
+```sh
+ALIGN_RUN_DOCKER_INTEGRATION=1 ALIGN_DOCKER_TEST_CONTEXT=colima-align-integration python3 -B -m unittest discover -s infra/modules/compute/tests -p 'test_docker_integration.py' -v -f
+```
+
+The selected engine must support running `linux/amd64` images, including emulation
+on an ARM host. The first run downloads the public base image and builds the fixture.
+Tests check service start/restart and idempotence, smoke exit status propagation,
+CPU/memory/swap/log settings, runtime environment, timeout cleanup, and rejection of
+running or stopped leftover jobs. They also verify that smoke jobs preserve the
+regular fixture container's ID and start time. Stop only this VM when finished:
+
+```sh
+colima stop align-integration
+```
+
+Recorded local run on 2026-10-15: **all six integration tests passed** using a
+`linux/amd64` fixture on Apple Silicon, Colima 0.10.3, Docker CLI 29.9.1,
+Docker Engine 29.5.2, and Buildx 0.38.0. The suite removed its fixture containers
+and image after execution.
+
+These are local runtime integration tests. They do not test ECR authentication or
+pulling, IAM, EC2 user data, cron scheduling, AWS networking, S3, database access, or
+the actual arbiter. Service and smoke helpers coexist only inside this test engine;
+the suite does not change the module's separate-deployment requirement or establish
+that sharing a host or application data has no performance or data effects. The
+real application image still needs application integration tests, and AWS behavior
+still needs a separately approved dev deployment.
 
 Before deployment, obtain the pinned AL2023 x86_64 AMI, instance type and disk size;
 wire this account's networking/lake outputs; obtain its database secret ARN and any
