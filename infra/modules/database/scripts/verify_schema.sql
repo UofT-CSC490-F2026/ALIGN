@@ -4,7 +4,7 @@ DO $$
 DECLARE
   domain_tables text[] := ARRAY[
     'tasks','task_goals','runs','events','decision_log','conflict_episodes',
-    'evaluations','goal_results','decision_labels'];
+    'evaluations','goal_results','decision_labels','action_attempts'];
   t text;
   n int;
 BEGIN
@@ -24,7 +24,7 @@ BEGIN
   SELECT count(*) INTO n FROM information_schema.tables
    WHERE table_schema='public' AND table_type='BASE TABLE'
      AND table_name=ANY(domain_tables);
-  IF n<>9 THEN RAISE EXCEPTION 'Expected nine ALIGN domain tables; found %',n; END IF;
+  IF n<>10 THEN RAISE EXCEPTION 'Expected ten ALIGN domain tables; found %',n; END IF;
   IF to_regclass('public.idx_events_run_event_type') IS NULL THEN
     RAISE EXCEPTION 'V3 migration missing: event monitoring index';
   END IF;
@@ -36,7 +36,15 @@ BEGIN
      WHERE version='3' AND success) THEN
     RAISE EXCEPTION 'Flyway V3 migration not recorded as successful';
   END IF;
-  RAISE NOTICE 'PASS: 9 domain tables, 2 views, Flyway history, V3 index and triggers';
+  IF NOT EXISTS (SELECT 1 FROM flyway_schema_history
+     WHERE version='4' AND success) THEN
+    RAISE EXCEPTION 'Flyway V4 migration not recorded as successful';
+  END IF;
+  IF to_regclass('public.uq_one_reference_label_per_checkpoint') IS NULL OR
+     to_regclass('public.idx_action_attempts_run') IS NULL THEN
+    RAISE EXCEPTION 'Missing V4 reference/safety indexes';
+  END IF;
+  RAISE NOTICE 'PASS: 10 domain tables, 2 views, Flyway V4, indexes and triggers';
 END $$;
 \echo '--- Flyway applied migrations ---'
 SELECT installed_rank,version,description,type,success

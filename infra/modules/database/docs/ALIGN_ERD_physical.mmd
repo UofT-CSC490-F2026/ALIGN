@@ -1,9 +1,12 @@
 erDiagram
-    %% ALIGN PostgreSQL schema v3 (physical SQL representation)
+    %% ALIGN PostgreSQL schema v4 (physical SQL representation)
     %% Crow's-foot cardinality: || = exactly one, o| = zero or one, o{ = zero or many.
 
     tasks ||--o{ task_goals : defines
     tasks ||--o{ runs : executes_as
+    runs ||--o{ action_attempts : records_attempts
+    events ||--o| action_attempts : proposes
+    events |o--o{ action_attempts : action_decision
     runs ||--o{ events : records
     events ||--o| decision_log : decision_details
     runs ||--o{ conflict_episodes : contains
@@ -57,6 +60,8 @@ erDiagram
         timestamptz started_at
         timestamptz finished_at
         text artifact_uri
+        text failure_category
+        text failure_reason
     }
 
     events {
@@ -70,6 +75,20 @@ erDiagram
         timestamptz observed_at
         jsonb payload
         text artifact_uri
+    }
+
+    action_attempts {
+        int attempt_id PK
+        int run_id FK
+        int proposal_event_id FK,UK
+        int decision_event_id FK
+        jsonb proposed_action
+        text_array files_touched
+        boolean is_unsafe
+        text_array violated_rules
+        text label_source
+        text review_status
+        text outcome
     }
 
     decision_log {
@@ -126,6 +145,7 @@ erDiagram
         text_array expected_actions
         text label_source
         text review_status
+        boolean is_reference
         text rationale
         timestamptz created_at
     }

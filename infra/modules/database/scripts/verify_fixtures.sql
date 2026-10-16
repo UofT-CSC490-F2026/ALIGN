@@ -1,5 +1,5 @@
 \set ON_ERROR_STOP on
-\echo '--- ALIGN v3 fixture test: expected 9 tables, 2 views, 2 tasks, 3 runs ---'
+\echo '--- Original ALIGN fixture test: 9 original domain tables, 2 views, 2 tasks, 3 runs ---'
 SELECT table_name FROM information_schema.tables
  WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
  AND table_name <> 'flyway_schema_history' ORDER BY table_name;
@@ -17,7 +17,7 @@ DO $$
 BEGIN
  IF (SELECT count(*) FROM information_schema.tables
      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-       AND table_name <> 'flyway_schema_history') <> 9 THEN
+       AND table_name NOT IN ('flyway_schema_history', 'action_attempts')) <> 9 THEN
      RAISE EXCEPTION 'Expected 9 base tables';
  END IF;
  IF (SELECT count(*) FROM information_schema.views WHERE table_schema = 'public') <> 2 THEN
