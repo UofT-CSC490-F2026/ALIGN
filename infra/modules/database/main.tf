@@ -54,11 +54,11 @@ resource "aws_db_instance" "this" {
   auto_minor_version_upgrade = true
   apply_immediately          = false
 
-  # A final snapshot protects data on normal deletion. Production additionally
-  # enables RDS deletion protection, which must be disabled before destroying.
+  # Keep a final snapshot; deletion protection can be explicitly disabled
+  # before the course teardown via an environment-level variable override.
   skip_final_snapshot       = false
   final_snapshot_identifier = local.final_snapshot_identifier
-  deletion_protection       = var.environment == "prod" || var.deletion_protection
+  deletion_protection       = var.deletion_protection
 
   tags = merge(local.tags, { Name = "${local.name}-postgres" })
 }

@@ -115,9 +115,9 @@ variable "multi_az" {
 }
 
 variable "deletion_protection" {
-  description = "Extra protection for dev; prod always enables deletion protection."
+  description = "Protect RDS against accidental deletion; explicitly disable before planned teardown."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "final_snapshot_identifier" {

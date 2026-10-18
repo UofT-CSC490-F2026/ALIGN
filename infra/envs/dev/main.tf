@@ -28,5 +28,6 @@ module "database" {
   allocated_storage     = 20
   backup_retention_days = 7
 
-  multi_az = false
+  multi_az            = false
+  deletion_protection = false
 }

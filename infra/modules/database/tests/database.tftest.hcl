@@ -12,6 +12,10 @@ variables {
 run "secure_dev_configuration" {
   command = plan
 
+  variables {
+    deletion_protection = false
+  }
+
   assert {
     condition     = toset(aws_db_subnet_group.this.subnet_ids) == toset(var.private_subnet_ids)
     error_message = "DB subnet group must use the two network-provided subnet IDs."
@@ -102,7 +106,7 @@ run "reject_fractional_database_port" {
   expect_failures = [var.db_port]
 }
 
-run "production_requires_deletion_protection" {
+run "production_defaults_to_deletion_protection" {
   command = plan
 
   variables {
@@ -114,7 +118,21 @@ run "production_requires_deletion_protection" {
       aws_db_instance.this.deletion_protection == true &&
       aws_db_instance.this.identifier == "align-prod-postgres"
     )
-    error_message = "Prod RDS must have a distinct identifier and deletion protection."
+    error_message = "Prod RDS must have a distinct identifier and default deletion protection."
+  }
+}
+
+run "production_can_disable_deletion_protection_for_teardown" {
+  command = plan
+
+  variables {
+    environment         = "prod"
+    deletion_protection = false
+  }
+
+  assert {
+    condition     = aws_db_instance.this.deletion_protection == false
+    error_message = "Production teardown override should disable deletion protection."
   }
 }
 
