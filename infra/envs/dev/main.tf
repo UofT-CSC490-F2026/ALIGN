@@ -31,3 +31,14 @@ module "database" {
   multi_az            = false
   deletion_protection = false
 }
+
+module "storage" {
+  source = "../../modules/storage"
+
+  project        = var.project
+  environment    = var.environment
+  aws_region     = var.aws_region
+  aws_account_id = var.aws_account_id
+
+  backup_bucket_name = "${var.project}-${var.environment}-backup-${var.aws_account_id}"
+}

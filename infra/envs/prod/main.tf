@@ -10,3 +10,14 @@ module "network" {
   allowed_ssh_cidrs    = var.allowed_ssh_cidrs
   db_port              = var.db_port
 }
+
+module "storage" {
+  source = "../../modules/storage"
+
+  project        = var.project
+  environment    = var.environment
+  aws_region     = var.aws_region
+  aws_account_id = var.aws_account_id
+
+  backup_bucket_name = "${var.project}-${var.environment}-backup-${var.aws_account_id}"
+}

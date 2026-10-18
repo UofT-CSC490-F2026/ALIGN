@@ -22,3 +22,13 @@ output "rds_security_group_id" {
   description = "RDS security group ID allowing database ingress only from the EC2 security group."
   value       = module.network.rds_security_group_id
 }
+
+output "lake_bucket_name" {
+  description = "S3 data lake bucket name."
+  value       = module.storage.lake_bucket_name
+}
+
+output "lake_bucket_arn" {
+  description = "S3 data lake bucket ARN."
+  value       = module.storage.lake_bucket_arn
+}
