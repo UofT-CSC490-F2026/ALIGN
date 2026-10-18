@@ -47,3 +47,13 @@ output "db_master_secret_arn" {
   description = "ARN of RDS-managed credentials."
   value       = module.database.db_master_secret_arn
 }
+
+output "lake_bucket_name" {
+  description = "S3 data lake bucket name."
+  value       = module.storage.lake_bucket_name
+}
+
+output "lake_bucket_arn" {
+  description = "S3 data lake bucket ARN."
+  value       = module.storage.lake_bucket_arn
+}
