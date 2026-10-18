@@ -22,3 +22,28 @@ output "rds_security_group_id" {
   description = "RDS security group ID allowing database ingress only from the EC2 security group."
   value       = module.network.rds_security_group_id
 }
+
+output "db_address" {
+  description = "Private RDS PostgreSQL hostname."
+  value       = module.database.db_address
+}
+
+output "db_port" {
+  description = "PostgreSQL connection port."
+  value       = module.database.db_port
+}
+
+output "db_name" {
+  description = "PostgreSQL database name."
+  value       = module.database.db_name
+}
+
+output "db_instance_identifier" {
+  description = "RDS instance identifier."
+  value       = module.database.db_instance_identifier
+}
+
+output "db_master_secret_arn" {
+  description = "ARN of RDS-managed credentials."
+  value       = module.database.db_master_secret_arn
+}
