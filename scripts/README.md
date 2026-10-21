@@ -7,16 +7,19 @@ Requires Python 3.10+, `pip install huggingface_hub boto3`, and (for S3 writes) 
 From the repository root (PowerShell):
 
 ```powershell
+# Copy a full 40-character commit ID from the Hugging Face dataset history.
+$revision = "PASTE_FULL_HF_DATASET_COMMIT_SHA_HERE"
+
 # Inspect the pinned dataset without AWS access (downloads from Hugging Face).
-python scripts/ingest_cooperbench.py --revision <hf-dataset-commit> --dry-run
+python scripts/ingest_cooperbench.py --revision $revision --dry-run
 
 # After verifying the account and that the existing bucket is deployed:
 aws sts get-caller-identity
 aws s3api head-bucket --bucket align-dev-lake-710809468662
-python scripts/ingest_cooperbench.py --revision <hf-dataset-commit> --bucket align-dev-lake-710809468662
+python scripts/ingest_cooperbench.py --revision $revision --bucket align-dev-lake-710809468662
 
 # Verify completion marker and original file paths:
-aws s3 ls s3://align-dev-lake-710809468662/benchmarks/raw/cooperbench/<hf-dataset-commit>/ --recursive
+aws s3 ls "s3://align-dev-lake-710809468662/benchmarks/raw/cooperbench/$revision/" --recursive
 ```
 
 For offline fixture testing, add `--source-dir path/to/dataset --dry-run`; this skips Hugging Face and AWS. Unit tests run without AWS/network:
