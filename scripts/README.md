@@ -74,3 +74,54 @@ py -m unittest discover -s scripts/tests -p "test_*.py" -v
 ```
 
 These tests use synthetic local fixtures and never contact AWS, Hugging Face, or PostgreSQL.
+
+## Load normalized tasks into PostgreSQL (PR 3)
+
+`load_tasks.py` checks a PR-2 `tasks.jsonl` against its completion `manifest.json`, validates every record, then optionally inserts into the existing `tasks` and `task_goals` tables. By default, it **only validates files and never connects to a database**.
+
+```powershell
+# Generate a small custom snapshot (as in PR 2).
+py scripts/normalize_tasks.py custom `
+  --scenarios-dir scripts/examples `
+  --revision v1 `
+  --output-dir ".\normalized\custom-v1"
+
+# Validate the snapshot; no dependencies beyond Python and no DB connection.
+py scripts/load_tasks.py --input-dir ".\normalized\custom-v1"
+```
+
+To test against your **local development Docker PostgreSQL only** (never a production database), start the existing Compose database and run its Flyway migrations:
+
+```powershell
+Push-Location infra/modules/database
+docker compose up -d postgres
+docker compose run --rm migrate migrate
+Pop-Location
+
+# The credentials below are from the repository's LOCAL DEV ONLY compose file.
+py -m pip install "psycopg[binary]>=3.2,<4"
+$env:ALIGN_DATABASE_URL = "postgresql://align_dev:local_dev_only_change_me@127.0.0.1:5433/align"
+
+py scripts/load_tasks.py --input-dir ".\normalized\custom-v1" --apply
+py scripts/load_tasks.py --input-dir ".\normalized\custom-v1" --apply
+
+Remove-Item Env:ALIGN_DATABASE_URL
+```
+
+Expected first run: one task inserted; expected repeat: zero new tasks, one unchanged. The example scenario is intentionally **not runnable by the agent harness**; it merely verifies ingestion.
+
+### Safety and replay semantics
+
+- `--apply` and `ALIGN_DATABASE_URL` must **both** be provided before any SQL writes. Database credentials are not accepted as CLI flags or logged.
+- The completed manifest's task count, source revision and `tasks.jsonl` SHA-256 are verified **before connecting to PostgreSQL**. Unknown task/goal fields, duplicate identities, and schema mismatches fail closed.
+- Inserts are parameterized, and **the entire input batch runs in one transaction**. New tasks and goals roll back together if any record fails. Existing task definitions and goal records are compared field-by-field: identical reloads are skipped; differing content is rejected rather than overwritten.
+- No table migrations, deletes, destructive updates, AWS calls, or RDS connectivity are necessary. The actual integration test in CI uses a disposable PostgreSQL 16 service with existing Flyway migrations.
+- The database holds evaluator-only test references and scenario metadata. **Do not expose full database task rows directly to coding agents.** The later execution harness must enforce evaluator/agent data separation.
+
+To run offline tests:
+
+```powershell
+py -m unittest discover -s scripts/tests -p "test_*.py" -v
+```
+
+The PostgreSQL-specific test is skipped locally unless `ALIGN_TEST_DATABASE_URL` is set to a disposable, migrated test database. CI configures this automatically. When recovery work is ongoing, perform the dry-run and unit tests only; defer any `--apply` until the database is ready.
