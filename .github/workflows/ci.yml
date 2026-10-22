@@ -75,3 +75,22 @@ jobs:
       - name: Clean up isolated CI database and test volume
         if: always()
         run: docker compose -p align_phase1_smoke down --volumes --remove-orphans
+
+  python:
+    name: Offline dataset pipeline tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependency
+        run: python -m pip install boto3
+
+      - name: Test raw ingestion and task normalization
+        run: python -m unittest discover -s scripts/tests -p 'test_*.py' -v

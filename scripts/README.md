@@ -31,3 +31,46 @@ python -m unittest discover -s scripts/tests -p 'test_*.py' -v
 Objects retain original relative paths at `benchmarks/raw/cooperbench/<revision>/dataset/`. A deterministic `manifest.json` written **last** records the revision, paths, sizes and SHA-256 checksums and serves as the completion marker. Repeat uploads skip matching objects; they fail rather than overwrite a conflicting snapshot. A failed upload before the manifest exists can be resumed safely. Object HEAD metadata is checked after upload; this isn't a substitute for a future full-download byte-for-byte audit.
 
 The raw dataset includes gold implementation patches and hidden evaluation tests. **Do not give coding agents access to this raw prefix**; keep it available to a trusted evaluator only.
+
+## Normalized ALIGN task manifests (PR 2)
+
+`normalize_tasks.py` is an **offline-only** adapter from CooperBench feature pairs or team-authored JSON scenarios to the same database-facing `tasks.jsonl` contract. It does **not** deploy infrastructure, connect to S3, run agents, or write to PostgreSQL. Each record contains one `tasks`-compatible object plus its embedded `goals` for a future `task_goals` loader.
+
+### CooperBench
+
+After PR 1's raw snapshot is available locally (for example, by downloading its S3 prefix), normalize the pinned `flash` subset:
+
+```powershell
+$revision = "b612b1a35af722751454813d9e5a7888f065fc9e"
+py scripts/normalize_tasks.py cooperbench `
+  --dataset-dir ".\cooperbench-snapshot\dataset" `
+  --raw-manifest ".\cooperbench-snapshot\manifest.json" `
+  --revision $revision `
+  --subset flash `
+  --output-dir ".\normalized\cooperbench-flash-$revision"
+```
+
+`--subset` accepts `flash` (default, 50 pairs), `lite` (100 pairs), or `all` (all unordered feature pairs found in the file tree). `--raw-manifest` is optional for a separately obtained local dataset, but **recommended** when consuming the PR 1 snapshot: it validates provenance, paths, sizes and SHA-256 checksums against the original raw manifest before normalization. Without the manifest, callers are responsible for ensuring that `--revision` truly matches the input directory.
+
+### Team-authored scenarios
+
+Create one JSON file per scenario using the sample contract in `scripts/examples/align_custom_sample.json`. The included example is **not runnable**; it exists to prove both sources produce the same record structure.
+
+```powershell
+py scripts/normalize_tasks.py custom `
+  --scenarios-dir scripts/examples `
+  --revision v1 `
+  --output-dir ".\normalized\custom-v1"
+```
+
+Both modes create deterministic `tasks.jsonl` and `manifest.json` containing `task_count` and a SHA-256 hash of `tasks.jsonl`. Running the same normalization again is safe; conflicting content is never silently overwritten. A changed source definition needs a new output directory and corresponding source revision/version.
+
+The normalized fields align with the existing `tasks` and `task_goals` tables, but database loading is deliberately deferred to a future PR. Each CooperBench **pair** becomes a single task with two agent-owned goals. Original CooperBench records use `conflict_type: "none"` to mean *no ALIGN-injected conflict classification*, **not** that a coding/merge conflict cannot arise. We retain gold patch and hidden-test references for a **trusted evaluator only**. Do not expose the entire normalized record, gold artifacts, or unrestricted raw S3 prefix to coding agents.
+
+### Offline tests
+
+```powershell
+py -m unittest discover -s scripts/tests -p "test_*.py" -v
+```
+
+These tests use synthetic local fixtures and never contact AWS, Hugging Face, or PostgreSQL.
