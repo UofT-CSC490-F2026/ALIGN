@@ -1,161 +1,176 @@
-# Prod disaster recovery
+# Prod disaster recovery: completed exercise and runbook
 
-This is a manual, approved downtime exercise for account `710809468662`, region
-`us-east-2`. Never execute it just because this PR merges. Dev, backup and bootstrap
-roots are out of scope. Preserve Terraform state, backup buckets and snapshots.
+Account `710809468662`, region `us-east-2`. This records the approved October 22,
+2026 exercise, NOT permission to repeat it. Dev, backup and bootstrap roots are out
+of scope. Preserve state, backup buckets, snapshots and their KMS key.
 
-Terraform owns deletion/recreation; the small Python scripts only verify/copy data.
-They are justified because Terraform does not compare S3 bytes or query application
-rows. No alternative infrastructure provisioner or second data pipeline is added.
+## Completed results
 
-## Current state and completed exercise
+- Terraform deleted 36 prod resources; dev remained intact.
+- RDS restored from **a2-snapshot-before-disaster**, confirmed by an AWS event.
+- Restore: 1 imported, 35 added, 1 changed, 0 destroyed.
+- Five S3 objects recovered from exact backup versions; all SHA-256 hashes matched.
+- Original SQL task/run/event IDs 1/1/1 and task contents matched before evidence.
+- New fake task `d9274996-d957-49eb-ba9d-b3526b376186` committed IDs 2/2/2 and
+  passed fresh-connection readback.
+- Final Terraform plan: no changes. Private/encrypted RDS, deletion protection,
+  EC2/RDS security groups, S3 versioning and public-access block checked.
 
-On 2026-10-22 Toronto, prod was deleted and recreated with Terraform. RDS restored
-from **`a2-snapshot-before-disaster`**, confirmed by an AWS event. Five S3 files
-matched their original SHA-256 checksums. Original SQL task/run/event IDs 1/1/1
-and task JSON matched before evidence. A new fake task/log committed IDs 2/2/2 and
-passed fresh-connection readback. Final Terraform plan: no changes.
+This proves the focused synthetic S3/PostgreSQL workflow, not a full benchmark
+application. No LLM or application image was required. Screenshots and sanitized
+JSON remain separately in the operator checkout under `a2/evidence/`, in
+`dr-deletion-20261022`, `before-prod-20261022T235746Z`, and
+`dr-restoration-20261022`. They are not committed here.
 
-The exercise used operator-local helpers. The reusable helpers in this PR are
-cleaned-up versions with local mocked tests; they have NOT been rerun against AWS.
-Evidence/screenshots remain outside this PR. This proves the focused synthetic
-S3/PostgreSQL path, not CooperBench execution or a running production application.
+**Prod is already restored. Always include BOTH prod.tfvars and restore.tfvars in
+future prod plans. Removing the snapshot input can propose DB replacement.**
+The final-snapshot name in restore.tfvars is for a future approved deletion; it
+does not create a snapshot during normal apply.
 
-**The current database is already restored. Always include `restore.tfvars` in
-future prod plans. Removing its snapshot input can propose DB replacement.**
-That file selects the original recovery snapshot. Its final-snapshot identifier
-is only for a future deletion, not a request to create a snapshot on apply.
+## Before/protect
 
-## 1. Before and protect
+The actual preflight verified account identity, backend bucket
+`align-tfstate-710809468662-us-east-2`, key `align/prod/terraform.tfstate`,
+the original snapshot Available, and its KMS key Enabled. All five source object
+versions matched their backup replicas byte-for-byte. No historical source
+versions/delete markers existed. ECR was empty and the LLM secret had no value.
+A fresh read-only SQL connection retrieved the original log before deletion.
 
-Freeze writes/coordinate downtime. Review SQL/S3 evidence and ensure the snapshot
-is recent enough; writes after its creation are outside its recovery point.
-Use current Terraform outputs for DB endpoint, managed secret ARN and EC2 ID.
-Never print a secret value, raw state, or a full JSON plan into shared evidence.
+Read-only CLI checks used included:
 
-Run the SQL capture on prod EC2 through Session Manager, using the venv/dependencies
-and RDS CA bundle described in `tests/e2e/USAGE.md`:
-
-```bash
-python recovery_sql.py --task-key '<original fake-log:prod:UUID>' \
-  --db-host '<current db_address>' --db-secret-arn '<current db_master_secret_arn>' \
-  --ca-bundle global-bundle.pem --output before-sql.json
-```
-
-Save this file and the task IDs outside prod. On the operator machine, from repo root:
-
-```powershell
+~~~powershell
 $env:AWS_PROFILE = 'align-new'
 $env:AWS_REGION = 'us-east-2'
 aws sts get-caller-identity
-python infra/tests/e2e/recovery_data.py protect --profile align-new --snapshot a2-snapshot-before-disaster --manifest '<outside-prod>/backup-manifest.json'
-```
+aws rds describe-db-snapshots --db-instance-identifier align-prod-postgres --snapshot-type manual --query 'DBSnapshots[].{Name:DBSnapshotIdentifier,Status:Status}' --output json
+aws rds describe-db-instances --db-instance-identifier align-prod-postgres --query 'DBInstances[0].{Status:DBInstanceStatus,DeletionProtection:DeletionProtection}' --output json
+~~~
 
-The helper is read-only against AWS. It validates the manual snapshot and compares
-every current lake object to its replica, recording exact backup versions/hashes.
-It deliberately refuses historical versions or delete markers: stop and define a
-version-history recovery policy instead of discarding them. It works with real task
-objects as well as fake ones. It does not prove snapshot SQL contents until restore.
-Verify the snapshot KMS key is Enabled and preserve it.
+For another exercise, coordinate downtime/freeze writes, capture fresh before
+evidence, and check the snapshot recovery point. Later SQL writes are not in that
+snapshot. Stop if images, secret values, instance-local files or historical S3
+versions now require additional preservation. Keep secrets/raw state/full JSON
+plans out of shared logs. Record the empty LLM secret ARN, never its value.
 
-Also record EC2/RDS/security/configuration screenshots and the empty LLM-secret ARN
-(metadata only). Confirm ECR is empty and no instance-local artifacts need saving.
-Stop if images, secret values or unpreserved data were added since the last exercise.
+## Terraform deletion commands used
 
-## 2. Review and delete (explicit approval required)
+The original operator wrapper executed these commands from `infra/envs/prod`.
+Paths below abbreviate the private temporary directory. Every plan was reviewed
+before apply; binary plans are not committed.
 
-Use ONLY `infra/envs/prod`. Verify initialized backend is the state bucket
-`align-tfstate-710809468662-us-east-2`, key `align/prod/terraform.tfstate`, default
-workspace, correct account. Never copy state between accounts or delete it.
+~~~powershell
+terraform plan -input=false -no-color -var-file=prod.tfvars -var-file=teardown.tfvars -out='<private>/align-dr-guards-20261022.tfplan'
+terraform apply -input=false -no-color '<private>/align-dr-guards-20261022.tfplan'
+# Verified live RDS deletion protection was false, then generated a NEW plan:
+terraform plan -input=false -no-color -var-file=prod.tfvars -var-file=teardown.tfvars -out='<private>/align-dr-destroy-20261022.tfplan' -destroy
+terraform apply -input=false -no-color '<private>/align-dr-destroy-20261022.tfplan'
+~~~
 
-Copy `teardown.tfvars.example` to an operator-owned file outside the repo. Keep the
-CURRENT `db_snapshot_identifier`, and choose an UNUSED final snapshot name. The
-final snapshot is an additional deletion safeguard; obtain approval for its storage
-cost. The previous exercise kept one in addition to the original restore source.
+Historical teardown inputs: snapshot=null (the original DB was not yet restored),
+deletion_protection=false, lake_force_destroy=true, and final snapshot name
+`align-prod-final-dr-20261021-01`. Guard apply changed two resources, destroyed none.
+The 36-resource deletion plan excluded backup/state buckets and the manual snapshot.
+Terraform created its configured final deletion snapshot as an extra safeguard;
+restoration used ONLY the original manual snapshot.
 
-```powershell
-Set-Location infra/envs/prod
-terraform workspace show
-terraform plan -var-file=prod.tfvars -var-file=restore.tfvars -var-file='<reviewed teardown file>' -out='<private>/guards.tfplan'
-# STOP: review. Only DB deletion protection/final snapshot and lake force_destroy change.
-terraform apply '<private>/guards.tfplan'
-# Verify live RDS DeletionProtection is false, then generate a NEW plan.
-terraform plan -destroy -var-file=prod.tfvars -var-file=restore.tfvars -var-file='<reviewed teardown file>' -out='<private>/destroy.tfplan'
-# STOP: review every address/ID before executing. Only prod resources may be deleted.
-terraform apply '<private>/destroy.tfplan'
-```
+**Do not reuse those old inputs on today's restored database.** For a future
+approved deletion, copy `teardown.tfvars.example` to a private operator file,
+retain the CURRENT snapshot input, and choose an UNUSED final-snapshot name.
+Include prod.tfvars, restore.tfvars, then the reviewed teardown override when
+planning. Verify the account/backend/default workspace and every planned resource.
+The prior resource count is not authorization. Final snapshots incur storage costs.
+Force-destroy removes ALL lake versions; verified backups are mandatory.
+Never destroy dev/backup/bootstrap or force-delete extra resources after a partial
+failure. Wait for deletion to finish and capture deleted-state screenshots.
 
-The original exercise deleted 36 resources; recheck current scope rather than using
-that count as authorization. Backup/state buckets and manual snapshots must NOT
-appear. Keep binary plans private. `force_destroy` removes all lake versions; the
-backup check is a mandatory prerequisite. Wait for completion/final snapshot and
-capture deleted-state screenshots before restoration. Inspect partial failures;
-do not force-delete extra resources or automatically retry a destructive operation.
+## Terraform restoration commands used
 
-## 3. Recreate from the original snapshot
+The empty LLM-secret metadata was recovered using the Secrets Manager RestoreSecret
+API. Its CLI equivalent is shown here, not claimed as the original invocation:
 
-Check `a2-snapshot-before-disaster` remains Available. Recover the empty LLM-secret
-metadata if Secrets Manager shows a scheduled deletion; do not force-delete it:
-
-```powershell
+~~~powershell
 aws secretsmanager restore-secret --secret-id '<recorded empty-secret ARN>'
-```
+~~~
 
-If Terraform no longer tracks it, add a temporary `recovery-import.tf` in prod:
+Use only when scheduled for deletion. A CLI import attempt failed on uncreated
+network for_each keys; this temporary declarative import worked:
 
-```hcl
+~~~hcl
 import {
   to = module.compute.aws_secretsmanager_secret.llm_api_key
-  id = "<recorded empty-secret ARN>"
+  id = "arn:aws:secretsmanager:us-east-2:710809468662:secret:align-prod-llm-api-key-69hLEN"
 }
-```
+~~~
 
-Declarative import avoids the CLI-import issue with not-yet-created network keys.
-Do not import over an already tracked resource. No secret value is involved.
+No secret value was read or committed. Do not import an already tracked resource.
+Remove the temporary block after successful apply, as we did.
 
-```powershell
-terraform plan -var-file=prod.tfvars -var-file=restore.tfvars -out='<private>/restore.tfplan'
-# STOP: confirm original snapshot, private RDS, encryption, sizing, managed credentials,
-# deletion protection, and no unintended deletions. Then, with recovery approval:
-terraform apply '<private>/restore.tfplan'
-```
+~~~powershell
+terraform plan -input=false -no-color -var-file=prod.tfvars -var-file=restore.tfvars -out='<private>/align-dr-restore-plan-20261022.tfplan'
+# Reviewed original snapshot, private/encrypted RDS, managed credentials,
+# sizing, deletion protection, 35 creates + secret import/update; no deletions.
+terraform apply -input=false -no-color '<private>/align-dr-restore-plan-20261022.tfplan'
+terraform output -json
+~~~
 
-Remove the temporary import block after success. Wait for RDS Available and new EC2
-SSM Online. Use NEW outputs: the managed DB secret changes. Do not reseed or rerun
-schema creation over the restored tables. Do not reuse old helper connection defaults.
+Only selected non-secret outputs were retained. The restored RDS managed secret
+changes; use fresh endpoint/secret/EC2 outputs, never old helper defaults. Wait for
+RDS Available and EC2 SSM Online. Do not reseed or recreate the restored schema.
 
-## 4. Restore files and prove recovery
+## S3 and SQL operations actually used
 
-From repo root on the operator machine:
+The original script read the saved manifest's key, backup version and SHA-256 for
+each object, checked the recreated lake was empty, and executed this SDK operation:
 
-```powershell
-python infra/tests/e2e/recovery_data.py restore --profile align-new --manifest '<saved backup-manifest.json>'
-# After the dry-run passes and restoration is approved:
-python infra/tests/e2e/recovery_data.py restore --profile align-new --manifest '<saved backup-manifest.json>' --apply
-```
+~~~python
+s3.copy_object(
+    Bucket='align-prod-lake-710809468662', Key=item['key'],
+    CopySource={'Bucket': 'align-prod-backup-710809468662',
+                'Key': item['key'], 'VersionId': item['backup_version']},
+    ExpectedBucketOwner='710809468662', ExpectedSourceBucketOwner='710809468662')
+restored = s3.get_object(Bucket='align-prod-lake-710809468662', Key=item['key'])
+assert hashlib.sha256(restored['Body'].read()).hexdigest() == item['sha256']
+~~~
 
-The target must be an empty recreated prod lake with ALL writers paused. The helper
-copies exact backup versions and verifies hashes; it never deletes backup objects.
-This is not an atomic multi-object restore. On partial failure, inspect the destination
-and reconcile manually; do not empty it or blindly rerun. No concurrent writes allowed.
+This is a historical excerpt, not a standalone helper. `s3`, `item` and `hashlib`
+were supplied by the original script. Copies created new lake versions with the
+same bytes, without deleting backups. Keep writers paused during any future copy,
+check every hash, and inspect partial failures before retrying. Do not run historical
+assert-based checks with Python optimization enabled.
 
-Copy saved before-sql.json to restored EC2 and run `recovery_sql.py` with the original
-task key, NEW DB outputs, `--before before-sql.json --output after-sql.json` and CA
-bundle. This compares the SQL row, S3 reference, JSON and checksum using read-only SQL.
-Then use `fake_log_demo.py` from PR #17 to create ONE new task/log and verify a fresh
-connection. Preserve its new IDs separately from the original. No LLM call required.
+Original task key:
+`demo/task-log/9c985e79-81bf-4be3-b32c-2c543e0b1777/task.json`.
+SHA-256: `fee1d8ac10eeae5b30fd82b0f386fb651706c92d40d95d9a47fec135d606441a`.
 
-Verify restored security groups (EC2 no inbound, RDS 5432 from EC2 SG only), IAM
-permissions, RDS private/encrypted/deletion-protected settings, S3 encryption,
-versioning, replication and public-access block. Capture After screenshots, confirm
-dev stayed intact, and run a final plan with BOTH prod.tfvars and restore.tfvars.
-Record snapshot time, deletion/recovery timestamps and measured verification results.
+On restored EC2 through SSM, a fresh PostgreSQL connection used TLS verify-full,
+the NEW managed secret, and default_transaction_read_only=on. This parameterized
+query retrieved the original row:
 
-## Local validation
+~~~sql
+SELECT t.task_id,t.task_key,t.dataset_source,t.shared_goal,
+       r.run_id,r.status,r.artifact_uri,e.event_id,e.event_type,e.payload,
+       e.artifact_uri AS event_s3_reference
+FROM tasks t JOIN runs r USING(task_id) JOIN events e USING(run_id)
+WHERE t.task_key = %s AND t.dataset_source='fake_log_demo';
+~~~
 
-```powershell
-python -m unittest discover -s infra/tests/e2e -v
-terraform -chdir=infra/modules/database test
-```
+The bound parameter was `fake-log:prod:9c985e79-81bf-4be3-b32c-2c543e0b1777`.
+The row, S3 reference, JSON contents and hash matched the saved before evidence.
+Original IDs remained 1/1/1; message:
+`Fake log: audio volume setting saved successfully.`
 
-These are offline/mocked tests; passing them does not execute another AWS recovery.
+The focused fake-log test then created ONE new task/log and verified committed
+IDs 2/2/2 from a separate connection. PR #17 documents its current explicit DB
+arguments; the historical invocation instead injected current outputs into its
+older connection defaults. These are synthetic records, not benchmark results.
+
+The final command returned no changes:
+
+~~~powershell
+terraform plan -input=false -no-color -var-file=prod.tfvars -var-file=restore.tfvars -out='<private>/align-dr-restore-final-plan-20261022.tfplan'
+~~~
+
+Historical local entry points were `prod_dr_execute.py`, `prod_dr_restore.py`,
+`collect_before_evidence.py`, and `verify_restored_prod.py`. These are operator
+files, not shipped dependencies. This PR contains Terraform recovery configuration,
+its mocked tests, and this runbook only; no new Python recovery helpers.
