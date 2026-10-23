@@ -32,8 +32,10 @@ resource "aws_db_instance" "this" {
   engine_version = var.postgres_major_version
   instance_class = var.instance_class
 
-  db_name  = var.db_name
-  username = var.master_username
+  snapshot_identifier = var.snapshot_identifier
+  # Restore database contents and the original username from the snapshot.
+  db_name  = var.snapshot_identifier == null ? var.db_name : null
+  username = var.snapshot_identifier == null ? var.master_username : null
   port     = var.db_port
 
   # RDS generates the master password and stores it in Secrets Manager;

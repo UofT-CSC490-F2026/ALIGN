@@ -1,3 +1,27 @@
+variable "db_snapshot_identifier" {
+  description = "Restore source, set only after approved prod deletion; retain it in subsequent prod plans."
+  type        = string
+  default     = null
+}
+
+variable "db_deletion_protection" {
+  description = "Disable only during an explicitly approved teardown."
+  type        = bool
+  default     = true
+}
+
+variable "db_final_snapshot_identifier" {
+  description = "Unique final snapshot name for an approved teardown."
+  type        = string
+  default     = null
+}
+
+variable "lake_force_destroy" {
+  description = "Allows deletion of all prod lake object versions; only for approved teardown after backup verification."
+  type        = bool
+  default     = false
+}
+
 variable "project" {
   description = "Resource prefix."
   type        = string

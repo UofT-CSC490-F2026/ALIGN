@@ -1,3 +1,14 @@
+variable "snapshot_identifier" {
+  description = "Explicit RDS snapshot to restore when creating the DB. Keep null for fresh databases; never enable on a live DB without reviewing replacement."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.snapshot_identifier == null ? true : length(trimspace(var.snapshot_identifier)) > 0
+    error_message = "Snapshot identifier must be null or nonempty."
+  }
+}
+
 variable "project" {
   description = "Lowercase project prefix, e.g. align."
   type        = string

@@ -28,8 +28,10 @@ module "database" {
   allocated_storage     = 20
   backup_retention_days = 1
 
-  multi_az            = false
-  deletion_protection = true
+  multi_az                  = false
+  deletion_protection       = var.db_deletion_protection
+  snapshot_identifier       = var.db_snapshot_identifier
+  final_snapshot_identifier = var.db_final_snapshot_identifier
 }
 
 module "storage" {
@@ -41,6 +43,7 @@ module "storage" {
   aws_account_id = var.aws_account_id
 
   backup_bucket_name = "${var.project}-${var.environment}-backup-${var.aws_account_id}"
+  lake_force_destroy = var.lake_force_destroy
 }
 
 module "compute" {
