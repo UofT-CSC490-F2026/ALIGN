@@ -15,6 +15,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  smoke-runner:
+    name: Online smoke runner unit tests (no AWS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s infra/tests/e2e -v
+
   terraform:
     name: Terraform checks
     runs-on: ubuntu-latest
@@ -40,7 +51,8 @@ jobs:
             infra/envs/prod \
             infra/modules/network \
             infra/modules/storage \
-            infra/modules/database; do
+            infra/modules/database \
+            infra/modules/compute; do
             echo "::group::${directory}"
             terraform -chdir="${directory}" init -backend=false -input=false -no-color
             terraform -chdir="${directory}" validate -no-color
@@ -52,6 +64,9 @@ jobs:
 
       - name: Run mocked RDS module tests
         run: terraform -chdir=infra/modules/database test -no-color
+
+      - name: Run mocked compute module tests
+        run: terraform -chdir=infra/modules/compute test -no-color
 
   database:
     name: PostgreSQL and Flyway checks
