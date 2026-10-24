@@ -125,3 +125,43 @@ py -m unittest discover -s scripts/tests -p "test_*.py" -v
 ```
 
 The PostgreSQL-specific test is skipped locally unless `ALIGN_TEST_DATABASE_URL` is set to a disposable, migrated test database. CI configures this automatically. When recovery work is ongoing, perform the dry-run and unit tests only; defer any `--apply` until the database is ready.
+
+
+## Run artifacts and S3 upload (PR 4)
+
+`run_artifacts.py` implements the future harness's **version 1 event contract** and a
+versioned run bundle. One `events.jsonl` line per event has a canonical `event_uuid`
+and `run_key`, strictly contiguous `sequence_number`, UTC `occurred_at`,
+`actor_type`, `event_type`, `payload`, optional `trigger_sequence` for
+proposal→decision/result associations, and optional S3 `artifact_uri`.
+The first event is `run_start` (task key, arbiter condition, configs, seed); a
+completed run ends with `run_end` (status and optional cost/goal evidence).
+A missing `run_end` is allowed for crash recovery and marked incomplete.
+
+Stage, inspect and stage again with **no AWS access**:
+
+```powershell
+py scripts/run_artifacts.py stage --events scripts/examples/example_run.events.jsonl --output-dir normalized/example-run
+py scripts/run_artifacts.py verify --run-dir normalized/example-run
+```
+
+To upload a reviewed run bundle to an existing S3 lake (requires approved IAM permissions):
+
+```powershell
+py scripts/run_artifacts.py upload --run-dir normalized/example-run --bucket YOUR_DEV_LAKE --expected-account YOUR_AWS_ACCOUNT_ID --apply
+```
+
+No S3 writes occur without `--apply`. The uploader checks account identity,
+refuses conflicting remote objects, reads uploaded bytes back, and writes
+`runs/<run_key>/manifest.json` last. To import an existing bundle from S3 use
+`download --run-key ... --bucket ... --expected-account ... --output-dir ...`.
+The manifest contains SHA-256, byte size, run identity, completion and event count.
+S3's immutable objects cannot be appended to; the harness should checkpoint
+segments or upload finalized bundles after each run. This first version stores one
+**finalized** JSONL object per run, not live streaming checkpoints. It does not
+automatically redact secrets: the producer must filter sensitive tool output before
+creating events, and large/private data should remain in restricted artifacts.
+Never expose raw evaluator materials or privileged instance credentials to agents.
+
+The synthetic fixture is **not an agent run or evaluation ground truth**. Run
+`py -m unittest discover -s scripts/tests -p "test_*.py" -v` for offline tests.
