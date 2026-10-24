@@ -153,4 +153,6 @@ jobs:
       - name: Verify real SQL inserts, idempotency and rollback
         env:
           ALIGN_TEST_DATABASE_URL: postgresql://align_dev:local_dev_only_change_me@127.0.0.1:5432/align
-        run: python -m unittest discover -s scripts/tests -p 'test_load_tasks.py' -v
+        run: |
+          python -m unittest discover -s scripts/tests -p 'test_load_tasks.py' -v
+          python -m unittest discover -s scripts/tests -p 'test_process_runs.py' -v

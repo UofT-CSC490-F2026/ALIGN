@@ -165,3 +165,36 @@ Never expose raw evaluator materials or privileged instance credentials to agent
 
 The synthetic fixture is **not an agent run or evaluation ground truth**. Run
 `py -m unittest discover -s scripts/tests -p "test_*.py" -v` for offline tests.
+
+
+## Process run artifacts into PostgreSQL (PR 5)
+
+`process_runs.py` reads a **completed, checksum-verified local run bundle** created
+by PR 4 and imports `runs`, `events`, `decision_log` and `action_attempts`
+in one PostgreSQL transaction. Sequence numbers map trigger references into
+same-run event foreign keys, and a conservative rule checker annotates clearly
+unsafe proposals as **provisional**, not gold labels. Absent run_end becomes
+a failed run. Raw event UUID is retained in `events.payload.event_uuid`.
+No new database migration is required.
+
+```powershell
+py scripts/process_runs.py --run-dir normalized/example-run       # no DB connection
+# Only with a *disposable/local* migrated PostgreSQL and inserted matching task:
+$env:ALIGN_DATABASE_URL = "postgresql://align_dev:local_dev_only_change_me@127.0.0.1:5433/align"
+py scripts/process_runs.py --run-dir normalized/example-run --apply
+Remove-Item Env:ALIGN_DATABASE_URL
+```
+
+A SQL import requires the referenced `task_key` to already exist (load it via
+`load_tasks.py`). The source fixture's task is an illustrative custom scenario.
+Concurrent importers coordinate with a PostgreSQL transaction advisory lock for
+each task and run key, and an identical replay skips rather than duplicating rows;
+changed event bytes or changed run metadata fail. The database schema doesn't
+yet have a dedicated unique key for `(task_id,trial_key)`; add it by Flyway
+if other writers may bypass this importer.
+
+**Limitations:** invalid events are rejected before any DB write, not partially
+quarantined. The caller must redact secrets before artifacts are staged; no
+automatic key redaction is promised. V1 accepts one finalized bundle rather than
+arbitrary streaming segments. An LLM judge and automatic conflict labeling
+are evaluator/future work. No AWS or RDS operations occur in CI.
