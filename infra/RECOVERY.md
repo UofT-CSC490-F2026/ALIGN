@@ -22,10 +22,25 @@ JSON remain separately in the operator checkout under `a2/evidence/`, in
 `dr-deletion-20261022`, `before-prod-20261022T235746Z`, and
 `dr-restoration-20261022`. They are not committed here.
 
-**Prod is already restored. Always include BOTH prod.tfvars and restore.tfvars in
-future prod plans. Removing the snapshot input can propose DB replacement.**
-The final-snapshot name in restore.tfvars is for a future approved deletion; it
+**Prod is already restored. `prod.tfvars` is the canonical configuration, including
+the existing snapshot. Removing/changing the snapshot can propose DB replacement.**
+The snapshot variable is required and rejects null/empty values. Missing it fails
+non-interactive planning rather than silently selecting a fresh database.
+`restore.tfvars` is an empty compatibility file for the historical commands below.
+The final-snapshot name in prod.tfvars is for a future approved deletion; it
 does not create a snapshot during normal apply.
+
+Current normal command (review the plan; this does not authorize apply):
+
+~~~powershell
+terraform plan -input=false -var-file=prod.tfvars -out=prod.tfplan
+~~~
+
+Local regression check from `infra/envs/prod`:
+`terraform test '-var-file=prod.tfvars'`. This uses a mocked AWS provider to check
+that the canonical configuration retains recovery settings and rejects an empty
+snapshot. It does not establish a no-replacement plan against live restored state;
+that still requires a reviewed plan using the correct production backend.
 
 ## Before/protect
 
@@ -76,7 +91,7 @@ restoration used ONLY the original manual snapshot.
 **Do not reuse those old inputs on today's restored database.** For a future
 approved deletion, copy `teardown.tfvars.example` to a private operator file,
 retain the CURRENT snapshot input, and choose an UNUSED final-snapshot name.
-Include prod.tfvars, restore.tfvars, then the reviewed teardown override when
+Include prod.tfvars, then the reviewed teardown override when
 planning. Verify the account/backend/default workspace and every planned resource.
 The prior resource count is not authorization. Final snapshots incur storage costs.
 Force-destroy removes ALL lake versions; verified backups are mandatory.

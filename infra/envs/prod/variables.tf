@@ -1,7 +1,11 @@
 variable "db_snapshot_identifier" {
-  description = "Restore source, set only after approved prod deletion; retain it in subsequent prod plans."
+  description = "Required restore source for the already-restored production database."
   type        = string
-  default     = null
+  nullable    = false
+  validation {
+    condition     = trimspace(var.db_snapshot_identifier) != ""
+    error_message = "Prod requires its existing restore snapshot identifier; use prod.tfvars."
+  }
 }
 
 variable "db_deletion_protection" {
