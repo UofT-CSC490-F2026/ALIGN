@@ -83,7 +83,7 @@ variable "db_secret_arn" {
   nullable    = false
 
   validation {
-    condition     = can(regex("^arn:[a-z0-9-]+:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$", var.db_secret_arn))
+    condition     = can(regex("^arn:[a-z0-9-]+:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@!-]+$", var.db_secret_arn))
     error_message = "Supply one complete Secrets Manager secret ARN without wildcards."
   }
 

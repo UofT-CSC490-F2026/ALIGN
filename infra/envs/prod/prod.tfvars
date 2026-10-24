@@ -17,3 +17,11 @@ private_subnet_cidrs = ["10.20.11.0/24", "10.20.12.0/24"]
 # Compute must configure SSM Agent, its instance role, and outbound connectivity.
 allowed_ssh_cidrs = []
 db_port           = 5432
+
+# Canonical settings for the already-restored production database.
+# Removing/changing the restore source can propose RDS replacement.
+db_snapshot_identifier = "a2-snapshot-before-disaster"
+db_deletion_protection = true
+# Reserved for a future approved deletion; normal apply creates no snapshot.
+db_final_snapshot_identifier = "align-prod-final-after-restore-20261022-01"
+lake_force_destroy           = false

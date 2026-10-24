@@ -1,0 +1,7 @@
+# TEMPLATE ONLY. Copy outside the repo and review before any approved destruction.
+# For the currently restored DB, KEEP its snapshot input to avoid replacement.
+db_snapshot_identifier       = "a2-snapshot-before-disaster"
+db_deletion_protection       = false
+# Replace with an unused identifier; AWS rejects an existing final-snapshot name.
+db_final_snapshot_identifier = "REPLACE-WITH-UNUSED-FINAL-SNAPSHOT-NAME"
+lake_force_destroy           = true

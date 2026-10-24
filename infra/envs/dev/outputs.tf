@@ -57,3 +57,13 @@ output "lake_bucket_arn" {
   description = "S3 data lake bucket ARN."
   value       = module.storage.lake_bucket_arn
 }
+
+output "compute_instance_id" {
+  description = "SSM-managed EC2 instance used for dev integration testing."
+  value       = module.compute.instance_id
+}
+
+output "ecr_repository_url" {
+  description = "ECR repository URL for the separately published application image."
+  value       = module.compute.ecr_repository_url
+}

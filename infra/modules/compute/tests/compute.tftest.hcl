@@ -71,7 +71,7 @@ variables {
   ec2_security_group_id = "sg-00000000000000000"
   lake_bucket_name      = "align-dev-test-lake"
   lake_bucket_arn       = "arn:aws:s3:::align-dev-test-lake"
-  db_secret_arn         = "arn:aws:secretsmanager:us-east-2:000000000000:secret:mock-database-ABC123"
+  db_secret_arn         = "arn:aws:secretsmanager:us-east-2:000000000000:secret:rds!db-mock-ABC123"
   ami_id                = "ami-00000000000000000"
   instance_type         = "t3.micro"
   root_volume_size      = 20
