@@ -125,3 +125,118 @@ py -m unittest discover -s scripts/tests -p "test_*.py" -v
 ```
 
 The PostgreSQL-specific test is skipped locally unless `ALIGN_TEST_DATABASE_URL` is set to a disposable, migrated test database. CI configures this automatically. When recovery work is ongoing, perform the dry-run and unit tests only; defer any `--apply` until the database is ready.
+
+
+## Run artifacts and S3 upload (PR 4)
+
+`run_artifacts.py` implements the future harness's **version 1 event contract** and a
+versioned run bundle. One `events.jsonl` line per event has a canonical `event_uuid`
+and `run_key`, strictly contiguous `sequence_number`, UTC `occurred_at`,
+`actor_type`, `event_type`, `payload`, optional `trigger_sequence` for
+proposal→decision/result associations, and optional S3 `artifact_uri`.
+The first event is `run_start` (task key, arbiter condition, configs, seed); a
+completed run ends with `run_end` (status and optional cost/goal evidence).
+A missing `run_end` is allowed for crash recovery and marked incomplete.
+
+Stage, inspect and stage again with **no AWS access**:
+
+```powershell
+py scripts/run_artifacts.py stage --events scripts/examples/example_run.events.jsonl --output-dir normalized/example-run
+py scripts/run_artifacts.py verify --run-dir normalized/example-run
+```
+
+To upload a reviewed run bundle to an existing S3 lake (requires approved IAM permissions):
+
+```powershell
+py scripts/run_artifacts.py upload --run-dir normalized/example-run --bucket YOUR_DEV_LAKE --expected-account YOUR_AWS_ACCOUNT_ID --apply
+```
+
+No S3 writes occur without `--apply`. The uploader checks account identity,
+refuses conflicting remote objects, reads uploaded bytes back, and writes
+`runs/<run_key>/manifest.json` last. To import an existing bundle from S3 use
+`download --run-key ... --bucket ... --expected-account ... --output-dir ...`.
+The manifest contains SHA-256, byte size, run identity, completion and event count.
+S3's immutable objects cannot be appended to; the harness should checkpoint
+segments or upload finalized bundles after each run. This first version stores one
+**finalized** JSONL object per run, not live streaming checkpoints. It does not
+automatically redact secrets: the producer must filter sensitive tool output before
+creating events, and large/private data should remain in restricted artifacts.
+Never expose raw evaluator materials or privileged instance credentials to agents.
+
+The synthetic fixture is **not an agent run or evaluation ground truth**. Run
+`py -m unittest discover -s scripts/tests -p "test_*.py" -v` for offline tests.
+
+
+## Process run artifacts into PostgreSQL (PR 5)
+
+`process_runs.py` reads a **completed, checksum-verified local run bundle** created
+by PR 4 and imports `runs`, `events`, `decision_log` and `action_attempts`
+in one PostgreSQL transaction. Sequence numbers map trigger references into
+same-run event foreign keys, and a conservative rule checker annotates clearly
+unsafe proposals as **provisional**, not gold labels. Absent run_end becomes
+a failed run. Raw event UUID is retained in `events.payload.event_uuid`.
+No new database migration is required.
+
+```powershell
+py scripts/process_runs.py --run-dir normalized/example-run       # no DB connection
+# Only with a *disposable/local* migrated PostgreSQL and inserted matching task:
+$env:ALIGN_DATABASE_URL = "postgresql://align_dev:local_dev_only_change_me@127.0.0.1:5433/align"
+py scripts/process_runs.py --run-dir normalized/example-run --apply
+Remove-Item Env:ALIGN_DATABASE_URL
+```
+
+A SQL import requires the referenced `task_key` to already exist (load it via
+`load_tasks.py`). The source fixture's task is an illustrative custom scenario.
+Concurrent importers coordinate with a PostgreSQL transaction advisory lock for
+each task and run key, and an identical replay skips rather than duplicating rows;
+changed event bytes or changed run metadata fail. The database schema doesn't
+yet have a dedicated unique key for `(task_id,trial_key)`; add it by Flyway
+if other writers may bypass this importer.
+
+**Limitations:** invalid events are rejected before any DB write, not partially
+quarantined. The caller must redact secrets before artifacts are staged; no
+automatic key redaction is promised. V1 accepts one finalized bundle rather than
+arbitrary streaming segments. An LLM judge and automatic conflict labeling
+are evaluator/future work. No AWS or RDS operations occur in CI.
+
+
+## Run evaluation, conflicts and provisional labels (PR 6)
+
+`evaluate.py` evaluates an already-ingested run in `runs` and populates
+`evaluations`, `goal_results`, `conflict_episodes`, and `decision_labels`.
+It uses the existing Flyway schema and reporting views. No AWS, LLM inference,
+or production access is needed. **Only event-observed facts can become results**:
+each `test_result` event carries a `goal_key` and a `passed/failed/not_evaluated`
+result; untested goals are explicitly `not_evaluated`, not assumed failures.
+The final `run_end` event may carry `shared_goal_satisfied`,
+`critical_constraints_passed`, token counts and token cost. For
+`complete_all_goals` and `pick_one_goal`, missing evidence yields an UNKNOWN
+outcome. An `escalate` expected outcome requires an observed escalation.
+Conflict episodes come only from explicit `conflict_onset` and
+`conflict_resolution` events—no inferred missed conflicts are fabricated.
+
+Use with a **disposable/local** migrated database containing the matching
+task and already-imported run:
+
+```powershell
+py scripts/evaluate.py --run-key 12345678-1234-4234-8234-123456789abc
+# Explicit --apply and ALIGN_DATABASE_URL required to write:
+py scripts/evaluate.py --run-key 12345678-1234-4234-8234-123456789abc --evaluator-version rules-v1 --apply
+```
+
+Automated unsafe-action proposals generate only `provisional` suggested
+`block` labels; reporting views exclude them from gold intervention scoring.
+To import explicit reviewed human labels, use
+`--human-labels path/to/labels.json --apply`. The JSON format is
+`{"labels":[{"event_uuid":"...","expected_actions":["continue"],"reviewer":"...","rationale":"..."}]}`.
+Labels can only point to existing proposed-action events; reruns preserve
+reviewed reference labels and reject conflicting references. Evaluations
+and task-goal results are versioned by the `--evaluator-version` field
+(overwriting the current view's evaluation row, as the existing schema
+intentionally does). Provisional conflict episodes are recomputed without
+deleting reviewed conflict records.
+
+**Not implemented:** LLM judging, automated reliable detection of conflicts
+that never appeared in the trace, full reviewed-label export to S3, historical
+evaluation revision audit, and online streaming. These are separate research
+milestones and must not be described as completed in the A2 report.
