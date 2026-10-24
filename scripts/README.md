@@ -198,3 +198,45 @@ quarantined. The caller must redact secrets before artifacts are staged; no
 automatic key redaction is promised. V1 accepts one finalized bundle rather than
 arbitrary streaming segments. An LLM judge and automatic conflict labeling
 are evaluator/future work. No AWS or RDS operations occur in CI.
+
+
+## Run evaluation, conflicts and provisional labels (PR 6)
+
+`evaluate.py` evaluates an already-ingested run in `runs` and populates
+`evaluations`, `goal_results`, `conflict_episodes`, and `decision_labels`.
+It uses the existing Flyway schema and reporting views. No AWS, LLM inference,
+or production access is needed. **Only event-observed facts can become results**:
+each `test_result` event carries a `goal_key` and a `passed/failed/not_evaluated`
+result; untested goals are explicitly `not_evaluated`, not assumed failures.
+The final `run_end` event may carry `shared_goal_satisfied`,
+`critical_constraints_passed`, token counts and token cost. For
+`complete_all_goals` and `pick_one_goal`, missing evidence yields an UNKNOWN
+outcome. An `escalate` expected outcome requires an observed escalation.
+Conflict episodes come only from explicit `conflict_onset` and
+`conflict_resolution` events—no inferred missed conflicts are fabricated.
+
+Use with a **disposable/local** migrated database containing the matching
+task and already-imported run:
+
+```powershell
+py scripts/evaluate.py --run-key 12345678-1234-4234-8234-123456789abc
+# Explicit --apply and ALIGN_DATABASE_URL required to write:
+py scripts/evaluate.py --run-key 12345678-1234-4234-8234-123456789abc --evaluator-version rules-v1 --apply
+```
+
+Automated unsafe-action proposals generate only `provisional` suggested
+`block` labels; reporting views exclude them from gold intervention scoring.
+To import explicit reviewed human labels, use
+`--human-labels path/to/labels.json --apply`. The JSON format is
+`{"labels":[{"event_uuid":"...","expected_actions":["continue"],"reviewer":"...","rationale":"..."}]}`.
+Labels can only point to existing proposed-action events; reruns preserve
+reviewed reference labels and reject conflicting references. Evaluations
+and task-goal results are versioned by the `--evaluator-version` field
+(overwriting the current view's evaluation row, as the existing schema
+intentionally does). Provisional conflict episodes are recomputed without
+deleting reviewed conflict records.
+
+**Not implemented:** LLM judging, automated reliable detection of conflicts
+that never appeared in the trace, full reviewed-label export to S3, historical
+evaluation revision audit, and online streaming. These are separate research
+milestones and must not be described as completed in the A2 report.
