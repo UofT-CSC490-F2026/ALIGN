@@ -1,0 +1,167 @@
+# Mocked plan tests: no AWS API calls and no actual RDS resources created.
+mock_provider "aws" {}
+
+variables {
+  project               = "align"
+  environment           = "dev"
+  aws_region            = "us-east-2"
+  private_subnet_ids    = ["subnet-0123456789abcdef0", "subnet-0123456789abcdef1"]
+  rds_security_group_id = "sg-0123456789abcdef0"
+}
+
+run "secure_dev_configuration" {
+  command = plan
+
+  variables {
+    deletion_protection = false
+  }
+
+  assert {
+    condition     = toset(aws_db_subnet_group.this.subnet_ids) == toset(var.private_subnet_ids)
+    error_message = "DB subnet group must use the two network-provided subnet IDs."
+  }
+
+  assert {
+    condition = (
+      aws_db_instance.this.db_subnet_group_name == aws_db_subnet_group.this.name &&
+      toset(aws_db_instance.this.vpc_security_group_ids) == toset([var.rds_security_group_id])
+    )
+    error_message = "RDS must use the subnet group and existing network security group."
+  }
+
+  assert {
+    condition     = aws_db_instance.this.publicly_accessible == false && aws_db_instance.this.storage_encrypted == true
+    error_message = "RDS must be private and encrypt storage."
+  }
+
+  assert {
+    condition = (
+      aws_db_instance.this.manage_master_user_password == true &&
+      aws_db_instance.this.backup_retention_period == 7 &&
+      aws_db_instance.this.skip_final_snapshot == false
+    )
+    error_message = "RDS must manage its password, retain seven days of backups, and take a final snapshot."
+  }
+
+  assert {
+    condition = (
+      aws_db_instance.this.engine == "postgres" &&
+      aws_db_instance.this.engine_version == "16" &&
+      aws_db_instance.this.instance_class == "db.t4g.micro" &&
+      aws_db_instance.this.allocated_storage == 20 &&
+      aws_db_instance.this.storage_type == "gp3" &&
+      aws_db_instance.this.final_snapshot_identifier == "align-dev-postgres-final" &&
+      aws_db_instance.this.multi_az == false &&
+      aws_db_instance.this.deletion_protection == false
+    )
+    error_message = "Development database settings do not match the expected baseline."
+  }
+}
+
+run "reject_three_private_subnets" {
+  command = plan
+  variables { private_subnet_ids = ["subnet-0123456789abcdef0", "subnet-0123456789abcdef1", "subnet-0123456789abcdef2"] }
+  expect_failures = [var.private_subnet_ids]
+}
+
+run "reject_project_with_consecutive_hyphens" {
+  command = plan
+  variables { project = "align--test" }
+  expect_failures = [var.project]
+}
+
+run "reject_project_with_trailing_hyphen" {
+  command = plan
+  variables { project = "align-" }
+  expect_failures = [var.project]
+}
+
+run "reject_excessive_backup_retention" {
+  command = plan
+  variables { backup_retention_days = 36 }
+  expect_failures = [var.backup_retention_days]
+}
+
+run "reject_fractional_backup_retention" {
+  command = plan
+  variables { backup_retention_days = 7.5 }
+  expect_failures = [var.backup_retention_days]
+}
+
+run "reject_fractional_storage" {
+  command = plan
+  variables { allocated_storage = 20.5 }
+  expect_failures = [var.allocated_storage]
+}
+
+run "reject_zero_database_port" {
+  command = plan
+  variables { db_port = 0 }
+  expect_failures = [var.db_port]
+}
+
+run "reject_fractional_database_port" {
+  command = plan
+  variables { db_port = 5432.5 }
+  expect_failures = [var.db_port]
+}
+
+run "production_defaults_to_deletion_protection" {
+  command = plan
+
+  variables {
+    environment = "prod"
+  }
+
+  assert {
+    condition = (
+      aws_db_instance.this.deletion_protection == true &&
+      aws_db_instance.this.identifier == "align-prod-postgres"
+    )
+    error_message = "Prod RDS must have a distinct identifier and default deletion protection."
+  }
+}
+
+run "production_can_disable_deletion_protection_for_teardown" {
+  command = plan
+
+  variables {
+    environment         = "prod"
+    deletion_protection = false
+  }
+
+  assert {
+    condition     = aws_db_instance.this.deletion_protection == false
+    error_message = "Production teardown override should disable deletion protection."
+  }
+}
+
+run "reject_duplicate_private_subnets" {
+  command = plan
+  variables { private_subnet_ids = ["subnet-0123456789abcdef0", "subnet-0123456789abcdef0"] }
+  expect_failures = [var.private_subnet_ids]
+}
+
+run "reject_single_private_subnet" {
+  command = plan
+  variables { private_subnet_ids = ["subnet-0123456789abcdef0"] }
+  expect_failures = [var.private_subnet_ids]
+}
+
+run "reject_zero_backup_retention" {
+  command = plan
+  variables { backup_retention_days = 0 }
+  expect_failures = [var.backup_retention_days]
+}
+
+run "reject_too_little_gp3_storage" {
+  command = plan
+  variables { allocated_storage = 10 }
+  expect_failures = [var.allocated_storage]
+}
+
+run "reject_invalid_database_port" {
+  command = plan
+  variables { db_port = 65536 }
+  expect_failures = [var.db_port]
+}

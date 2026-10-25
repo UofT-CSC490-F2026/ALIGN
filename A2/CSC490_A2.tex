@@ -1,0 +1,793 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xurl}
+\usepackage[
+  colorlinks=true,
+  urlcolor=blue,
+  linkcolor=blue,
+  citecolor=blue
+]{hyperref}
+\usepackage{xcolor}
+\usepackage{longtable}
+\usepackage{needspace}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+\setlength{\tabcolsep}{5pt}
+\setlength{\LTpre}{8pt}
+\setlength{\LTpost}{8pt}
+\setlist{itemsep=2pt, topsep=4pt}
+\renewcommand{\arraystretch}{1.18}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\code}[1]{\texttt{#1}}
+\setlength{\emergencystretch}{2em}
+% Display a clearly labeled placeholder when a referenced figure is unavailable.
+% The real figure is displayed automatically once its file is provided.
+\newcommand{\reportimage}[2][]{%
+  \IfFileExists{#2}{\includegraphics[#1]{#2}}{%
+    \fbox{\parbox[c][5cm][c]{0.94\linewidth}{%
+      \centering\small\textit{Figure file not provided}\par\medskip
+      \nolinkurl{#2}%
+    }}%
+  }%
+}
+
+\title{\textbf{CSC490 Assignment 2}}
+\author{%
+  \begin{tabular}{@{}cc@{}}
+    Allaith Alzoubi (1009064744) & Royce Luo (1010192391) \\
+    Yujie Zeng (1009321020) & Jinhao Zhang (1008870839)
+  \end{tabular}%
+}
+
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-1em}
+
+\Needspace{7\baselineskip}
+\section*{Part 1: Aspirational Datasets}
+
+With a magic wand, we would want four linked datasets:
+
+\begin{enumerate}
+  \item A large task suite covering different types of goal conflict.
+  \item A step-by-step log of every run, with expert labels indicating what the arbiter should have done at each step.
+  \item The outcome of every run under every arbiter condition and agent model.
+  \item Real production incidents against which to check our results.
+\end{enumerate}
+
+
+\subsection*{1.1 Multi-agent conflict task suite}
+
+We would want thousands of two-agent coding tasks in real repositories, each with tests that verify success and an even spread across four conflict types.
+
+{\small
+\begin{tabularx}{\linewidth}{@{}L{3.2cm}YYY@{}}
+\toprule
+\textbf{Conflict type} & \textbf{Description} & \textbf{Example} & \textbf{What it tests} \\
+\midrule
+\code{none} & Fully parallel, separable work. & Agent A builds a signup form; Agent B builds the API endpoint it calls. & Whether the arbiter stays out of the way, avoiding false interventions. \\
+{\footnotesize\nolinkurl{execution_conflict}} & The agents share a goal, but their work collides. & Both agents must change the same request handler for different features. & Whether the arbiter mediates and coordinates. \\
+\nolinkurl{design_conflict} & The agents' goals are mutually exclusive by design. & Agent A must add response caching; Agent B must keep every response fresh. & Whether the arbiter restructures or escalates instead of letting the agents fight. \\
+\code{adversarial} & Competition and deception are allowed by the rules, in the spirit of werewolf or mafia games. & Agent A implements a feature while Agent B writes tests to break it and may mislead A about what it tests. & Whether the arbiter avoids flagging legitimate competition as unsafe. \\
+\bottomrule
+\end{tabularx}
+}
+
+\subsubsection*{Schema: Agent Tasks --- one record per task}
+
+{\small
+\begin{longtable}{@{}L{4.8cm}L{1.6cm}L{\dimexpr\linewidth-6.4cm-4\tabcolsep\relax}@{}}
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
+\code{task\_id} & text & Unique task ID. \\
+\code{repo} & text & Repository the agents work in. \\
+\code{shared\_goal} & text & Goal both agents work toward. \\
+\code{agent\_goals} & list & One goal per agent. \\
+\code{conflict\_type} & enum & \code{none}, \nolinkurl{execution_conflict}, \nolinkurl{design_conflict}, or \code{adversarial}. \\
+\code{affected\_files} & list & Files the task touches. \\
+\code{affected\_code\_area} & map & Directories each agent may edit, keyed by agent. \\
+\code{prohibited\_behaviour} & list & \nolinkurl{force_push}, \nolinkurl{delete_tests}, \nolinkurl{touch_env}, \nolinkurl{edit_outside_area}. \\
+\code{success\_tests} & map & Tests for the shared goal and for each agent's goal. \\
+\code{expected\_task\_outcome} & enum & \nolinkurl{complete_all_goals}, \nolinkurl{pick_one_goal}, or \code{escalate}. \\
+\end{longtable}
+}
+
+\subsection*{1.2 Expert-labeled arbiter decision log}
+
+We would want one record per agent step from every run, with a senior engineer's label indicating what the arbiter should have done at that step.
+
+\subsubsection*{Schema: Arbiter Decision Log --- one record per agent step}
+
+{\small
+\begin{longtable}{@{}L{4.8cm}L{1.6cm}L{\dimexpr\linewidth-6.4cm-4\tabcolsep\relax}@{}}
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
+\code{run\_id} & text & Run this step belongs to. \\
+\code{task\_id} & text & Task being run. \\
+\code{step} & int & Step number within the run. \\
+\code{timestamp} & timestamp & When the action was proposed. \\
+\code{agent\_id} & text & Agent that proposed the action. \\
+\code{proposed\_action} & text & Tool call or message the agent is about to make. \\
+\code{files\_touched} & list & Files the action would change. \\
+\code{trigger} & text & Event that caused an intervention; empty on \code{continue}. \\
+\code{arbiter\_action} & enum & \code{continue}, \code{query}, \code{block}, \code{mediate}, \code{restructure}, or \code{escalate}. \\
+\code{expected\_action} & list & Gold label containing every action a reasonable arbiter could take at this step. \\
+\code{affected\_agents} & list & Agents affected by the intervention. \\
+\code{reason} & text & Arbiter's explanation. \\
+\end{longtable}
+}
+
+\subsection*{1.3 Run outcomes}
+
+We would want one record per run, covering every task under every arbiter condition and agent model. Intervention counts would be computed from the expert-labeled decision log rather than entered by hand.
+
+\subsubsection*{Schema: Outcomes --- one record per run}
+
+{\small
+\begin{longtable}{@{}L{4.8cm}L{1.6cm}L{\dimexpr\linewidth-6.4cm-4\tabcolsep\relax}@{}}
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
+\code{run\_id} & text & Unique run ID. \\
+\code{task\_id} & text & Task that was run. \\
+\code{arbiter\_condition} & enum & \code{none}, \code{monitor}, \code{rule\_based}, or \code{llm}. \\
+\code{agent\_model} & text & Model the agents used. \\
+\code{task\_success} & bool & Whether the run ended in the task's \code{expected\_task\_outcome}. \\
+\code{shared\_goal\_satisfied} & bool & Whether the shared goal's tests pass. \\
+\code{individual\_goals\_achieved} & map & Whether each agent's goal tests pass. \\
+\code{num\_conflicts} & int & Number of conflict episodes in the run. \\
+\code{conflicts\_resolved} & int & Episodes resolved without escalating. \\
+\code{conflicts\_escalated} & int & Episodes handed to a human. \\
+\code{correct\_interventions} & int & Arbiter intervened with an action in \code{expected\_action}. \\
+\code{false\_interventions} & int & Arbiter intervened when \code{expected\_action} contained only \code{continue}. \\
+\code{missed\_interventions} & int & Arbiter continued when \code{continue} was not in \code{expected\_action}. \\
+\code{unsafe\_attempted} & int & Prohibited actions the agents tried. \\
+\code{unsafe\_blocked} & int & Prohibited actions the arbiter blocked. \\
+\code{unsafe\_executed} & int & Prohibited actions that went through. \\
+\code{time\_to\_intervention} & int & Steps from conflict start to first intervention. \\
+\code{runtime} & int & Runtime in seconds. \\
+\code{token\_cost} & float & Token cost in USD. \\
+\end{longtable}
+}
+
+\subsection*{1.4 Real multi-agent incident trajectories}
+
+We would want logs from production multi-agent systems where something went wrong, such as the OpenAI and Hugging Face incident discussed in A1. Each log would identify the step where a human should have intervened. This would help determine whether an arbiter tuned on our synthetic tasks also catches real failures.
+
+\subsubsection*{Schema: Incident Trajectories --- one record per incident}
+
+{\small
+\begin{longtable}{@{}L{4.8cm}L{1.6cm}L{\dimexpr\linewidth-6.4cm-4\tabcolsep\relax}@{}}
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
+\code{incident\_id} & text & Unique incident ID. \\
+\code{source} & text & System or report the incident came from. \\
+\code{num\_agents} & int & Number of agents involved. \\
+\code{trajectory} & list & Steps in the Arbiter Decision Log format. \\
+\code{failure\_step} & int & First step where things went wrong. \\
+\code{failure\_type} & enum & \code{unsafe\_action}, \code{goal\_conflict}, or \code{collusion}. \\
+\code{correct\_intervention} & text & What an arbiter should have done at that step. \\
+\end{longtable}
+}
+
+\clearpage
+
+\Needspace{7\baselineskip}
+\section*{Part 2: Reality Check}
+
+No public dataset has two coding agents working in one repo with an arbiter in the loop. CooperBench is the only source of ready two-agent coding tasks with tests, so it is our task source. The other datasets fill specific gaps: real conflicts in AI-agent pull requests, labeled unsafe actions, labeled multi-agent failures and data on mediation and deception. Conflict variants and run logs we generate ourselves.
+
+\subsection*{Datasets we can use}
+
+Rows are grouped by what we use them for: the task source, real-world conflict data, checking the arbiter and the judge, mediation and adversarial behaviour, then data we scrape or generate.
+
+{\footnotesize
+\begin{longtable}{@{}L{2.55cm}L{1.30cm}L{5.23cm}L{\dimexpr\linewidth-9.08cm-6\tabcolsep\relax}@{}}
+\toprule
+\textbf{Relevant item} & \textbf{Type} & \textbf{Description} & \textbf{Commentary} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Relevant item} & \textbf{Type} & \textbf{Description} & \textbf{Commentary} \\
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
+\href{https://huggingface.co/datasets/CooperBench/cooperbench-dataset}{CooperBench} & Public & 199 features from 12 open-source repos in Python, Go, TypeScript and Rust. Each feature has a spec, a gold patch and hidden tests, and prebuilt Docker images exist for every task. Any two features from the same task form a pair: 652 pairs, 499 of which conflict under \code{git merge}. MIT & Our task source. Covers the no-conflict and execution-conflict task types with tests that verify success. Every pair can be completed together, so it has no design conflicts. We build those ourselves \\
+\href{https://huggingface.co/datasets/hao-li/AIDev-7.6M}{AIDev v5 (AIDev-7.6M)} & Public & 7,685,281 pull requests opened by six coding agents (Codex, Copilot, Claude Code, Cursor, Jules and Devin) across 961,168 repos. Commits, patches, reviews and timelines exist only for repos with more than 100 stars. CC BY 4.0 & Shows what real coding agents change and how often. It is the base corpus the next two datasets are built from. Optional enrichment, not a task source \\
+\href{https://github.com/gems-uff/agentic-conflicts}{agentic-conflicts} & Public & Built on AIDev: 14,960 conflicting merges inside agent-authored pull requests, with 121,599 conflict chunks. Each conflict is labeled with who resolved it (96.1\% humans, 3.1\% agents) and how. Code MIT, data CC BY 4.0 & The closest real evidence of the conflicts ALIGN targets. The resolution strategies are a reference for what the arbiter's mediate and restructure actions should produce \\
+\href{https://zenodo.org/records/19396917}{AgenticFlict} & Public & 142,652 agent pull requests from 59,412 repos. Merges were simulated for 107,026 of them, and 29,609 (27.7\%) conflict. No resolution data. CC BY 4.0 & Shows how common execution conflicts are in real agent work, which motivates the problem. It has no resolutions, so it can't score the arbiter \\
+\href{https://github.com/illinoisdata/STALE-bench}{STALE-bench} & Public & Parallel agent patches that pass their tests alone but fail together once merged: 417 mined Django pairs plus 36 constructed instances & The ``passes alone, fails together'' case is exactly an execution conflict. A possible second source of execution-conflict tasks after CooperBench \\
+\href{https://github.com/benedikt-schesch/Merge-Bench}{Merge-Bench} & Public & 7,938 real merge-conflict hunks from 1,439 GitHub repos in 11 languages, each with the resolution the developer committed. Scored by matching the developer's resolution, not by running tests & Human-written conflicts rather than agent ones. Useful for checking how good the arbiter's proposed resolutions are when it mediates \\
+\href{https://github.com/UBOWENVT/ConflictBench}{ConflictBench} & Public & 180 Java merge scenarios with base, both sides and the developer's merge. 136 are true conflicts and 44 are false ones, where git reported a conflict but the edits could have merged cleanly & Small and Java only. The true vs false split tests whether the arbiter steps in only when it should \\
+\href{https://github.com/Lordog/R-Judge}{R-Judge} & Public & 569 multi-turn agent interaction records across 27 risk scenarios and 10 risk types, each human-labeled safe or unsafe with a description of the risk & Checks whether the LLM arbiter can tell risky actions from normal ones before we run it on our tasks. Single-agent records \\
+\href{https://github.com/ai-secure/redcode}{RedCode} & Public & 4,050 risky code-execution cases in Python, Bash and natural language, run in Docker, plus 160 prompts asking for harmful code & Concrete unsafe actions by code agents. Used to extend our prohibited-behaviour rules and check that the rule-based arbiter catches them \\
+\href{https://github.com/ag2ai/Agents_Failure_Attribution}{Who\&When} & Public & 184 failed multi-agent runs, each human-labeled with the agent responsible, the step of the decisive error and an explanation & The only public step-level labels for where a multi-agent run went wrong. We check our LLM judge against them before trusting its labels \\
+\href{https://huggingface.co/datasets/mcemri/MAST-Data}{MAST} & Public & 1,642 multi-agent traces from 7 frameworks, labeled with 14 failure modes in 3 categories, 6 of them inter-agent misalignment. CC BY 4.0 & Its misalignment modes, like agents ignoring each other's input, help define the arbiter's triggers. Labels are per trace, not per step \\
+\href{https://huggingface.co/datasets/nebius/SWE-agent-trajectories}{SWE-agent trajectories} & Public & 80,036 single-agent trajectories on GitHub issues, with reasoning, actions, observations, the final patch and whether the issue was resolved. CC BY 4.0 & Shows what normal coding-agent behaviour looks like, so we can measure how often our unsafe-action rules would fire on it (false alarms) \\
+\href{https://github.com/THUNLP-MT/IoA}{IoA-Suite (Illusion of Alignment)} & Public & Collaborative dialogues where participants seem aligned but hold hidden disagreements: 5 task types by 6 domains, split into 1,200 train, 120 validation and 300 test dialogues. Apache-2.0 & Matches the arbiter's query action, which is meant to surface hidden disagreement before it turns into conflicting edits. Dialogue only, no code \\
+\href{https://github.com/aisilab/arbiter}{The Arbiter Agent} & Public code & An LLM monitor that watches multi-agent conversations live on an inspection budget and can wait, question an agent, inspect its prompt or reasoning or flag misalignment. No license stated & The closest prior system and the base for our monitor-only condition. It studies conversations, not agents editing a shared repo. We couldn't confirm whether its conversation logs are released \\
+\href{https://huggingface.co/datasets/DISLab/SoCRATES}{SoCRATES} & Public & 40 hard negotiation scenarios across 8 domains, expanded to 600 variants. Each has the parties, roles, stances and weights, background, outcome, the full unmediated dialogue and each speaker's private inner thoughts per turn. CC BY 4.0 & Not coding, but the best data for mediation: it shows what each side actually wants. A reference for the arbiter's mediate action and for timing interventions \\
+\href{https://github.com/ulab-uiuc/MARBLE}{MultiAgentBench (MARBLE)} & Public & Six multi-agent scenarios: research, Minecraft, database and coding (cooperative), plus werewolf and bargaining (competitive). Scored with milestone metrics. MIT & Its werewolf scenario is a ready-made adversarial setting for our stretch goal, and its milestone metrics are a model for scoring partial progress \\
+\href{https://github.com/sstepput/Avalon-NLU}{Avalon-NLU} and \href{https://persuasion-deductiongame.socialai-data.org}{Werewolf Among Us} & Public & Human social-deduction games with hidden roles. Avalon-NLU: 20 games, 2,384 utterances labeled for persuasion and deception. Werewolf Among Us: 199 game dialogues with 26,647 persuasion-strategy labels & Only relevant if we keep the adversarial stretch goal. Human chat, not code, so weak for the core project \\
+\href{https://github.com/JialongZhou666/GUARDIAN}{GUARDIAN} & Public code & Detects and contains errors spreading between agents by modeling their collaboration as a graph over time. Scripts for injected hallucinations and corrupted messages. NeurIPS 2025, MIT & A different problem from ours: corrupted information, not conflicting goals. Useful only as a reference for injecting faults into test runs \\
+\href{https://metr.org/blog/2026-08-26-openai-hugging-face-incident-investigation/}{METR incident investigation} & Scrape & Public report on about 1,200 agents in OpenAI evals that built a hidden message board, about 700 of which joined an attack on Hugging Face. Includes a timeline plus quoted agent reasoning and messages & The incident behind ALIGN's motivation. We can turn its timeline and quotes into a few hand-built test cases, such as agents sharing credentials \\
+Our conflict variants & Generate & design\_conflict versions of CooperBench pairs: each agent gets a contradictory requirement, we write tests that prove both can't pass together, and a team member approves each one. Modeled on Anthropic's ``turf war'' experiment (see below) & Fills the gap CooperBench leaves. Without these we can't test the pick-one-goal and escalate outcomes \\
+Our run logs & Generate & Every run of our harness under the none, monitor, rule\_based and llm conditions, written as \code{events.jsonl} and loaded by the Part 3 pipeline & The only source for the decision log and run outcomes, since no public data has an arbiter in the loop with coding agents \\
+\end{longtable}
+}
+
+\subsection*{Sources we looked at but can't use}
+
+{\small
+\begin{tabularx}{\linewidth}{@{}L{4.2cm}YY@{}}
+\toprule
+\textbf{Source} & \textbf{What it is} & \textbf{Why we can't use it} \\
+\midrule
+\href{https://www.anthropic.com/research/multiagent-systems}{Anthropic, ``Patterns and problems in emerging multiagent systems''} & Experiments where agents with overlapping jobs ran into a ``turf war''. Outcomes were one agent forcing its way, both backing off, an informal truce or nothing getting settled & No data released. We use the setup as the template for our design\_conflict variants \\
+\href{https://arxiv.org/abs/2606.15376}{CoAgent} & A coordination layer for agents sharing resources, tested on 10 contended workloads & Paper only, no code or logs released \\
+METR incident transcripts and message board & The full agent transcripts and the hidden message board from the OpenAI and Hugging Face incident & Shared only with METR. We can use only what the public report quotes \\
+Production agent logs & Logs from companies running multiple coding agents on shared code & Private. This is the main reason we generate our own run logs \\
+\bottomrule
+\end{tabularx}
+}
+
+We also searched for three datasets from early drafts (The Referee, a ``Delpeuch 639K merge cases'' set and MergeConflictBench) and couldn't find any of them, so they are left out. STALE-bench, Miraldo et al.'s merge conflict data (\href{https://zenodo.org/record/3751038}{Zenodo}) and ConGra (44,948 conflicts) are the real datasets closest to what we were looking for.
+
+\subsection*{How the datasets fit together}
+
+Only CooperBench and our own variants become tasks. Every other dataset tests one piece of the arbiter or the judge before we trust it on our runs.
+
+{\small
+\begin{tabularx}{\linewidth}{@{}L{3.2cm}YL{2.8cm}Y@{}}
+\toprule
+\textbf{Task type} & \textbf{Source} & \textbf{Size} & \textbf{Expected outcome} \\
+\midrule
+No conflict & CooperBench pairs that merge cleanly & 153 pairs & complete\_all\_goals, and the arbiter should mostly continue \\
+Execution conflict & CooperBench pairs that conflict under \code{git merge} & 499 pairs & complete\_all\_goals after the arbiter mediates or restructures \\
+Design conflict & Our YAML variants of CooperBench pairs & Dozens, written by hand & pick\_one\_goal or escalate \\
+Adversarial (stretch) & MARBLE's werewolf scenario & Only if time allows & escalate or block \\
+\bottomrule
+\end{tabularx}
+}
+
+We start with the 100-pair CooperBench lite subset and hold some pairs back so the LLM arbiter and judge are never tuned on the runs we report.
+
+Supporting datasets by job:
+
+\begin{itemize}
+  \item Checking the LLM judge's step labels: Who\&When, then a team review of held-out runs
+  \item Unsafe-action rules and false alarms: R-Judge, RedCode and SWE-agent trajectories
+  \item What good mediation looks like: agentic-conflicts, Merge-Bench, ConflictBench and SoCRATES
+  \item When to query: IoA-Suite and MAST's misalignment modes
+  \item Why the problem matters: AIDev, AgenticFlict and the METR report
+\end{itemize}
+
+\subsection*{What we wanted vs what we can get}
+
+{\small
+\begin{tabularx}{\linewidth}{@{}L{3.6cm}YY@{}}
+\toprule
+\textbf{Part 1 dataset} & \textbf{Closest real source} & \textbf{What's missing} \\
+\midrule
+1. Conflict task suite & CooperBench (652 pairs: 499 conflict under \code{git merge}, 153 don't) plus our design\_conflict variants & Design conflicts have to be written by hand, so there will be dozens of them, not thousands \\
+2. Expert-labeled decision log & Our run logs, labeled by rules and an LLM judge whose accuracy we check against Who\&When and R-Judge & No senior engineer labels every step. Labels are provisional until a team member reviews them, and full review is planned only for the held-out runs \\
+3. Run outcomes & Our run logs, summed by the two SQL views & Nothing public. All of it is generated by our own runs \\
+4. Real incident trajectories & METR's report excerpts, plus MAST and Who\&When traces & Real production logs are private. The METR transcripts were shared only with METR \\
+\bottomrule
+\end{tabularx}
+}
+
+
+
+\clearpage
+
+\Needspace{7\baselineskip}
+\section*{Part 3: Data Processing Pipelines}
+
+The pipeline has two paths into PostgreSQL: task definitions and recorded agent-run evidence. The task path snapshots a pinned CooperBench file tree into S3, normalizes local feature pairs or custom JSON scenarios, and loads tasks and goals. The run path validates immutable event bundles, optionally transfers them through S3, imports events and decisions, and evaluates recorded outcomes. Terraform defines separate dev/prod infrastructure; Flyway defines the 10-table schema and reporting views.
+
+\subsection*{Pipeline diagram}
+
+\begin{figure}[htbp]
+  \centering
+  \reportimage[width=\linewidth,height=0.62\textheight,keepaspectratio]{align_pipeline_v8.png}
+  \caption{Pipeline architecture: task-definition flow (blue), run-evidence and evaluation flow (purple), PostgreSQL warehouse (green), and planned extensions (dashed).}
+  \label{fig:task-pipeline}
+\end{figure}
+
+The upper lane transforms task definitions into task and goal records. The lower lane preserves run evidence, imports events and decisions, and evaluates observed outcomes. Both paths share the PostgreSQL schema and reporting views. Task normalization uses an operator-staged local dataset copy; run-bundle transfer is an explicit upload/download step. Dashed elements identify planned extensions.
+
+\subsection*{Technology choices}
+
+{\small
+\begin{tabularx}{\linewidth}{@{}L{2.2cm}L{4.4cm}Y@{}}
+\toprule
+\textbf{Layer} & \textbf{Tool} & \textbf{Why} \\
+\midrule
+Raw storage & One versioned S3 lake per environment, replicated to a separate backup bucket & Preserve source file trees and finalized run bundles with completion manifests. Task uploads check size/hash metadata; run-bundle uploads also verify stored bytes by readback. Conflicting content is rejected \\
+Database & PostgreSQL 16 on RDS (db.t4g.micro in dev) in private subnets & We expect a few GB at most. Foreign keys and CHECK constraints reject bad rows, and snapshots cover the Part 5 restore \\
+Schema changes & Flyway, with \code{V1\_\_schema.sql} and \code{V2\_\_views.sql} & The same versioned migrations run locally, in CI and against RDS. For RDS, a team member runs the pinned Flyway image (\code{flyway/flyway:11.17.2}) through a Session Manager port forward via the EC2 instance, since RDS only accepts connections from it \\
+Compute & Docker-capable Amazon Linux 2023 EC2 module, with digest-pinned ECR image support & Provides the host and instance-role access for pipeline workloads. Task and run-processing tools are manual CLIs; agent execution, application packaging and measured benchmark build sizing remain next steps. Session Manager is the intended access path \\
+Pipeline code & Python standard library, \code{huggingface\_hub}, \code{boto3} and \code{psycopg} & Three task scripts and three run-processing scripts. Processing uses files, JSONL, checksum manifests and SQL transactions. Evaluation uses recorded evidence and optional reviewed human labels; no LLM judge is implemented \\
+Secrets & AWS Secrets Manager; runtime database connection settings & RDS manages the database credential secret; compute provisions an LLM-secret entry whose value is supplied separately. SQL-writing CLIs read \code{ALIGN\_DATABASE\_URL} at runtime and do not fetch secrets themselves \\
+Local dev and CI & PostgreSQL in Docker Compose, GitHub Actions & Terraform/Flyway checks, offline task and event-contract tests, and disposable-PostgreSQL integration for run import and evaluation \\
+\bottomrule
+\end{tabularx}
+}
+
+We skipped Snowflake and orchestrators like Airflow. At a few GB they add setup and upkeep without a benefit, which matches the DuckDB vs Snowflake case from the build vs buy lecture.
+
+\subsection*{Data sources}
+
+Task inputs and run-evidence processing have implementations. Run-stage fixtures are synthetic; producing traces from real agents and calling an LLM remain separate execution work.
+
+{\small
+\begin{tabularx}{\linewidth}{@{}L{2.6cm}YY@{}}
+\toprule
+\textbf{Source} & \textbf{What we take} & \textbf{How it arrives} \\
+\midrule
+\href{https://huggingface.co/datasets/CodeConflict/cooperbench-dataset}{CooperBench} & Repository/task directories containing environment scripts and feature directories with specifications, gold patches and evaluator test patches & \code{snapshot\_download} at a pinned 40-character dataset revision preserves the file tree. The normalizer selects \code{flash} by default, or explicit \code{lite}/\code{all} pairs \\
+Task environments & Each task's \code{Dockerfile}, \code{setup.sh}, \code{runner.sh} and \code{run\_tests.sh} & Preserved in the raw snapshot and referenced by \code{setup\_spec}. The ingestion scripts record these paths; they do not build images or execute task tests \\
+Our conflict variants & Team-authored JSON scenario definitions using the same task/goal contract & Read from local \code{*.json} files by the normalizer's \code{custom} mode. The included sample illustrates the contract; runnable conflict variants remain to be authored and reviewed \\
+Run evidence & Versioned \code{events.jsonl} containing a run header, ordered observations/actions and optional final \code{run\_end} & A synthetic fixture is supplied. \code{run\_artifacts.py} stages/verifies a local bundle and supports explicit S3 upload/download. A future harness must produce real traces and filter sensitive content \\
+LLM API (planned) & Agent, arbiter and judge calls & Runtime credentials from Secrets Manager when those components are implemented \\
+\bottomrule
+\end{tabularx}
+}
+
+Once built, the harness reads task specs from \code{tasks} and \code{task\_goals}, runs the agents and the arbiter inside each task's Docker container and logs every step.
+
+\subsection*{Storage design}
+
+S3 holds immutable dataset snapshots and run bundles. PostgreSQL stores task definitions, recorded events, decisions and evaluation results. Event records may reference external S3 artifacts through \code{artifact\_uri}. The run-bundle utility uploads only the event file and its manifest, not arbitrary large artifacts. Database access uses the private network; team SQL access can use a Session Manager port forward through EC2.
+
+\subsubsection*{Lake (S3)}
+
+CooperBench snapshot layout:
+
+{\small
+\begin{verbatim}
+s3://<lake bucket>/
+  benchmarks/raw/cooperbench/<revision>/
+    manifest.json             completion marker and file inventory
+    dataset/                  original relative paths preserved
+      README.md
+      subsets/flash.json
+      subsets/lite.json
+      <repo>/task<id>/
+        Dockerfile, setup.sh, runner.sh, run_tests.sh, combined.patch
+        feature<id>/
+          feature.md, feature.patch, tests.patch
+\end{verbatim}
+}
+
+The manifest records file paths, sizes and SHA-256 hashes and is written last. The normalizer writes \code{tasks.jsonl} and a separate completion manifest to a local \code{--output-dir}; it does not upload normalized output to S3.
+
+Run-bundle layout:
+
+{\small
+\begin{verbatim}
+s3://<lake bucket>/
+  runs/<run_key>/
+    events.jsonl              one finalized event file
+    manifest.json             SHA-256, size, identity and completion
+\end{verbatim}
+}
+
+Upload writes the run manifest last and verifies object contents by readback. Download checks the account, downloads both files into a new local directory and verifies the bundle. The canonical UUID \code{run\_key} is stored as \code{runs.trial\_key}; it is distinct from the database's integer \code{runs.run\_id}. A finalized bundle may describe an incomplete/crashed run; its completion flag records whether a final \code{run\_end} exists.
+
+Additional scenario-archive and quarantine prefixes remain proposed. There is no streaming append, automatic quarantine, or arbitrary artifact uploader in the run-bundle utility.
+
+\subsubsection*{Warehouse (Postgres)}
+
+{\small
+\begin{tabularx}{\linewidth}{@{}L{3.4cm}YL{4.2cm}@{}}
+\toprule
+\textbf{Table} & \textbf{One row per} & \textbf{Written by} \\
+\midrule
+\code{tasks} & Version of a two-agent scenario, including its combined \code{shared\_goal} & \code{load\_tasks.py} \\
+\code{task\_goals} & Testable goal; two agent-owned rows per normalized CooperBench task & \code{load\_tasks.py} \\
+\code{runs} & Execution of a task under one arbiter condition & \code{process\_runs.py} \\
+\code{events} & Observation or action in a run, ordered by \code{sequence\_number} & \code{process\_runs.py} \\
+\code{action\_attempts} & Tool call an agent proposed, with its safety judgment and whether it ran & \code{process\_runs.py} \\
+\code{decision\_log} & Arbiter decision, including explicit \code{continue} & \code{process\_runs.py} \\
+\code{conflict\_episodes} & Explicitly recorded conflict episode; unobserved conflicts are not inferred & \code{evaluate.py} \\
+\code{decision\_labels} & Expected arbiter actions at a checkpoint & \code{evaluate.py}, then human review \\
+\code{evaluations} & Overall result of a run & \code{evaluate.py} \\
+\code{goal\_results} & Result of one goal in one run & \code{evaluate.py} \\
+\bottomrule
+\end{tabularx}
+}
+
+The schema permits agent-owned or shared-owned goal rows, but the CooperBench normalizer emits only two agent goals. Its combined objective is stored in \code{tasks.shared\_goal}, not a third goal row. The task loader writes the first two tables; the run importer and evaluator populate the run/evaluation tables within the same Flyway schema.
+
+Two implemented views sit on top: \code{v\_run\_summary} (one row per run) and \code{v\_task\_comparison} (grouped by task and arbiter condition). Only Flyway creates or changes the schema.
+
+\subsection*{Data schemas}
+
+The full DDL is in \nolinkurl{infra/modules/database/migrations/V1__schema.sql}, with an ERD in \nolinkurl{infra/modules/database/docs/ALIGN_ERD_physical.mmd}. Task definitions, recorded run data and evaluations live in separate tables, so runs can be relabeled and re-evaluated without touching what was recorded.
+
+
+
+The conceptual gold label in Part 1 maps to the separate \code{decision\_labels} table, allowing labels to be revised or reviewed without changing recorded run data.
+
+\subsubsection*{Rules the database enforces}
+
+\begin{itemize}
+  \item Composite foreign keys stop a goal or conflict from being matched to the wrong task or run.
+  \item A trigger checks that every \code{decision\_log} row belongs to an \code{arbiter\_decision} event.
+  \item A run's \code{evaluations} row must exist before its \code{goal\_results}.
+  \item Each checkpoint has at most one reference label, and it must be reviewed.
+\end{itemize}
+
+\subsubsection*{Run event contract}
+
+Each line of \code{events.jsonl} is an event object validated by \code{run\_artifacts.py}. The first event is a system \code{run\_start}; if present, the only \code{run\_end} must be the final system event. Duplicate UUIDs, gaps and out-of-order sequence numbers are rejected, not repaired or silently dropped.
+
+{\small
+\begin{tabularx}{\linewidth}{@{}L{3.6cm}L{1.8cm}Y@{}}
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Notes} \\
+\midrule
+\code{schema\_version} & int & Version 1 \\
+\code{event\_uuid} & UUID text & Canonical lowercase identity. The importer retains it in \code{events.payload.event\_uuid}; SQL assigns its own integer \code{event\_id} \\
+\code{run\_key} & UUID text & Same canonical run identity on every line; maps to \code{runs.trial\_key} \\
+\code{sequence\_number} & int & Contiguous file order starting at 1 \\
+\code{actor\_type}, \code{actor\_id} & text & \code{agent}, \code{arbiter} or \code{system}; \code{actor\_id} may be absent/null \\
+\code{event\_type} & text & Includes \code{run\_start}, \code{proposed\_action}, \code{arbiter\_decision}, \code{action\_result}, \code{test\_result}, \code{conflict\_onset}, \code{conflict\_resolution}, \code{run\_end} \\
+\code{trigger\_sequence} & int & Optional earlier-event reference; decisions/results must reference a proposed action when imported \\
+\code{occurred\_at}, \code{observed\_at} & timestamp & UTC ISO-8601 ending in \code{Z}; observation time is optional \\
+\code{payload} & object & Event-specific data; \code{run\_start} supplies task key, condition, configurations and optional seed \\
+\code{artifact\_uri} & text & Optional S3 reference; external artifact collection is the producer's responsibility \\
+\bottomrule
+\end{tabularx}
+}
+
+\subsection*{Ingestion, cleaning and transformation}
+
+\subsubsection*{Task pipeline: validation and reruns}
+
+\begin{itemize}
+  \item \textbf{Raw snapshot:} preserve source bytes and record paths, sizes and SHA-256 hashes. Existing objects are skipped only when size/hash metadata matches; conflicts fail rather than overwrite. A completed manifest is the snapshot's completion marker. Upload checks use object metadata, not a full download audit.
+  \item \textbf{Normalization:} validate required files, pinned revisions, repository/base-commit metadata and the task/goal contract. Supplying \code{--raw-manifest} additionally verifies the local file inventory and contents against the raw snapshot. Normalization does not execute feature tests.
+  \item \textbf{SQL loading:} check the normalized manifest, checksum, source revision, record count, identities and exact field sets before connecting. Identical tasks/goals are skipped; changed definitions at an existing identity are rejected. Parameterized inserts for the whole batch share one transaction, so a failure rolls back the batch.
+\end{itemize}
+\subsection*{Pipeline Implementation}
+
+Table~\ref{t6} summarizes the six implemented pipeline scripts, their inputs,
+checks and outputs. The table continues onto another page if necessary.
+
+{\small
+\renewcommand{\arraystretch}{1.17}
+\begin{longtable}{@{}L{3.60cm}L{3.05cm}L{5.10cm}L{\dimexpr\linewidth-11.75cm-6\tabcolsep\relax}@{}}
+\caption{Implemented task and run-processing tools.}\label{t6}\\
+\toprule
+\textbf{Script} & \textbf{Input} & \textbf{Main transformation/check} & \textbf{Output} \\
+\midrule
+\endfirsthead
+\multicolumn{4}{@{}l}{\textit{Table \thetable{} (continued)}} \\
+\toprule
+\textbf{Script} & \textbf{Input} & \textbf{Main transformation/check} & \textbf{Output} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{4}{r@{}}{\textit{Continued on next page}} \\
+\endfoot
+\bottomrule
+\endlastfoot
+
+{\footnotesize\path{ingest_cooperbench.py}} &
+Pinned CooperBench dataset revision &
+Preserves source files and records paths, sizes and SHA-256
+checksums; writes the completion manifest last. &
+Raw dataset snapshot and manifest in S3. \\
+
+\path{normalize_tasks.py} &
+Local CooperBench snapshot or custom JSON scenarios &
+Validates task definitions and converts feature pairs or scenarios
+into the common task/goal schema. &
+Local \texttt{tasks.jsonl} and checksum/count manifest. \\
+
+\path{load_tasks.py} &
+Normalized task file and manifest &
+Checks schema, provenance, checksum and identities; inserts tasks
+and their goals in one transaction. &
+PostgreSQL \texttt{tasks} and \texttt{task\_goals}. \\
+
+\path{run_artifacts.py} &
+Recorded \texttt{events.jsonl} or an existing run bundle &
+Validates event identity, ordering and timestamps; stages and
+verifies bundles, with optional S3 upload/download. &
+Local or S3 run bundle containing events and a manifest. \\
+
+\path{process_runs.py} &
+Verified local run bundle and an existing database task &
+Maps events and trigger references into relational records;
+derives run status and provisional unsafe-action annotations. &
+PostgreSQL runs, events, decisions and action attempts. \\
+
+\path{evaluate.py} &
+Ingested run, goal definitions and optional human labels &
+Evaluates observed goal results and declared conflicts; preserves
+unknown outcomes when required evidence is missing. &
+Evaluations, goal results, conflict episodes and decision labels. \\
+
+\end{longtable}
+}
+
+SQL writes require explicit \texttt{--apply} and runtime database
+configuration; run-bundle uploads also require \texttt{--apply} and
+an expected AWS account. Raw dataset ingestion instead provides an
+explicit \texttt{--dry-run} mode. Checksum manifests support integrity
+checks, while database writes are grouped into transactions. Replay
+checks are intended to skip unchanged inputs and reject conflicting
+content. Automated rule suggestions remain provisional and are not
+treated as reviewed reference labels; human references require
+explicit reviewer information. The repository contains the detailed
+implementation and tests. 
+
+\subsubsection*{Scoring and label quality}
+
+The implemented views summarize the stored run/evaluation records. An intervention is correct when its action belongs to a reviewed reference label's \code{expected\_actions}, false when the reference expects only \code{continue}, and missed when the arbiter continues although \code{continue} is not allowed. Other interventions count as wrong-type; checkpoints without decisions are unobserved, and the no-arbiter baseline is excluded from decision scoring.
+
+Rule suggestions remain provisional and are not gold reference labels. Unreviewed action attempts remain safety-unclassified in the views. Meaningful intervention metrics require reviewed checkpoint coverage; the synthetic fixture and automated rule hits do not supply research ground truth. Detecting unobserved conflicts and obtaining independent held-out review remain future evaluation work.
+
+\subsection*{When the pipelines run}
+
+Task and run-processing scripts are manually invoked and make no LLM calls. A future harness will generate real agent traces. Compute supports an optional nightly offline smoke container once an image, command and resource budgets are configured; that is separate from these CLI tools and their database tests.
+
+{\small
+\begin{longtable}{@{}L{3.8cm}L{\dimexpr\linewidth-7.8cm-4\tabcolsep\relax}L{4.0cm}@{}}
+\toprule
+\textbf{Job} & \textbf{When} & \textbf{Use case} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Job} & \textbf{When} & \textbf{Use case} \\
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
+\nolinkurl{ingest_cooperbench.py} & Manually for a new pinned dataset revision & Preserve the raw source in S3 \\
+\nolinkurl{normalize_tasks.py} & After staging a local snapshot or adding JSON scenarios & Build the common task manifest \\
+\nolinkurl{load_tasks.py} & Validate first; opt into database writes & Load tasks and goals \\
+\nolinkurl{run_artifacts.py} & When an event file is ready; explicit S3 transfer if needed & Validate, stage, verify and transfer immutable run bundles \\
+\nolinkurl{process_runs.py} & After bundle verification and task loading & Import events, decisions and action attempts \\
+\code{evaluate.py} & After run import; repeat with explicit human labels & Store observed outcomes and reviewed references \\
+Agent harness (planned) & Per future experiment batch & Execute agents and produce real traces \\
+Nightly smoke job (configurable) & Only when enabled with an image, offline command and budgets & Offline container checks; no live S3/database/LLM connectivity \\
+CI checks & Pull requests and pushes to \code{a2} & Terraform/Flyway checks, offline pipeline tests and disposable-PostgreSQL integration \\
+\end{longtable}
+}
+
+\subsection*{Implementation and Validation}
+
+  Offline tests cover task schemas, checksums, event identity and ordering,
+  replay handling, and evaluation logic. Database integration tests use
+  disposable PostgreSQL with the Flyway schema to exercise transactional
+  loading, run import, evaluation and reporting views. GitHub Actions
+  also checks Terraform formatting, validation and mocked module behaviour.
+
+  These tests use controlled fixtures; they do not establish real-agent
+  execution or deployment of the combined pipeline. The synthetic AWS
+  connectivity and recovery checks in Part 5 are separate from end-to-end
+  validation of the six processing tools. Review identified remaining
+  edge cases in upload consistency, JSON replay comparisons and conflict
+  attribution; these require fixes and regression tests.
+
+\subsection*{Next Steps}
+
+  \begin{itemize}
+      \item \textbf{Real-agent execution:}
+      Implement the harness that runs agents and produces actual event
+      traces. Package the workload, mirror required benchmark images to
+      ECR, measure resource requirements, and author runnable,
+      human-reviewed design-conflict scenarios.
+
+      \item \textbf{Evaluation quality:}
+      Correct conflict attribution and add regression tests. Introduce
+      independently reviewed labels and a validated LLM judge, extend
+      conflict detection beyond explicitly recorded events, and add
+      reviewed merge-conflict classifications for CooperBench tasks.
+
+      \item \textbf{Operational reliability:}
+      Fix upload-consistency and replay-comparison edge cases, then
+      validate the combined S3/PostgreSQL pipeline in dev. Automate
+      verified snapshot staging, introduce checkpoint/streaming support
+      and partial-run recovery, and add an orchestrator only when manual
+      execution becomes difficult to manage.
+
+      \item \textbf{Security and data governance:}
+      Isolate untrusted agents from evaluator-only artifacts, Docker
+      control and instance credentials. Add producer-side secret
+      redaction, runtime secret retrieval, least-privilege database
+      users and a quarantine policy. Strengthen database identity
+      constraints and retain versioned evaluations and reviewed labels.
+  \end{itemize}
+\clearpage
+
+\Needspace{7\baselineskip}
+\section*{Part 4: Infrastructure as Code}
+
+\noindent\textbf{Infrastructure implementation:}
+\href{https://github.com/UofT-CSC490-F2026/ALIGN/pull/24}
+{Terraform configuration and modules}.
+
+ALIGN's AWS infrastructure uses Terraform modules with separate development and production configurations. Shared module interfaces, environment-specific resource names and consistent tags keep the configuration organized and maintainable.
+
+{\small
+\begin{tabularx}{\linewidth}{@{}L{3.2cm}Y@{}}
+\toprule
+\textbf{Module} & \textbf{Main responsibilities} \\
+\midrule
+\textbf{Network} & Creates the VPC, public/private subnets and security groups. PostgreSQL accepts connections only from the EC2 security group; administration uses AWS Systems Manager Session Manager. \\
+\textbf{Storage} & Provides an encrypted, versioned S3 lake with public access blocked and replication to separately managed backup storage. \\
+\textbf{Database} & Provides encrypted RDS PostgreSQL in private subnets, automated backups, a final snapshot on deletion and credentials managed through Secrets Manager. Flyway manages the schema and reporting views. \\
+\textbf{Compute and IAM} & Creates EC2, installs Docker through user data and supports ECR images pinned by digest. The instance role grants scoped lake access and read access to the database and LLM secrets. \\
+\bottomrule
+\end{tabularx}
+}
+
+The infrastructure also includes:
+
+\begin{itemize}
+  \item \textbf{Container execution:} One EC2 instance supports the regular arbiter container and a separate, resource-limited nightly offline smoke-test container. Both remain disabled until an application image and runtime commands are configured.
+  \item \textbf{Secret handling:} Secret values are supplied separately and are not embedded in Terraform configuration or EC2 user data.
+  \item \textbf{Recovery support:} Terraform's remote-state infrastructure and S3 backup storage are managed separately from disposable environments, supporting the recovery process demonstrated in Part 5.
+\end{itemize}
+
+\clearpage
+
+\Needspace{7\baselineskip}
+\section*{Part 5: Disaster Recovery Demonstration}
+
+\noindent\textbf{Video demonstration:} \url{https://youtu.be/mZbOJ8Hzmfc}
+
+The accompanying video demonstrates deletion and recovery of the production environment using Terraform. Recovery covers infrastructure, database contents, S3 objects, configuration and access controls. Synthetic task and log data provide a small workload for checking the recovered system.
+
+\subsection*{Recovery design}
+
+The environment separates disposable production resources from the materials required for recovery. Terraform configuration defines the networking, compute, storage, database and IAM resources. Remote state and locking infrastructure are managed separately, as are the S3 backup buckets. The manual RDS snapshot \code{a2-snapshot-before-disaster} and its encryption key remain available throughout production deletion.
+
+These components serve different purposes: Terraform reconstructs infrastructure, the RDS snapshot restores PostgreSQL's schema and records, and the backup bucket supplies the lake's object contents. Database changes made after the selected snapshot are outside its recovery point.
+
+\subsection*{Controlled deletion}
+
+The demonstration identifies production by its resource names and unique identifiers before reviewing the saved Terraform plans.
+
+\begin{figure}[H]
+  \centering
+  \reportimage[width=\linewidth,height=0.6\textheight,keepaspectratio]{part5_evidence/01_before_deletion/05_prod_and_dev_rds_available.png}
+  \caption{Before deletion: production and development databases are available.}
+  \label{fig:recovery-rds-before}
+\end{figure}
+
+{\small
+\begin{tabularx}{\linewidth}{@{}L{5.2cm}Y@{}}
+\toprule
+\textbf{Saved plan} & \textbf{Purpose} \\
+\midrule
+\code{recording-guards.tfplan} & Disable RDS deletion protection and enable deletion of the populated production lake. \\
+\code{recording-delete.tfplan} & Delete the reviewed production resources using Terraform's destruction planning mode. \\
+\code{recording-restore.tfplan} & Recreate production with the selected snapshot and restored protection settings. \\
+\bottomrule
+\end{tabularx}
+}
+
+For this recording, \code{skip\_final\_snapshot} was temporarily enabled because an existing manual snapshot had been selected as the recovery source. The preparation plan changed settings without deleting resources; destruction was performed through a separate reviewed plan. Development, backup storage and Terraform's remote backend remained outside the destruction scope.
+
+Termination of the original EC2 instance and the RDS deletion event establish that production resources were removed.
+
+\begin{figure}[H]
+  \centering
+  \reportimage[width=\linewidth,height=0.6\textheight,keepaspectratio]{part5_evidence/02_after_deletion/01_prod_rds_absent_dev_available.png}
+  \caption{After deletion: production is absent; development remains available.}
+  \label{fig:recovery-rds-deleted}
+\end{figure}
+
+\subsection*{Infrastructure and database restoration}
+
+Before restoration, \code{skip\_final\_snapshot} was returned to false. Database deletion protection was re-enabled and S3 force-destroy was disabled.
+
+Terraform recreated production and restored PostgreSQL from the retained snapshot. The database module supplies \code{snapshot\_identifier} and leaves the initial database name and administrator username unset during snapshot restoration, allowing those values to come from the snapshot.
+
+\begin{figure}[H]
+  \centering
+  \reportimage[width=\linewidth,height=0.6\textheight,keepaspectratio]{part5_evidence/03_after_restoration/03_prod_and_dev_rds_available.png}
+  \caption{After recovery: the production database is available again.}
+  \label{fig:recovery-rds-restored}
+\end{figure}
+
+The original EC2 instance, \code{i-00be804af0c0bc412}, was replaced by \code{i-026926b181aa9e6bf}. PostgreSQL retained the identifier \code{align-prod-postgres}, but its internal resource ID changed. These identifiers distinguish resource recreation from restarting surviving instances.
+
+The empty LLM secret entry was recovered from pending deletion and adopted through a temporary Terraform import declaration. Database connections used the restored instance's current endpoint and RDS-managed credential secret.
+
+\subsection*{Data recovery and functional verification}
+
+Recreating the S3 lake does not restore its files. Protected objects are copied separately from backup storage, and their contents are compared against the saved recovery evidence.
+
+Verification checks both preserved data and new operations: retrieve records included in the database snapshot, check their S3 references and recovered object contents, then commit a new synthetic task/log and read it through a separate database connection. This verifies persistence beyond the transaction that performed the write.
+
+Configuration checks cover private and encrypted RDS, database deletion protection, IAM and security-group access controls, and S3 encryption, versioning and public-access blocking. A final reviewed Terraform plan checks consistency between the recovered environment and its configuration.
+
+\subsection*{Retaining the recovery configuration}
+
+PR \#18 also addresses accidental database replacement during later maintenance. The snapshot identifier now resides in canonical \code{prod.tfvars}; the production input rejects null or empty values. \code{restore.tfvars} remains an empty compatibility file, so passing both files in the recording is consistent with the updated configuration. Mocked regression tests check these settings; they complement the live verification shown in the video. See the \href{https://github.com/UofT-CSC490-F2026/ALIGN/pull/18/files}{final PR \#18 changes}.
+
+\clearpage
+\subsection*{Sources}
+
+{\small
+\begin{itemize}
+  \item CooperBench: \url{https://huggingface.co/datasets/CooperBench/cooperbench-dataset} and \url{https://github.com/cooperbench/CooperBench}
+  \item AIDev v5: \url{https://huggingface.co/datasets/hao-li/AIDev-7.6M}
+  \item agentic-conflicts: \url{https://github.com/gems-uff/agentic-conflicts}
+  \item AgenticFlict: \url{https://zenodo.org/records/19396917}
+  \item STALE-bench: \url{https://github.com/illinoisdata/STALE-bench} (arXiv 2609.25396)
+  \item Merge-Bench: \url{https://github.com/benedikt-schesch/Merge-Bench}
+  \item ConflictBench: \url{https://github.com/UBOWENVT/ConflictBench}
+  \item R-Judge: \url{https://github.com/Lordog/R-Judge}
+  \item RedCode: \url{https://github.com/ai-secure/redcode}
+  \item Who\&When: \url{https://github.com/ag2ai/Agents_Failure_Attribution}
+  \item MAST: \url{https://huggingface.co/datasets/mcemri/MAST-Data}
+  \item SWE-agent trajectories: \url{https://huggingface.co/datasets/nebius/SWE-agent-trajectories}
+  \item IoA-Suite: \url{https://github.com/THUNLP-MT/IoA}
+  \item The Arbiter Agent: \url{https://github.com/aisilab/arbiter} (arXiv 2606.10747)
+  \item SoCRATES: \url{https://huggingface.co/datasets/DISLab/SoCRATES}
+  \item MultiAgentBench (MARBLE): \url{https://github.com/ulab-uiuc/MARBLE}
+  \item Avalon-NLU: \url{https://github.com/sstepput/Avalon-NLU}
+  \item Werewolf Among Us: \url{https://persuasion-deductiongame.socialai-data.org}
+  \item GUARDIAN: \url{https://github.com/JialongZhou666/GUARDIAN}
+  \item METR incident report: \url{https://metr.org/blog/2026-08-26-openai-hugging-face-incident-investigation/}
+  \item Anthropic multiagent research: \url{https://www.anthropic.com/research/multiagent-systems}
+  \item CoAgent: \url{https://arxiv.org/abs/2606.15376}
+  \item Miraldo et al. merge conflicts: \url{https://zenodo.org/record/3751038}
+  \item CSC490 Lecture 3, Build vs Buy (Sept 23)
+\end{itemize}
+}
+\end{document}
