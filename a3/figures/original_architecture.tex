@@ -1,0 +1,39 @@
+% Native vector diagram: no external image or shell escape is required.
+\begin{tikzpicture}[
+ font=\small,
+ box/.style={draw=blue!45!black,fill=blue!5,rounded corners=2pt,
+   align=center,text width=5.2cm,minimum height=0.72cm,inner sep=5pt},
+ detail/.style={box,text width=5.5cm},
+ add/.style={circle,draw=blue!45!black,fill=white,inner sep=1pt,
+   minimum size=6mm},
+ flow/.style={-{Latex[length=2mm]},thick,draw=blue!45!black}
+]
+\node[font=\bfseries] at (0,0.7) {Model forward path};
+\node[font=\bfseries] at (7.6,0.7) {Inside one Transformer block};
+\node[box] (tokens) at (0,0) {Input token IDs};
+\node[box,below=4mm of tokens] (embed) {Token embedding};
+\node[box,below=4mm of embed] (initial) {RMSNorm};
+\node[box,below=4mm of initial,minimum height=1.1cm,fill=blue!12]
+ (stack) {$L$ Transformer blocks\\(expanded on the right)};
+\node[box,below=4mm of stack] (final) {Final RMSNorm};
+\node[box,below=4mm of final] (head) {Vocabulary projection\\untied from token embedding};
+\node[box,below=4mm of head] (cap) {Logit soft cap: $15\tanh(z/15)$};
+\node[box,below=4mm of cap] (out) {Next-token logits\\cross-entropy during training};
+\foreach \a/\b in {tokens/embed,embed/initial,initial/stack,stack/final,final/head,head/cap,cap/out}
+ \draw[flow] (\a) -- (\b);
+
+\node[detail] (input) at (7.6,0) {Residual input $X$};
+\node[detail,below=4mm of input] (norm1) {RMSNorm};
+\node[detail,below=4mm of norm1,minimum height=2cm] (attn)
+ {Self-attention\\$Q,K,V$ projections\\RoPE on $Q,K$, then Q/K RMSNorm\\Full causal attention\\Concatenate heads; output projection};
+\node[add,below=4mm of attn] (add1) {$+$};
+\node[detail,below=4mm of add1] (norm2) {RMSNorm};
+\node[detail,below=4mm of norm2,minimum height=1.2cm] (mlp)
+ {Feed-forward network\\Linear $d\to4d$; squared ReLU\\Linear $4d\to d$};
+\node[add,below=4mm of mlp] (add2) {$+$};
+\node[detail,below=4mm of add2] (output) {Residual output $Y$};
+\foreach \a/\b in {input/norm1,norm1/attn,attn/add1,add1/norm2,norm2/mlp,mlp/add2,add2/output}
+ \draw[flow] (\a) -- (\b);
+\draw[flow] (input.east) -- ++(0.5,0) |- (add1.east);
+\draw[flow] (add1.west) -- ++(-3.2,0) |- (add2.west);
+\end{tikzpicture}
