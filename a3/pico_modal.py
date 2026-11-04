@@ -88,39 +88,13 @@ def collect():
     return [json.loads(p.read_text()) for p in Path('/vol/results/pilot-v1').glob('*/seed*/result.json')]
 
 
-@app.function(image=image, volumes={'/vol': volume}, gpu=None if CPU_ONLY else 'H100',
-              cpu=4, memory=16384, secrets=[modal.Secret.from_name('wandb-secret')],
-              timeout=600, retries=0, scaledown_window=2, max_containers=1)
-def rope_control():
-    """One capped follow-up; preserve the original pilot-v1 results unchanged."""
-    activate()
-    from pico.tests import run as smoke_tests
-    from pico.rope_control_tests import run as control_tests
-    from pico.train import train
-    checks = [control_tests('cpu'), control_tests('cuda')]
-    checks.extend(smoke_tests('cuda'))
-    print(json.dumps({'control_checks': checks}), flush=True)
-    results = []
-    for seed in (42, 43):
-        path = Path(f'/vol/results/rope-control-v1/fox_rope/seed{seed}')
-        existing = path / 'result.json'
-        if existing.exists():
-            results.append(json.loads(existing.read_text()))
-        else:
-            results.append(train('fox_rope', seed, path, seconds=240))
-            volume.commit()
-    return json.loads(json.dumps({'checks': checks, 'results': results}))
-
-
 @app.local_entrypoint()
 def main(stage: str = 'prepare', variant: str = 'baseline'):
     if CPU_ONLY and stage != 'prepare':
         raise ValueError('CPU-only mode permits preparation, never training.')
     dest = ROOT / 'a3' / 'pilot_results'
     dest.mkdir(exist_ok=True)
-    if stage == 'rope-control':
-        result = rope_control.remote()
-    elif stage == 'prepare':
+    if stage == 'prepare':
         result = prepare.remote()
     elif stage == 'collect':
         result = collect.remote()

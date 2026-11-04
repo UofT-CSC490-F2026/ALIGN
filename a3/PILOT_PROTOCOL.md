@@ -42,6 +42,8 @@ do not repeat the full sweep without checking cumulative spend.
 2. **FoX**: log-sigmoid forget gate accumulated along token positions, added to
    attention logits; no RoPE. Keeps nanochat QK normalization and value embeddings.
    Dense reference attention, not the authors' optimized forgetting kernel.
+   This intervention combines forgetting gates with removing RoPE; the pilot
+   does not isolate the contribution of either change.
 3. **DCMHA**: Appendix D rank-2 query/key compositions before and after softmax.
    Zero initialization of diagonal gates; small nonzero low-rank projections.
    Dense reference implementation. No claim of reproducing DCFormer's throughput.

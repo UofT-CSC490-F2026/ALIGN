@@ -2,13 +2,13 @@
 
 Picochat architecture experiments on nanochat commit
 `92d63d4e8bb4df75c3b71618f31ddde2378b2bcd` (July 3, 2026).
-The selected interventions are FoX without RoPE and CLA2, with a separate
-FoX-with-RoPE diagnostic control. This PR excludes the assignment report,
+The selected interventions are FoX without RoPE and CLA2.
+This PR excludes the assignment report,
 diagrams, and Part 3 hardware experiments.
 
 The broader six-configuration screening code and raw results are retained for
 reproducibility in `pico/` and `pilot_results/`. `REPORT.md` summarizes the original
-screening; `ROPE_CONTROL.md` summarizes the separate diagnostic control.
+screening.
 See `PILOT_PROTOCOL.md` for implementation details and limitations.
 
 ## Reproducing Part 2
@@ -38,9 +38,9 @@ Offline result checks need only Python's standard library:
 
 ```powershell
 python a3/pico/summarize.py a3/pilot_results
-python a3/pico/summarize_rope_control.py
 ```
 
-The second command also checks that adding the RoPE control preserved the original
-variant source. GPU correctness checks and their historical outputs are retained
-in `pico/tests.py`, `pico/rope_control_tests.py`, and `pilot_results/`.
+CPU/GPU correctness checks and their historical outputs are retained
+in `pico/tests.py` and `pilot_results/`.
+FoX combines forgetting gates with removing RoPE; this experiment does not
+isolate the contribution of either change.

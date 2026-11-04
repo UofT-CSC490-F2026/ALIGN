@@ -15,7 +15,7 @@ from nanochat.gpt import GPT, GPTConfig, Linear, norm, apply_rotary_emb
 from nanochat.common import COMPUTE_DTYPE
 from nanochat.flash_attention import flash_attn
 
-VARIANTS = ('baseline', 'cla2', 'fox', 'dcmha', 'diff_v2', 'fope', 'fox_rope')
+VARIANTS = ('baseline', 'cla2', 'fox', 'dcmha', 'diff_v2', 'fope')
 
 
 class Compose(nn.Module):
@@ -65,7 +65,7 @@ class PilotAttention(nn.Module):
         self.ve_gate_channels = source.ve_gate_channels
         if variant != 'cla2' or self.layer_idx % 2 == 0:
             self.c_k, self.c_v = source.c_k, source.c_v
-        if variant in ('fox', 'fox_rope'):
+        if variant == 'fox':
             self.forget = Linear(config.n_embd + 1, config.n_head, bias=False)
             nn.init.zeros_(self.forget.weight)
             with torch.no_grad():
@@ -96,7 +96,7 @@ class PilotAttention(nn.Module):
             q = apply_rotary_emb(q, *cos_sin)
             k = apply_rotary_emb(k, *cos_sin)
         q, k = norm(q) * 1.2, norm(k) * 1.2
-        if self.variant in ('fox', 'fox_rope', 'dcmha'):
+        if self.variant in ('fox', 'dcmha'):
             pos = torch.arange(t, device=x.device)
             delta = pos[:, None] - pos[None, :]
             mask = delta >= 0
@@ -104,7 +104,7 @@ class PilotAttention(nn.Module):
                 mask = mask & (delta <= window_size[0])
             scores = q.transpose(1, 2).float() @ k.transpose(1, 2).float().transpose(-1, -2)
             scores = scores * self.head_dim ** -0.5
-            if self.variant in ('fox', 'fox_rope'):
+            if self.variant == 'fox':
                 inputs = torch.cat((x, torch.ones_like(x[..., :1])), dim=-1)
                 cumulative = F.logsigmoid(self.forget(inputs).float()).cumsum(1).transpose(1, 2)
                 scores = scores + cumulative.unsqueeze(-1) - cumulative.unsqueeze(-2)
