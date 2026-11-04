@@ -1,48 +1,15 @@
-# Assignment 3 — Part 2 draft PR
+# Assignment 3 - Part 2 implementation
 
-This draft covers the original October 13, 2025 nanochat architecture,
-checked against commit `3a5e0bc50b123f37220f1ace6813f080455d19f3`.
-The experiments use the July 3, 2026 baseline `92d63d4`; the report includes
-a version comparison and three proposals (FoX, CLA, FoPE). Part 2 selects
-FoX without RoPE and CLA2, with a separate FoX-with-RoPE diagnostic control.
+Picochat architecture experiments on nanochat commit
+`92d63d4e8bb4df75c3b71618f31ddde2378b2bcd` (July 3, 2026).
+The selected interventions are FoX without RoPE and CLA2, with a separate
+FoX-with-RoPE diagnostic control. This PR excludes the assignment report,
+diagrams, and Part 3 hardware experiments.
 
-## Overleaf
-
-1. Upload only `a3.tex`. The TikZ diagram is now embedded; no `figures` folder is required.
-2. Select `a3.tex` as the main document and pdfLaTeX as the compiler.
-3. Replace the team-name/student-ID placeholder.
-4. Compile. The included TikZ diagram renders directly as vector graphics;
-   no screenshot, image generation, external tool, or shell escape is needed.
-5. Download the eventual completed report as `a3.pdf` into this folder.
-
-The source has not yet been compiled locally: no local LaTeX compiler was found.
-Review the rendered layout in Overleaf before submission.
-
-## Optional Mermaid image
-
-`figures/original_architecture.mmd` contains an alternative diagram with explicit
-Q/K/V branches. Paste its contents into a Mermaid editor and export a high-resolution
-PNG (or a PDF if supported). Upload it to `figures/` in Overleaf, and replace
-the embedded `\resizebox`/TikZ diagram block with, for example:
-
-```tex
-\includegraphics[width=\linewidth,height=0.78\textheight,keepaspectratio]{figures/original_architecture.png}
-```
-
-The Mermaid diagram and TikZ diagram describe the same original model at different
-levels of detail. All linear projections are bias-free. Optional KV-head sharing
-and inference KV caching are discussed in the text rather than expanded in the diagram.
-
-## Remaining work
-
-- Context extension and final-model results.
-- Final proofreading, references, names/IDs, and PDF layout review.
-
-The report includes only the selected baseline/FoX/CLA2 pilot comparisons,
-not all five screened candidates. The complete original screening is retained
-in `pilot_results/sweep.json` and `pilot_results/REPORT.md`; the additional
-control is in `pilot_results/ROPE_CONTROL.md`.
-Part 3 hardware experiments and results are intentionally excluded from this PR.
+The broader six-configuration screening code and raw results are retained for
+reproducibility in `pico/` and `pilot_results/`. `REPORT.md` summarizes the original
+screening; `ROPE_CONTROL.md` summarizes the separate diagnostic control.
+See `PILOT_PROTOCOL.md` for implementation details and limitations.
 
 ## Reproducing Part 2
 
