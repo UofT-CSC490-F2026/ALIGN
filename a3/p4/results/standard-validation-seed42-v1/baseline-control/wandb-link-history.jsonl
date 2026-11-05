@@ -1,0 +1,2 @@
+{"event": "wandb_link_materialized", "path": "wandb/wandb/run-20261105_005616-yglweuuh/logs/debug-core.log", "sha256": "017702f6569d6d288452a661bd40c8d9da153f9f607992540833679b743505ad", "target_name": "core-debug-20261105_005616.log"}
+{"event": "wandb_link_materialized", "path": "wandb/wandb/run-20261105_010053-hiqriqtn/logs/debug-core.log", "sha256": "3a45721a654408607664347986ea4cb84ea73dd66182ac311bcc4e939755a940", "target_name": "core-debug-20261105_010053.log"}

@@ -1,0 +1,3 @@
+# Minimal controller; large GPU training dependencies install remotely.
+modal==1.6.3
+uv==0.13.7

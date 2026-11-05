@@ -1,0 +1,31 @@
+{
+  "purpose": "Part 4 FoX C1-to-C2 standard validation, not an architecture comparison",
+  "seed": 42,
+  "rows": [
+    {
+      "evaluation_context": 512,
+      "checkpoint1_bpb": 1.4458173500010651,
+      "checkpoint2_bpb": 1.2805134773027893,
+      "checkpoint2_minus_checkpoint1_bpb": -0.16530387269827584,
+      "nominal_target_positions": 262144,
+      "scored_non_special_tokens": 261605,
+      "target_bytes": 1224402
+    },
+    {
+      "evaluation_context": 2048,
+      "checkpoint1_bpb": 1.3957533708769019,
+      "checkpoint2_bpb": 1.2144713135232075,
+      "checkpoint2_minus_checkpoint1_bpb": -0.1812820573536944,
+      "nominal_target_positions": 262144,
+      "scored_non_special_tokens": 261927,
+      "target_bytes": 1239989
+    }
+  ],
+  "source_result_sha256": "43ff91e4186040dd4b3d6594edcbd047685b2c375c619ae370e9894cf13cf4e7",
+  "limitations": [
+    "Checkpoint 2 has 16.384M more training tokens and a later learning-rate schedule.",
+    "The 512 and 2048 best-fit streams have different target tokens; compare checkpoints only within a fixed evaluation context.",
+    "The procedure matches Part 2, but the original Part 2 tokenizer and validation inputs are unavailable.",
+    "One FoX seed was trained for Part 4."
+  ]
+}

@@ -1,0 +1,16 @@
+{"batch": 0, "nll_nats_float32_sum": 81861.765625, "scored_non_special_tokens": 16371, "target_bytes": 78881}
+{"batch": 1, "nll_nats_float32_sum": 79302.390625, "scored_non_special_tokens": 16374, "target_bytes": 76876}
+{"batch": 2, "nll_nats_float32_sum": 79005.3359375, "scored_non_special_tokens": 16375, "target_bytes": 76721}
+{"batch": 3, "nll_nats_float32_sum": 76588.5546875, "scored_non_special_tokens": 16375, "target_bytes": 74432}
+{"batch": 4, "nll_nats_float32_sum": 79044.515625, "scored_non_special_tokens": 16375, "target_bytes": 75140}
+{"batch": 5, "nll_nats_float32_sum": 78127.9375, "scored_non_special_tokens": 16370, "target_bytes": 79230}
+{"batch": 6, "nll_nats_float32_sum": 75100.5546875, "scored_non_special_tokens": 16368, "target_bytes": 78732}
+{"batch": 7, "nll_nats_float32_sum": 80181.34375, "scored_non_special_tokens": 16370, "target_bytes": 75855}
+{"batch": 8, "nll_nats_float32_sum": 77272.90625, "scored_non_special_tokens": 16372, "target_bytes": 78952}
+{"batch": 9, "nll_nats_float32_sum": 79464.59375, "scored_non_special_tokens": 16371, "target_bytes": 77039}
+{"batch": 10, "nll_nats_float32_sum": 78537.8515625, "scored_non_special_tokens": 16368, "target_bytes": 80023}
+{"batch": 11, "nll_nats_float32_sum": 77724.609375, "scored_non_special_tokens": 16366, "target_bytes": 79771}
+{"batch": 12, "nll_nats_float32_sum": 79626.9375, "scored_non_special_tokens": 16365, "target_bytes": 77140}
+{"batch": 13, "nll_nats_float32_sum": 78371.03125, "scored_non_special_tokens": 16371, "target_bytes": 76426}
+{"batch": 14, "nll_nats_float32_sum": 78547.453125, "scored_non_special_tokens": 16372, "target_bytes": 75585}
+{"batch": 15, "nll_nats_float32_sum": 77376.2890625, "scored_non_special_tokens": 16364, "target_bytes": 79186}

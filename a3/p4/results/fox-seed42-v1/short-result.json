@@ -1,0 +1,37 @@
+{
+  "checkpoint": {
+    "file": "checkpoints/checkpoint1.pt",
+    "metadata": {
+      "context": 512,
+      "global_step": 500,
+      "model_state_sha256": "1ed4c01e6f360a7d494f496d85b5874f90861684ee2db6dda2667e6d9229c69a",
+      "parent_checkpoint_sha256": null,
+      "stage": "short",
+      "tokens": 16384000
+    },
+    "name": "checkpoint1",
+    "schema_version": 1,
+    "sha256": "98e30216bf74de1a817a9b29d576781f6c676be79876f4da7a90e9cabc4ca03e",
+    "size_bytes": 538201118
+  },
+  "context": 512,
+  "cost_estimate_scope": "current_worker_entrypoint_only_excludes_startup_and_storage",
+  "elapsed_seconds": 254.368576364,
+  "estimated_cost_usd": 0.30140642198451845,
+  "estimated_worker_cost_usd": 0.3014064147600612,
+  "global_step": 500,
+  "parameters": 73545506,
+  "parent_checkpoint_sha256": null,
+  "stage": "short",
+  "status": "complete",
+  "steps_this_attempt": 500,
+  "tokens": 16384000,
+  "train_loss": 4.861685752868652,
+  "train_seconds": 88.19468008499992,
+  "training_complete": true,
+  "val/bpb": 1.4128945851782782,
+  "val/bpb_context_2048": 1.4018522549165084,
+  "val/bpb_context_512": 1.4128945851782782,
+  "wandb_replay_required": false,
+  "wandb_url": "https://wandb.ai/jerry-zeng-university-of-toronto/a3-p4-context-extension/runs/qir04bbn"
+}

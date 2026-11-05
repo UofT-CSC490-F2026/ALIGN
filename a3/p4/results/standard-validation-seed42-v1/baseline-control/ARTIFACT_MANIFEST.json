@@ -1,0 +1,153 @@
+{
+  "files": {
+    "checkpoint-history.jsonl": {
+      "sha256": "749629a6cbbfeb9406ffa5f14995d67941e59b780bfd69619f8f5ea9a68778ea",
+      "size_bytes": 1728
+    },
+    "checkpoints/checkpoint1.json": {
+      "sha256": "3a2e6b01890a91818ae8b5455fd4f5c2ab9d11d448e6ac02ff398295ef7a543e",
+      "size_bytes": 402
+    },
+    "checkpoints/checkpoint1.pt": {
+      "sha256": "54b36ecb599348b8dcbdbeb395ae7c5fcfdf3efd62544d44c5bfe967bdfc4bce",
+      "size_bytes": 538074998
+    },
+    "checkpoints/checkpoint2.json": {
+      "sha256": "f717f85e4f2a07c61560ab6f30c9c7bcf8d94d2fe069f1718438f80060c5d725",
+      "size_bytes": 403
+    },
+    "checkpoints/checkpoint2.pt": {
+      "sha256": "b1d3d5ca6062d713cead6a7b64067cfc36b0dc78a79fe1894e980bc1e75adc47",
+      "size_bytes": 538075062
+    },
+    "checkpoints/recovery-000900.json": {
+      "sha256": "824c102f7b5a5fa797ba47f2aec141c80b8377bd822236564d827e7f5fa4f081",
+      "size_bytes": 410
+    },
+    "checkpoints/recovery-000900.pt": {
+      "sha256": "8e1bef46fa18ca8985eefdc172540cfc29b948fe3a39f654171fdbcb5a6c9645",
+      "size_bytes": 538075062
+    },
+    "checkpoints/recovery-000950.json": {
+      "sha256": "48279b4125c34e97ae944c153c5749ae3e19d3edf01ef1e2a94aace0a089e3ad",
+      "size_bytes": 410
+    },
+    "checkpoints/recovery-000950.pt": {
+      "sha256": "3ebc3918f22e21612678710a34743497abf1faa3fd7bc6be529189b16a9d7cce",
+      "size_bytes": 538075062
+    },
+    "config.json": {
+      "sha256": "ec27c143c12482b8d291291095e10193a195ef9a645e0ce6fac12d2d9d865809",
+      "size_bytes": 1286
+    },
+    "continuation.json": {
+      "sha256": "4f95f4084833dc294929ae3c5ea7f136edfd9a5af543975080e282bed5c7ba46",
+      "size_bytes": 333
+    },
+    "initialization-comparison.json": {
+      "sha256": "70434c34a5018400f03fc6d99a2cf055ebed399e8be84e95b272bf3cf89bd3eb",
+      "size_bytes": 501
+    },
+    "long-hardware.json": {
+      "sha256": "989e4644c2e6da16f8ce63391fab3b52a0df1d12fc051b155278dde38f0cf676",
+      "size_bytes": 484
+    },
+    "long-result.json": {
+      "sha256": "3b6f934100865ecf121a1032509a29870237507571b93da47f4d352675d41420",
+      "size_bytes": 1182
+    },
+    "metrics.jsonl": {
+      "sha256": "0f3e1aa6fa47817758bde7ea550ac361fd521b50678a66ddcad8687db826af57",
+      "size_bytes": 281173
+    },
+    "provenance.json": {
+      "sha256": "d4dd59850a58ddbf681820265bc7c712fcbeb410a2486b484fa530a361d1c4c1",
+      "size_bytes": 3863
+    },
+    "short-hardware.json": {
+      "sha256": "0e93822597b61a54221f653f9a595519ef1864bb6be13179b109ee04a799e8be",
+      "size_bytes": 484
+    },
+    "short-result.json": {
+      "sha256": "7af642f3a01905f32074975cfc20a96802352858d5eab691f9570663c80bf586",
+      "size_bytes": 1118
+    },
+    "wandb-link-history.jsonl": {
+      "sha256": "1cb0a55b4dac4568c164ff02c2e6ed02ce9d8cec3aa63a8862a3435ba15214f3",
+      "size_bytes": 472
+    },
+    "wandb/wandb/run-20261105_005616-yglweuuh/files/config.yaml": {
+      "sha256": "ad98e638b40b5a2f0b2bcd7a9850d85c691c758c9873761d45521e007b6ed6f4",
+      "size_bytes": 3280
+    },
+    "wandb/wandb/run-20261105_005616-yglweuuh/files/output.log": {
+      "sha256": "ce68e42843087a43951c039767f768e3d6e1d3d640f03122d901da1bb7586a0e",
+      "size_bytes": 37657
+    },
+    "wandb/wandb/run-20261105_005616-yglweuuh/files/requirements.txt": {
+      "sha256": "a5a2ee80de08e99aa7de9e2df2f0375dedb926524dd3565bb0da8681c2200f9d",
+      "size_bytes": 1561
+    },
+    "wandb/wandb/run-20261105_005616-yglweuuh/files/wandb-metadata.json": {
+      "sha256": "2f96bab7d1ad8945b050dbc94a0de85ee3c7483226bc7cb2376284dafcbe2de7",
+      "size_bytes": 881
+    },
+    "wandb/wandb/run-20261105_005616-yglweuuh/files/wandb-summary.json": {
+      "sha256": "51bf8ea5e97cb7a501a57058fd55a5a6c6682550f0879e1507f9316b1513170c",
+      "size_bytes": 807
+    },
+    "wandb/wandb/run-20261105_005616-yglweuuh/logs/debug-core.log": {
+      "sha256": "017702f6569d6d288452a661bd40c8d9da153f9f607992540833679b743505ad",
+      "size_bytes": 1185
+    },
+    "wandb/wandb/run-20261105_005616-yglweuuh/logs/debug-internal.log": {
+      "sha256": "b4dedc86471de5d752626923023b284d81b22f903ebd5b21557ebbb1dd414038",
+      "size_bytes": 3392
+    },
+    "wandb/wandb/run-20261105_005616-yglweuuh/logs/debug.log": {
+      "sha256": "a36d1f1b7925f2eec8bbffaa891bf556688b7309a6370edc383e7db13c9a9b80",
+      "size_bytes": 4042
+    },
+    "wandb/wandb/run-20261105_005616-yglweuuh/run-yglweuuh.wandb": {
+      "sha256": "54b6e6dbde2b4e3b92c359230a56f5d2895c328b8d321edc64d32928a8421ac1",
+      "size_bytes": 143256
+    },
+    "wandb/wandb/run-20261105_010053-hiqriqtn/files/config.yaml": {
+      "sha256": "7d4c9c7121668dfe6da152d88ceea68ec20ac10c39c4b25456bc2b201d21d217",
+      "size_bytes": 3280
+    },
+    "wandb/wandb/run-20261105_010053-hiqriqtn/files/output.log": {
+      "sha256": "342d4523584e1bcee6679542d94b2cdf0a08643a5dfe07e87d842790869f78ee",
+      "size_bytes": 38154
+    },
+    "wandb/wandb/run-20261105_010053-hiqriqtn/files/requirements.txt": {
+      "sha256": "f90cc8c5cfe120d00695012e230448c12763353b0d11862e3ff2a5264fb08733",
+      "size_bytes": 1561
+    },
+    "wandb/wandb/run-20261105_010053-hiqriqtn/files/wandb-metadata.json": {
+      "sha256": "421afb8c0cf7c982123458c5899b7c98e3368a809c89cdf1a1711d4faf295495",
+      "size_bytes": 881
+    },
+    "wandb/wandb/run-20261105_010053-hiqriqtn/files/wandb-summary.json": {
+      "sha256": "6775bb9d2953a7c85b0999037071ffe2a30b2dcf0ce5ec7bfa462ec282f775c4",
+      "size_bytes": 829
+    },
+    "wandb/wandb/run-20261105_010053-hiqriqtn/logs/debug-core.log": {
+      "sha256": "3a45721a654408607664347986ea4cb84ea73dd66182ac311bcc4e939755a940",
+      "size_bytes": 1185
+    },
+    "wandb/wandb/run-20261105_010053-hiqriqtn/logs/debug-internal.log": {
+      "sha256": "96af39b1406b82d0edf9db747b6209fc3c6d6f7cd5e0238317c0e8779dc7f189",
+      "size_bytes": 3525
+    },
+    "wandb/wandb/run-20261105_010053-hiqriqtn/logs/debug.log": {
+      "sha256": "ad7bc36eba39f1cf908b3ad90a9f92085e034c91d1e2909f3c0f354fccd1b24e",
+      "size_bytes": 4042
+    },
+    "wandb/wandb/run-20261105_010053-hiqriqtn/run-hiqriqtn.wandb": {
+      "sha256": "628eda026fce331b80e30b6925fcb1253858d16ed2091408949cd96e208eb199",
+      "size_bytes": 144023
+    }
+  },
+  "schema_version": 1
+}

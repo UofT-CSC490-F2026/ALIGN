@@ -1,0 +1,14 @@
+{
+  "file": "checkpoints/recovery-000950.pt",
+  "metadata": {
+    "context": 2048,
+    "global_step": 950,
+    "model_state_sha256": "0e266cbcd0d87b03e7ae3af1bc7295ff6b8e353bb0fa57c1c1479abb5d27d068",
+    "stage": "long",
+    "tokens": 31129600
+  },
+  "name": "recovery-000950",
+  "schema_version": 1,
+  "sha256": "3ebc3918f22e21612678710a34743497abf1faa3fd7bc6be529189b16a9d7cce",
+  "size_bytes": 538075062
+}

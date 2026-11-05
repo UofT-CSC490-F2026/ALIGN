@@ -1,0 +1,7 @@
+{
+  "actual_invoice_verified": false,
+  "conservative_launch_reservations_usd": 13.443947999999999,
+  "project_ceiling_usd": 100,
+  "research_trainer_estimate_usd": 0.713559242988897,
+  "scope_note": "Trainer estimates exclude setup/image builds/startup, rehearsal, verification/finalization/export and storage; reservations are not amounts spent."
+}

@@ -1,0 +1,42 @@
+{
+  "attempt": "0ebbe9c14024",
+  "checkpoint1_sha256": "98e30216bf74de1a817a9b29d576781f6c676be79876f4da7a90e9cabc4ca03e",
+  "data_stream_before_update": {
+    "cursor": 16384000,
+    "token_count": 40000000
+  },
+  "global_step_before_update": 500,
+  "loaded_checkpoint": "checkpoint1",
+  "loaded_checkpoint_sha256": "98e30216bf74de1a817a9b29d576781f6c676be79876f4da7a90e9cabc4ca03e",
+  "loaded_model_state_sha256": "1ed4c01e6f360a7d494f496d85b5874f90861684ee2db6dda2667e6d9229c69a",
+  "optimizer_state_loaded": true,
+  "tokens_before_update": 16384000,
+  "training_context": 2048,
+  "weights_verified_before_update": true,
+  "window_sizes": [
+    [
+      512,
+      0
+    ],
+    [
+      512,
+      0
+    ],
+    [
+      512,
+      0
+    ],
+    [
+      2048,
+      0
+    ],
+    [
+      512,
+      0
+    ],
+    [
+      2048,
+      0
+    ]
+  ]
+}

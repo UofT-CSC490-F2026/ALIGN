@@ -1,0 +1,191 @@
+{
+  "files": [
+    {
+      "local": "ARTIFACT_MANIFEST.json",
+      "remote": "standard_eval/standard-validation-seed42-v1/ARTIFACT_MANIFEST.json",
+      "sha256": "bb6961b348386e904ea6293d2a6f3c03dac69f88e757f1456f1cc41beaeae61b",
+      "size_bytes": 5893
+    },
+    {
+      "local": "baseline-checkpoint1-2048-batches.jsonl",
+      "remote": "standard_eval/standard-validation-seed42-v1/baseline-checkpoint1-2048-batches.jsonl",
+      "sha256": "9db84865b289a87ff969c4ed5f0008b4043373d51c371166d186df06c47cb893",
+      "size_bytes": 1763
+    },
+    {
+      "local": "baseline-checkpoint1-512-batches.jsonl",
+      "remote": "standard_eval/standard-validation-seed42-v1/baseline-checkpoint1-512-batches.jsonl",
+      "sha256": "425c413362cb8ecbb0359acdef5c4fe26166eaf1fcb0c03d63553de62b909af1",
+      "size_bytes": 7131
+    },
+    {
+      "local": "baseline-checkpoint2-2048-batches.jsonl",
+      "remote": "standard_eval/standard-validation-seed42-v1/baseline-checkpoint2-2048-batches.jsonl",
+      "sha256": "1edcd18025102a9e82eaee15725b53731c3fce15d0ada9492ab26dede3ff444c",
+      "size_bytes": 1752
+    },
+    {
+      "local": "baseline-checkpoint2-512-batches.jsonl",
+      "remote": "standard_eval/standard-validation-seed42-v1/baseline-checkpoint2-512-batches.jsonl",
+      "sha256": "af9d20f1dd487567332c085b637ed06ed86997f27aa4d8c1d9e20035692efc8b",
+      "size_bytes": 7155
+    },
+    {
+      "local": "baseline-standard.json",
+      "remote": "standard_eval/standard-validation-seed42-v1/baseline-standard.json",
+      "sha256": "1e998672f134604329e9152995cc41f4f78eb574123982347435e062e648ab68",
+      "size_bytes": 4738
+    },
+    {
+      "local": "fox-checkpoint1-2048-batches.jsonl",
+      "remote": "standard_eval/standard-validation-seed42-v1/fox-checkpoint1-2048-batches.jsonl",
+      "sha256": "1c90efc33b1457683e9e9c900a6ca6598d04281dbabf9633313d93651b2731cb",
+      "size_bytes": 1767
+    },
+    {
+      "local": "fox-checkpoint1-512-batches.jsonl",
+      "remote": "standard_eval/standard-validation-seed42-v1/fox-checkpoint1-512-batches.jsonl",
+      "sha256": "ae4a9402bd30cb60f09c69670340dbc01767a37d473116bd11ef8c4e9bf7e167",
+      "size_bytes": 7146
+    },
+    {
+      "local": "fox-checkpoint2-2048-batches.jsonl",
+      "remote": "standard_eval/standard-validation-seed42-v1/fox-checkpoint2-2048-batches.jsonl",
+      "sha256": "fd783de9225441fdabd792e3441136ee35f6f78a39ba2cc1a9805e9f21847c8d",
+      "size_bytes": 1769
+    },
+    {
+      "local": "fox-checkpoint2-512-batches.jsonl",
+      "remote": "standard_eval/standard-validation-seed42-v1/fox-checkpoint2-512-batches.jsonl",
+      "sha256": "2772903c955f786da4c5782dbfa8d1e1d12670708450fb04275ccfef0d4d0d4c",
+      "size_bytes": 7156
+    },
+    {
+      "local": "fox-standard.json",
+      "remote": "standard_eval/standard-validation-seed42-v1/fox-standard.json",
+      "sha256": "43ff91e4186040dd4b3d6594edcbd047685b2c375c619ae370e9894cf13cf4e7",
+      "size_bytes": 4715
+    },
+    {
+      "local": "fresh-worker-verification.json",
+      "remote": "standard_eval/standard-validation-seed42-v1/fresh-worker-verification.json",
+      "sha256": "7e43cfc1c1738140c78da2d8ef1701700f9aab073bde4d81cb275eae653e608c",
+      "size_bytes": 9674
+    },
+    {
+      "local": "supplemental-source-hashes.json",
+      "remote": "standard_eval/standard-validation-seed42-v1/supplemental-source-hashes.json",
+      "sha256": "544348aec456b8f5c49aad0a86936332af96d93edbfa6a414d0bdfe329e80c23",
+      "size_bytes": 421
+    },
+    {
+      "local": "validation-manifest.json",
+      "remote": "standard_eval/standard-validation-seed42-v1/validation-manifest.json",
+      "sha256": "fbe15cf505d5e4f9c2b78aadc371da7fdb54f2adb38d9ca77c4e650353a83cb4",
+      "size_bytes": 19234
+    },
+    {
+      "local": "wandb-link-history.jsonl",
+      "remote": "standard_eval/standard-validation-seed42-v1/wandb-link-history.jsonl",
+      "sha256": "65b78d37b7086cdf151420f9bc0890e32bcb245262cbd63cbbf623b3f939f110",
+      "size_bytes": 472
+    },
+    {
+      "local": "baseline-control/ARTIFACT_MANIFEST.json",
+      "remote": "runs/baseline-control-seed42-v1/ARTIFACT_MANIFEST.json",
+      "sha256": "6bb4eb99d52de95069dc9332f7e2b2e40938c72d67802014387b7575f2f65076",
+      "size_bytes": 6250
+    },
+    {
+      "local": "baseline-control/checkpoint-history.jsonl",
+      "remote": "runs/baseline-control-seed42-v1/checkpoint-history.jsonl",
+      "sha256": "749629a6cbbfeb9406ffa5f14995d67941e59b780bfd69619f8f5ea9a68778ea",
+      "size_bytes": 1728
+    },
+    {
+      "local": "baseline-control/config.json",
+      "remote": "runs/baseline-control-seed42-v1/config.json",
+      "sha256": "ec27c143c12482b8d291291095e10193a195ef9a645e0ce6fac12d2d9d865809",
+      "size_bytes": 1286
+    },
+    {
+      "local": "baseline-control/continuation.json",
+      "remote": "runs/baseline-control-seed42-v1/continuation.json",
+      "sha256": "4f95f4084833dc294929ae3c5ea7f136edfd9a5af543975080e282bed5c7ba46",
+      "size_bytes": 333
+    },
+    {
+      "local": "baseline-control/initialization-comparison.json",
+      "remote": "runs/baseline-control-seed42-v1/initialization-comparison.json",
+      "sha256": "70434c34a5018400f03fc6d99a2cf055ebed399e8be84e95b272bf3cf89bd3eb",
+      "size_bytes": 501
+    },
+    {
+      "local": "baseline-control/long-hardware.json",
+      "remote": "runs/baseline-control-seed42-v1/long-hardware.json",
+      "sha256": "989e4644c2e6da16f8ce63391fab3b52a0df1d12fc051b155278dde38f0cf676",
+      "size_bytes": 484
+    },
+    {
+      "local": "baseline-control/long-result.json",
+      "remote": "runs/baseline-control-seed42-v1/long-result.json",
+      "sha256": "3b6f934100865ecf121a1032509a29870237507571b93da47f4d352675d41420",
+      "size_bytes": 1182
+    },
+    {
+      "local": "baseline-control/metrics.jsonl",
+      "remote": "runs/baseline-control-seed42-v1/metrics.jsonl",
+      "sha256": "0f3e1aa6fa47817758bde7ea550ac361fd521b50678a66ddcad8687db826af57",
+      "size_bytes": 281173
+    },
+    {
+      "local": "baseline-control/provenance.json",
+      "remote": "runs/baseline-control-seed42-v1/provenance.json",
+      "sha256": "d4dd59850a58ddbf681820265bc7c712fcbeb410a2486b484fa530a361d1c4c1",
+      "size_bytes": 3863
+    },
+    {
+      "local": "baseline-control/short-hardware.json",
+      "remote": "runs/baseline-control-seed42-v1/short-hardware.json",
+      "sha256": "0e93822597b61a54221f653f9a595519ef1864bb6be13179b109ee04a799e8be",
+      "size_bytes": 484
+    },
+    {
+      "local": "baseline-control/short-result.json",
+      "remote": "runs/baseline-control-seed42-v1/short-result.json",
+      "sha256": "7af642f3a01905f32074975cfc20a96802352858d5eab691f9570663c80bf586",
+      "size_bytes": 1118
+    },
+    {
+      "local": "baseline-control/wandb-link-history.jsonl",
+      "remote": "runs/baseline-control-seed42-v1/wandb-link-history.jsonl",
+      "sha256": "1cb0a55b4dac4568c164ff02c2e6ed02ce9d8cec3aa63a8862a3435ba15214f3",
+      "size_bytes": 472
+    },
+    {
+      "local": "baseline-control/checkpoints/checkpoint1.json",
+      "remote": "runs/baseline-control-seed42-v1/checkpoints/checkpoint1.json",
+      "sha256": "3a2e6b01890a91818ae8b5455fd4f5c2ab9d11d448e6ac02ff398295ef7a543e",
+      "size_bytes": 402
+    },
+    {
+      "local": "baseline-control/checkpoints/checkpoint2.json",
+      "remote": "runs/baseline-control-seed42-v1/checkpoints/checkpoint2.json",
+      "sha256": "f717f85e4f2a07c61560ab6f30c9c7bcf8d94d2fe069f1718438f80060c5d725",
+      "size_bytes": 403
+    },
+    {
+      "local": "baseline-control/checkpoints/recovery-000900.json",
+      "remote": "runs/baseline-control-seed42-v1/checkpoints/recovery-000900.json",
+      "sha256": "824c102f7b5a5fa797ba47f2aec141c80b8377bd822236564d827e7f5fa4f081",
+      "size_bytes": 410
+    },
+    {
+      "local": "baseline-control/checkpoints/recovery-000950.json",
+      "remote": "runs/baseline-control-seed42-v1/checkpoints/recovery-000950.json",
+      "sha256": "48279b4125c34e97ae944c153c5749ae3e19d3edf01ef1e2a94aace0a089e3ad",
+      "size_bytes": 410
+    }
+  ],
+  "scope": "Small supplemental evidence only; weights, raw shards and frozen token arrays stay on Modal."
+}

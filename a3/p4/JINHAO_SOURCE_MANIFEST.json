@@ -1,0 +1,63 @@
+{
+  "purpose": "Read-only boundary for Jinhao source; all Part 4 changes belong under a3/p4.",
+  "source_ref": "origin/Jinhao",
+  "source_commit": "d56ca5d541cf4d7a511766879f77e265b8d3e255",
+  "files": [
+    {
+      "path": "a3/.gitignore",
+      "sha256": "d0b51fc2fc68850d8aaa8e0215b67da5f0d895a4c975735ac3d5e4508dcdc45e"
+    },
+    {
+      "path": "a3/PILOT_PROTOCOL.md",
+      "sha256": "7a16f2ee7c895f62689fd223299e89529fb327d2ef58ffb6286d98925a2bf9c9"
+    },
+    {
+      "path": "a3/README.md",
+      "sha256": "e14061c02108572b180aaaa65b1707e977a0a5d8a0396e881533301add18da83"
+    },
+    {
+      "path": "a3/pico/__init__.py",
+      "sha256": "c8e476c54b35e60740738963d75a8f7545ac20c06d72eb58e08e6b6d5e2b8aa6"
+    },
+    {
+      "path": "a3/pico/summarize.py",
+      "sha256": "98b09d8c83754aefccca280bb3466a657c4cbf208c066859dd20ed11a2541858"
+    },
+    {
+      "path": "a3/pico/tests.py",
+      "sha256": "d1cb7354ae3de6c54a3b3935280cda7a0d6c75e8927627410290deb9b1be9ab8"
+    },
+    {
+      "path": "a3/pico/train.py",
+      "sha256": "339a46bf88e599944d15ac93822ca031fb1c71fbcc3b6f458c501ee7033ab67a"
+    },
+    {
+      "path": "a3/pico/variants.py",
+      "sha256": "a5e9f85e3d63972b1bf0e1015208f048b557fb97f48bc71b0f8f38cadefe4b70"
+    },
+    {
+      "path": "a3/pico_modal.py",
+      "sha256": "37e04c1301884c6bb5188fd8de3c58e9caede7570340e640518cacc3109ce2e2"
+    },
+    {
+      "path": "a3/pilot_results/EXECUTION_NOTES.md",
+      "sha256": "9f6997eb09b8ab0fda4080244aa3ab0ffe3f682f2edfad6d8dc5766c4cbf5013"
+    },
+    {
+      "path": "a3/pilot_results/REPORT.md",
+      "sha256": "cdb20f8f2925c69c2885610c699f1a2b2719d285668cd719fc3cd60914087907"
+    },
+    {
+      "path": "a3/pilot_results/prepare.json",
+      "sha256": "4936e535fa5994a549ae46139131474d7dc74675eaf0b14cf862f62887b727c4"
+    },
+    {
+      "path": "a3/pilot_results/smoke.json",
+      "sha256": "22b667cd23f2b4b5c5d0ae36be700783d1d88b9c4442cac893e8e22adf0a48fc"
+    },
+    {
+      "path": "a3/pilot_results/sweep.json",
+      "sha256": "a385077aa7445e55c5518a858b1990b9bb45cfec6c41cdeaabe91cf2272aadea"
+    }
+  ]
+}

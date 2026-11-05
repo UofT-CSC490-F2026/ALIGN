@@ -1,0 +1,412 @@
+{
+  "cells": 8,
+  "checkpoints": [
+    {
+      "checkpoint": "checkpoint1",
+      "family": "fox",
+      "sha256": "98e30216bf74de1a817a9b29d576781f6c676be79876f4da7a90e9cabc4ca03e",
+      "stream": {
+        "cursor": 16384000,
+        "token_count": 40000000
+      },
+      "tokens": 16384000
+    },
+    {
+      "checkpoint": "checkpoint2",
+      "family": "fox",
+      "sha256": "c8ca95c3e56113d048a7dc3e0b390464a5130e549e88e62134bed3047584e1f2",
+      "stream": {
+        "cursor": 32768000,
+        "token_count": 40000000
+      },
+      "tokens": 32768000
+    },
+    {
+      "checkpoint": "checkpoint1",
+      "family": "baseline",
+      "sha256": "54b36ecb599348b8dcbdbeb395ae7c5fcfdf3efd62544d44c5bfe967bdfc4bce",
+      "stream": {
+        "cursor": 16384000,
+        "token_count": 40000000
+      },
+      "tokens": 16384000
+    },
+    {
+      "checkpoint": "checkpoint2",
+      "family": "baseline",
+      "sha256": "b1d3d5ca6062d713cead6a7b64067cfc36b0dc78a79fe1894e980bc1e75adc47",
+      "stream": {
+        "cursor": 32768000,
+        "token_count": 40000000
+      },
+      "tokens": 32768000
+    }
+  ],
+  "fresh_cpu_worker": true,
+  "results": [
+    {
+      "batches": 64,
+      "bpb": 1.4458173500010651,
+      "checkpoint": "checkpoint1",
+      "checkpoint_sha256": "98e30216bf74de1a817a9b29d576781f6c676be79876f4da7a90e9cabc4ca03e",
+      "evaluation_context": 512,
+      "family": "fox",
+      "learned_weights_unchanged": true,
+      "nominal_tokens": 262144,
+      "parameters": 73545506,
+      "scored_non_special_tokens": 261605,
+      "target_bytes": 1224402,
+      "training_context": 512,
+      "training_tokens": 16384000,
+      "validation_manifest_sha256": "fbe15cf505d5e4f9c2b78aadc371da7fdb54f2adb38d9ca77c4e650353a83cb4",
+      "window_policy": [
+        [
+          128,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          512,
+          0
+        ]
+      ]
+    },
+    {
+      "batches": 16,
+      "bpb": 1.3957533708769019,
+      "checkpoint": "checkpoint1",
+      "checkpoint_sha256": "98e30216bf74de1a817a9b29d576781f6c676be79876f4da7a90e9cabc4ca03e",
+      "evaluation_context": 2048,
+      "family": "fox",
+      "learned_weights_unchanged": true,
+      "nominal_tokens": 262144,
+      "parameters": 73545506,
+      "scored_non_special_tokens": 261927,
+      "target_bytes": 1239989,
+      "training_context": 512,
+      "training_tokens": 16384000,
+      "validation_manifest_sha256": "fbe15cf505d5e4f9c2b78aadc371da7fdb54f2adb38d9ca77c4e650353a83cb4",
+      "window_policy": [
+        [
+          512,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          2048,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          2048,
+          0
+        ]
+      ]
+    },
+    {
+      "batches": 64,
+      "bpb": 1.2805134773027893,
+      "checkpoint": "checkpoint2",
+      "checkpoint_sha256": "c8ca95c3e56113d048a7dc3e0b390464a5130e549e88e62134bed3047584e1f2",
+      "evaluation_context": 512,
+      "family": "fox",
+      "learned_weights_unchanged": true,
+      "nominal_tokens": 262144,
+      "parameters": 73545506,
+      "scored_non_special_tokens": 261605,
+      "target_bytes": 1224402,
+      "training_context": 2048,
+      "training_tokens": 32768000,
+      "validation_manifest_sha256": "fbe15cf505d5e4f9c2b78aadc371da7fdb54f2adb38d9ca77c4e650353a83cb4",
+      "window_policy": [
+        [
+          128,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          512,
+          0
+        ]
+      ]
+    },
+    {
+      "batches": 16,
+      "bpb": 1.2144713135232075,
+      "checkpoint": "checkpoint2",
+      "checkpoint_sha256": "c8ca95c3e56113d048a7dc3e0b390464a5130e549e88e62134bed3047584e1f2",
+      "evaluation_context": 2048,
+      "family": "fox",
+      "learned_weights_unchanged": true,
+      "nominal_tokens": 262144,
+      "parameters": 73545506,
+      "scored_non_special_tokens": 261927,
+      "target_bytes": 1239989,
+      "training_context": 2048,
+      "training_tokens": 32768000,
+      "validation_manifest_sha256": "fbe15cf505d5e4f9c2b78aadc371da7fdb54f2adb38d9ca77c4e650353a83cb4",
+      "window_policy": [
+        [
+          512,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          2048,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          2048,
+          0
+        ]
+      ]
+    },
+    {
+      "batches": 64,
+      "bpb": 1.4530635108434249,
+      "checkpoint": "checkpoint1",
+      "checkpoint_sha256": "54b36ecb599348b8dcbdbeb395ae7c5fcfdf3efd62544d44c5bfe967bdfc4bce",
+      "evaluation_context": 512,
+      "family": "baseline",
+      "learned_weights_unchanged": true,
+      "nominal_tokens": 262144,
+      "parameters": 73531646,
+      "scored_non_special_tokens": 261605,
+      "target_bytes": 1224402,
+      "training_context": 512,
+      "training_tokens": 16384000,
+      "validation_manifest_sha256": "fbe15cf505d5e4f9c2b78aadc371da7fdb54f2adb38d9ca77c4e650353a83cb4",
+      "window_policy": [
+        [
+          128,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          512,
+          0
+        ]
+      ]
+    },
+    {
+      "batches": 16,
+      "bpb": 1.461479475083164,
+      "checkpoint": "checkpoint1",
+      "checkpoint_sha256": "54b36ecb599348b8dcbdbeb395ae7c5fcfdf3efd62544d44c5bfe967bdfc4bce",
+      "evaluation_context": 2048,
+      "family": "baseline",
+      "learned_weights_unchanged": true,
+      "nominal_tokens": 262144,
+      "parameters": 73531646,
+      "scored_non_special_tokens": 261927,
+      "target_bytes": 1239989,
+      "training_context": 512,
+      "training_tokens": 16384000,
+      "validation_manifest_sha256": "fbe15cf505d5e4f9c2b78aadc371da7fdb54f2adb38d9ca77c4e650353a83cb4",
+      "window_policy": [
+        [
+          512,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          2048,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          2048,
+          0
+        ]
+      ]
+    },
+    {
+      "batches": 64,
+      "bpb": 1.2877730411419508,
+      "checkpoint": "checkpoint2",
+      "checkpoint_sha256": "b1d3d5ca6062d713cead6a7b64067cfc36b0dc78a79fe1894e980bc1e75adc47",
+      "evaluation_context": 512,
+      "family": "baseline",
+      "learned_weights_unchanged": true,
+      "nominal_tokens": 262144,
+      "parameters": 73531646,
+      "scored_non_special_tokens": 261605,
+      "target_bytes": 1224402,
+      "training_context": 2048,
+      "training_tokens": 32768000,
+      "validation_manifest_sha256": "fbe15cf505d5e4f9c2b78aadc371da7fdb54f2adb38d9ca77c4e650353a83cb4",
+      "window_policy": [
+        [
+          128,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          512,
+          0
+        ]
+      ]
+    },
+    {
+      "batches": 16,
+      "bpb": 1.2197158183000136,
+      "checkpoint": "checkpoint2",
+      "checkpoint_sha256": "b1d3d5ca6062d713cead6a7b64067cfc36b0dc78a79fe1894e980bc1e75adc47",
+      "evaluation_context": 2048,
+      "family": "baseline",
+      "learned_weights_unchanged": true,
+      "nominal_tokens": 262144,
+      "parameters": 73531646,
+      "scored_non_special_tokens": 261927,
+      "target_bytes": 1239989,
+      "training_context": 2048,
+      "training_tokens": 32768000,
+      "validation_manifest_sha256": "fbe15cf505d5e4f9c2b78aadc371da7fdb54f2adb38d9ca77c4e650353a83cb4",
+      "window_policy": [
+        [
+          512,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          2048,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          2048,
+          0
+        ]
+      ]
+    }
+  ],
+  "same_frozen_inputs_per_context": true,
+  "scientific_sources_unchanged": true,
+  "status": "passed",
+  "training_tokens_and_cursors_matched": true,
+  "validation_manifest_sha256": "fbe15cf505d5e4f9c2b78aadc371da7fdb54f2adb38d9ca77c4e650353a83cb4",
+  "verifier_source_sha256": "48824349de6a418610fc6f20304b234c1bc22200fffdaa43cc4921d18ac27ae0",
+  "wandb_history": [
+    {
+      "history_rows": 4,
+      "url": "https://wandb.ai/jerry-zeng-university-of-toronto/a3-p4-standard-validation/runs/x9qw1m8b",
+      "verified_metric": "standard/bpb_512"
+    },
+    {
+      "history_rows": 4,
+      "url": "https://wandb.ai/jerry-zeng-university-of-toronto/a3-p4-standard-validation/runs/h92pnw7t",
+      "verified_metric": "standard/bpb_512"
+    },
+    {
+      "history_rows": 50,
+      "url": "https://wandb.ai/jerry-zeng-university-of-toronto/a3-p4-standard-validation/runs/yglweuuh",
+      "verified_metric": "train/loss"
+    },
+    {
+      "history_rows": 50,
+      "url": "https://wandb.ai/jerry-zeng-university-of-toronto/a3-p4-standard-validation/runs/hiqriqtn",
+      "verified_metric": "train/loss"
+    }
+  ]
+}

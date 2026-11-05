@@ -1,0 +1,14 @@
+{
+  "file": "checkpoints/checkpoint1.pt",
+  "metadata": {
+    "context": 512,
+    "global_step": 500,
+    "model_state_sha256": "418ae1e774ef5991ccf25fb1a424a80e7fe2e993902c142e7c09f91a44783bbf",
+    "stage": "short",
+    "tokens": 16384000
+  },
+  "name": "checkpoint1",
+  "schema_version": 1,
+  "sha256": "54b36ecb599348b8dcbdbeb395ae7c5fcfdf3efd62544d44c5bfe967bdfc4bce",
+  "size_bytes": 538074998
+}

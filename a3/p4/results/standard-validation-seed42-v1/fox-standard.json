@@ -1,0 +1,199 @@
+{
+  "cost_scope": "Worker timer only; excludes build/startup/storage and final tracking finalization.",
+  "elapsed_seconds": 14.399046562999999,
+  "estimated_worker_cost_usd": 0.017061789350999803,
+  "family": "fox",
+  "hardware": {
+    "cuda_runtime": "12.8",
+    "device": "cuda",
+    "gpu_compute_capability": [
+      9,
+      0
+    ],
+    "gpu_name": "NVIDIA H100 80GB HBM3",
+    "gpu_total_memory_bytes": 85009367040,
+    "modal_environment": "main",
+    "modal_function_id": null,
+    "modal_task_id": "ta-01M6MK60G7ST14SKWYHTQ3S34R",
+    "platform": "Linux-4.19.0-gvisor-x86_64-with-glibc2.41",
+    "python": "3.12.16",
+    "requested_cpu_cores": 4,
+    "requested_gpu": "H100",
+    "requested_memory_mb": 16384,
+    "torch": "2.9.1+cu128"
+  },
+  "results": [
+    {
+      "batches": 64,
+      "bpb": 1.4458173500010651,
+      "checkpoint": "checkpoint1",
+      "checkpoint_sha256": "98e30216bf74de1a817a9b29d576781f6c676be79876f4da7a90e9cabc4ca03e",
+      "evaluation_context": 512,
+      "family": "fox",
+      "learned_weights_unchanged": true,
+      "nominal_tokens": 262144,
+      "parameters": 73545506,
+      "scored_non_special_tokens": 261605,
+      "target_bytes": 1224402,
+      "training_context": 512,
+      "training_tokens": 16384000,
+      "validation_manifest_sha256": "fbe15cf505d5e4f9c2b78aadc371da7fdb54f2adb38d9ca77c4e650353a83cb4",
+      "window_policy": [
+        [
+          128,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          512,
+          0
+        ]
+      ]
+    },
+    {
+      "batches": 16,
+      "bpb": 1.3957533708769019,
+      "checkpoint": "checkpoint1",
+      "checkpoint_sha256": "98e30216bf74de1a817a9b29d576781f6c676be79876f4da7a90e9cabc4ca03e",
+      "evaluation_context": 2048,
+      "family": "fox",
+      "learned_weights_unchanged": true,
+      "nominal_tokens": 262144,
+      "parameters": 73545506,
+      "scored_non_special_tokens": 261927,
+      "target_bytes": 1239989,
+      "training_context": 512,
+      "training_tokens": 16384000,
+      "validation_manifest_sha256": "fbe15cf505d5e4f9c2b78aadc371da7fdb54f2adb38d9ca77c4e650353a83cb4",
+      "window_policy": [
+        [
+          512,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          2048,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          2048,
+          0
+        ]
+      ]
+    },
+    {
+      "batches": 64,
+      "bpb": 1.2805134773027893,
+      "checkpoint": "checkpoint2",
+      "checkpoint_sha256": "c8ca95c3e56113d048a7dc3e0b390464a5130e549e88e62134bed3047584e1f2",
+      "evaluation_context": 512,
+      "family": "fox",
+      "learned_weights_unchanged": true,
+      "nominal_tokens": 262144,
+      "parameters": 73545506,
+      "scored_non_special_tokens": 261605,
+      "target_bytes": 1224402,
+      "training_context": 2048,
+      "training_tokens": 32768000,
+      "validation_manifest_sha256": "fbe15cf505d5e4f9c2b78aadc371da7fdb54f2adb38d9ca77c4e650353a83cb4",
+      "window_policy": [
+        [
+          128,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          128,
+          0
+        ],
+        [
+          512,
+          0
+        ]
+      ]
+    },
+    {
+      "batches": 16,
+      "bpb": 1.2144713135232075,
+      "checkpoint": "checkpoint2",
+      "checkpoint_sha256": "c8ca95c3e56113d048a7dc3e0b390464a5130e549e88e62134bed3047584e1f2",
+      "evaluation_context": 2048,
+      "family": "fox",
+      "learned_weights_unchanged": true,
+      "nominal_tokens": 262144,
+      "parameters": 73545506,
+      "scored_non_special_tokens": 261927,
+      "target_bytes": 1239989,
+      "training_context": 2048,
+      "training_tokens": 32768000,
+      "validation_manifest_sha256": "fbe15cf505d5e4f9c2b78aadc371da7fdb54f2adb38d9ca77c4e650353a83cb4",
+      "window_policy": [
+        [
+          512,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          2048,
+          0
+        ],
+        [
+          512,
+          0
+        ],
+        [
+          2048,
+          0
+        ]
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "status": "complete",
+  "validation_manifest_sha256": "fbe15cf505d5e4f9c2b78aadc371da7fdb54f2adb38d9ca77c4e650353a83cb4",
+  "wandb_url": "https://wandb.ai/jerry-zeng-university-of-toronto/a3-p4-standard-validation/runs/x9qw1m8b"
+}

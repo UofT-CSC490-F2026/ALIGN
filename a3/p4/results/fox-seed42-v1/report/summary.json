@@ -1,0 +1,100 @@
+{
+  "context_benefit": [
+    {
+      "checkpoint": "checkpoint1",
+      "long_bpb": 1.4018522549165084,
+      "long_context": 2048,
+      "long_context_benefit_bpb": 0.011042330261769706,
+      "matched_examples": true,
+      "short_bpb": 1.4128945851782782,
+      "short_context": 512
+    },
+    {
+      "checkpoint": "checkpoint2",
+      "long_bpb": 1.1893477940595558,
+      "long_context": 2048,
+      "long_context_benefit_bpb": 0.039397806860969276,
+      "matched_examples": true,
+      "short_bpb": 1.228745600920525,
+      "short_context": 512
+    }
+  ],
+  "cost_estimate_scope": "Training-chain worker entrypoint time only; excludes startup/image builds, CPU data preparation, rehearsal runs, storage, and final W&B finalization. This is not an invoice or a record of credit deductions.",
+  "evaluation": [
+    {
+      "bpb": 1.4128945851782782,
+      "checkpoint": "checkpoint1",
+      "context_length": 512,
+      "examples": 64,
+      "nll_nats": 36412.00613302132,
+      "scored_tokens": 8192,
+      "target_bytes": 37180
+    },
+    {
+      "bpb": 1.4018522549165084,
+      "checkpoint": "checkpoint1",
+      "context_length": 2048,
+      "examples": 64,
+      "nll_nats": 36127.4318969585,
+      "scored_tokens": 8192,
+      "target_bytes": 37180
+    },
+    {
+      "bpb": 1.228745600920525,
+      "checkpoint": "checkpoint2",
+      "context_length": 512,
+      "examples": 64,
+      "nll_nats": 31666.263588232046,
+      "scored_tokens": 8192,
+      "target_bytes": 37180
+    },
+    {
+      "bpb": 1.1893477940595558,
+      "checkpoint": "checkpoint2",
+      "context_length": 2048,
+      "examples": 64,
+      "nll_nats": 30650.93434845851,
+      "scored_tokens": 8192,
+      "target_bytes": 37180
+    }
+  ],
+  "figure_status": "generated",
+  "figures": [
+    "training_loss.png",
+    "validation_bpb.png",
+    "throughput.png",
+    "gpu_memory.png",
+    "estimated_cost.png",
+    "context_comparison.png"
+  ],
+  "limitations": [
+    "Checkpoint 2 has additional training tokens; before/after differences do not isolate context length as the only cause.",
+    "Checkpoint 1 evaluated at a larger input window is outside its training context range.",
+    "Training-chain worker entrypoint time only; excludes startup/image builds, CPU data preparation, rehearsal runs, storage, and final W&B finalization. This is not an invoice or a record of credit deductions.",
+    "Matched target suffixes are scored; input window length includes preceding target tokens."
+  ],
+  "matched_example_sets": true,
+  "missing_cells": [],
+  "plotting_policy": {
+    "attempts": "Separate worker attempts and stages, in saved log order; do not join rolled-back progress trajectories.",
+    "inferred_metadata": "Rows missing attempt/context inherit the latest identified worker/context in that stage's saved log; inference is flagged in CSV.",
+    "raw_metrics": "Original JSONL files are unchanged; raw_metric_json also preserves each selected source record in CSV.",
+    "validation": "Separate explicit evaluation-input-window series; generic legacy metrics retain stage/context labels."
+  },
+  "schema_version": 1,
+  "source_files": [
+    "evaluation-checkpoint1.jsonl",
+    "evaluation-checkpoint2.jsonl",
+    "evaluation-long-step-000600-0ebbe9c14024.jsonl",
+    "evaluation-long-step-000700-0ebbe9c14024.jsonl",
+    "evaluation-long-step-000800-0ebbe9c14024.jsonl",
+    "evaluation-long-step-000900-0ebbe9c14024.jsonl",
+    "evaluation-short-step-000100-20f5552afe9e.jsonl",
+    "evaluation-short-step-000200-20f5552afe9e.jsonl",
+    "evaluation-short-step-000300-20f5552afe9e.jsonl",
+    "evaluation-short-step-000400-20f5552afe9e.jsonl",
+    "metrics.jsonl"
+  ],
+  "status": "complete",
+  "training_metric_rows": 1004
+}

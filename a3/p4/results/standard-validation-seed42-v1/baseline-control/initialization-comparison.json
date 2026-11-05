@@ -1,0 +1,14 @@
+{
+  "baseline_parameters": 73531646,
+  "common_initial_state_sha256": "85efabd7001afd6116a1cc232412c5e3b620570181ea6fe9234386f615a24cbc",
+  "common_initial_tensors_identical": true,
+  "fox_only_learned_tensors": [
+    "transformer.h.0.attn.forget.weight",
+    "transformer.h.1.attn.forget.weight",
+    "transformer.h.2.attn.forget.weight",
+    "transformer.h.3.attn.forget.weight",
+    "transformer.h.4.attn.forget.weight",
+    "transformer.h.5.attn.forget.weight"
+  ],
+  "fox_parameters": 73545506
+}
