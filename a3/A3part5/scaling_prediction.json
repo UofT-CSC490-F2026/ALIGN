@@ -1,0 +1,16 @@
+{
+  "formula": "predicted_nano_bpb = measured_pico_bpb_512 * (nano_transformer_params / pico_transformer_params)^(-0.076)",
+  "exponent": 0.076,
+  "source": "https://arxiv.org/html/2001.08361v1#S1.E1",
+  "parameter_definition": "Transformer block parameters; exclude token, value and output embeddings",
+  "anchor": "Reproduced Part 2 FoX, seed 42, 500 updates, same Part 5 tokenizer; native validation BPB at 512",
+  "evaluation": "Both models at context 512, batch 8, 64 batches on the identical validation shard and tokenizer",
+  "interpretation": "Exploratory parameter-scaling extrapolation, not a fitted scaling law for ClimbMix/FoX",
+  "limitations": [
+    "Published exponent is borrowed from a different architecture and dataset.",
+    "The short pico run is not converged, unlike the assumptions of the parameter-only law.",
+    "Training token budgets, context, precision and optimization schedule differ.",
+    "One pico anchor cannot identify an irreducible loss floor or estimate a new exponent.",
+    "Prediction error is reported without post-hoc adjustment; no confidence interval is claimed."
+  ]
+}
