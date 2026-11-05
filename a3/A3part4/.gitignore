@@ -1,15 +1,9 @@
 .venv/
-vendor/
-outputs/
 local/
-.cache/
 __pycache__/
 *.pyc
 *.pt
-*.bin
 *.parquet
 wandb/
-.env
-.env.*
-.modal.toml
+.env*
 .DS_Store

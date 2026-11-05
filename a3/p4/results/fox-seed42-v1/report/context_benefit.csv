@@ -1,3 +1,0 @@
-checkpoint,short_context,long_context,short_bpb,long_bpb,long_context_benefit_bpb,matched_examples
-checkpoint1,512,2048,1.4128945851782782,1.4018522549165084,0.011042330261769706,True
-checkpoint2,512,2048,1.228745600920525,1.1893477940595558,0.039397806860969276,True
