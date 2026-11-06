@@ -52,6 +52,9 @@ def verify():
     from pico.variants import build
     torch.manual_seed(42)
     reference = build("fox", device="cpu", depth=2, width=128, vocab_size=256, seq_len=32)
+    for block in reference.transformer.h:
+        torch.nn.init.normal_(block.attn.c_proj.weight, std=.02)
+        torch.nn.init.normal_(block.mlp.c_proj.weight, std=.02)
     model = FoXGPT(reference.config).to("cpu")
     model.init_weights()
     model.load_state_dict(reference.state_dict(), strict=True)

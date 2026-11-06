@@ -37,15 +37,36 @@ def activate():
               memory=16384, timeout=3600, retries=0, max_containers=1,
               scaledown_window=2, include_source=True,
               secrets=[modal.Secret.from_name("a3-p4-wandb")])
-def experiment(run_id: str):
+def experiment(run_id: str, evaluation_only: bool = False):
     activate()
     volume.reload()
     from A3part4.train import train
     from A3part4.evaluate import evaluate
     output = Path("/vol/runs") / run_id
-    training = train(output, volume.commit)
-    evaluation = evaluate(output, volume.commit)
-    return {"training": training, "evaluation": evaluation}
+    from A3part4.train import write_json
+    if not output.is_dir():
+        raise FileNotFoundError(f"Run does not exist: {run_id}")
+    try:
+        if evaluation_only:
+            # Recovery must not silently start training or create a new run.
+            for step in (500, 1000):
+                for name in (f"model_{step:06d}.pt", f"meta_{step:06d}.json"):
+                    if not (output / "checkpoints" / name).is_file():
+                        raise FileNotFoundError(f"Missing checkpoint file: {name}")
+            training_path = output / "training-results.json"
+            training = json.loads(training_path.read_text()) if training_path.exists() else None
+        else:
+            training = train(output, volume.commit)
+        evaluation = evaluate(output, volume.commit)
+        result = {"training": training, "evaluation": evaluation}
+        write_json(output / "result.json", result)
+        write_json(output / "status.json", {"status": "complete"})
+        volume.commit()
+        return result
+    except Exception as error:
+        write_json(output / "status.json", {"status": "failed", "error": str(error)})
+        volume.commit()
+        raise
 
 
 @app.function(image=image, volumes={"/vol": volume}, cpu=4, memory=16384,
@@ -55,8 +76,6 @@ def pipeline(run_id: str):
     activate()
     import wandb
     from A3part4.train import check_baseline, write_json
-    from nanochat.common import download_file_with_lock
-    from scripts.base_eval import EVAL_BUNDLE_URL, place_eval_bundle
     output = Path("/vol/runs") / run_id
     output.mkdir(parents=True, exist_ok=False)
     try:
@@ -70,8 +89,6 @@ def pipeline(run_id: str):
         if not Path("/vol/cache/tokenizer/tokenizer.pkl").exists():
             subprocess.run(["python", "-m", "scripts.tok_train", "--max-chars=100000000",
                             "--vocab-size=32768"], check=True)
-        if not Path("/vol/cache/eval_bundle").exists():
-            download_file_with_lock(EVAL_BUNDLE_URL, "eval_bundle.zip", postprocess_fn=place_eval_bundle)
         artifacts = []
         for path in sorted(Path("/vol/cache").rglob("*")):
             if path.is_file() and (path.suffix == ".parquet" or path.parent.name == "tokenizer"):
@@ -101,8 +118,10 @@ def pipeline(run_id: str):
 
 
 @app.local_entrypoint()
-def main(run_id: str = "baseline-context-seed42-v1"):
+def main(run_id: str = "baseline-context-seed42-v1", evaluation_only: bool = False):
     if not re.fullmatch(r"[a-zA-Z0-9_-]+", run_id):
         raise ValueError("Use letters, digits, dashes, or underscores for the run ID")
     print(f"Outputs: volume a3-part4-baseline /runs/{run_id}", flush=True)
-    print(json.dumps(pipeline.remote(run_id), indent=2))
+    call = (experiment.spawn(run_id, evaluation_only=True) if evaluation_only
+            else pipeline.spawn(run_id))
+    print(f"Submitted remote call: {call.object_id}", flush=True)

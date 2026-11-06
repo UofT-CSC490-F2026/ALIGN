@@ -27,7 +27,10 @@ OPTIMIZER = dict(unembedding_lr=.008, embedding_lr=.3,
 
 
 def write_json(path, value):
-    Path(path).write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
+    path = Path(path)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
+    temporary.replace(path)
 
 
 def check_baseline():
@@ -35,6 +38,11 @@ def check_baseline():
     from nanochat.gpt import GPT
     model = build("baseline", seed=42, device="cpu")
     assert sum(p.numel() for p in model.parameters()) == PARAMETERS
+    # Exercise attention and MLP outputs, which are zeroed at initialization.
+    # This disposable check model is never used for training.
+    for block in model.transformer.h:
+        torch.nn.init.normal_(block.attn.c_proj.weight, std=.02)
+        torch.nn.init.normal_(block.mlp.c_proj.weight, std=.02)
     native = GPT(model.config).to("cpu")
     native.init_weights()
     native.load_state_dict(model.state_dict(), strict=True)

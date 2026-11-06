@@ -3,7 +3,7 @@
 Reproduce the Part 2 baseline at context 512, then continue its saved model and
 optimizer at context 2048. Implementation uses the existing `pico.variants.build`
 baseline and the Part 2 training loop, with native nanochat data loading,
-tokenization, checkpoints, BPB, and CORE evaluation.
+tokenization, checkpoints, and BPB evaluation.
 
 ## Configuration
 
@@ -38,10 +38,8 @@ both checkpoints at both context lengths, with 262,144 nominal validation token
 positions per cell (batch 8: 64 batches at 512 or 16 at 2048). BPB also runs every
 100 training updates. Lower BPB is better.
 
-Native `scripts.base_eval.evaluate_core` evaluates both checkpoints on the full
-CORE suite (`max_per_task=-1`) at a common evaluation context of 2048. This is
-context extrapolation for the 512 checkpoint. Task scores and aggregate CORE
-are saved; higher CORE is better.
+CORE is not part of this context-window experiment. The validation budget
+matches Part 2; it is not the native trainer's 41,943,040-token default.
 
 The standard loader packs different streams at different sequence lengths.
 Compare checkpoints within the same evaluation context. The continued model
@@ -63,13 +61,33 @@ Requires the authorized Modal profile and Modal Secret `a3-p4-wandb` containing
 `WANDB_API_KEY`. Remote CPU preparation checks model compatibility and account
 access before starting the GPU. A remote pipeline controls both stages and
 evaluation, so disconnecting the local detached client does not interrupt them.
-Run IDs cannot overwrite existing runs. There are no automatic retries.
+New training runs cannot overwrite an existing run ID. There are no configured
+application retries. Modal infrastructure preemption can still interrupt work.
 
 One GPU invocation is capped at 3,600 seconds including evaluation. The CPU
 pipeline is capped at 5,400 seconds including waiting for that invocation.
 These are runtime safeguards; the account's usage limit remains separate.
 If evaluation times out, the two completed training checkpoints remain saved;
-check `status.json` and available results before scheduling any further work.
+use evaluation-only recovery below to finish missing BPB comparisons.
+
+## Recover evaluation without training
+
+Once both checkpoints exist, evaluate only missing cells:
+
+```sh
+MODAL_PROFILE=a3-p4 a3/A3part4/.venv/bin/modal run --detach a3/A3part4/modal_app.py --run-id baseline-context-seed42-v1 --evaluation-only
+```
+
+This mode does not prepare data, train models, or modify checkpoints. It validates
+saved BPB rows and preserves completed cells; an interrupted cell restarts from
+the beginning. Each completed cell is written atomically and committed before
+logging to W&B. A fully evaluated run performs no additional model evaluation.
+The existing volume must still contain its original tokenizer and checkpoints.
+Do not launch overlapping jobs for the same run ID. Partial training recovery
+is not implemented; this entry point requires both completed checkpoints.
+
+The CPU baseline check uses nonzero attention/MLP output projections in disposable
+models to exercise those computations. Training initialization is unchanged.
 
 ## Outputs
 
@@ -82,7 +100,8 @@ Volume directory `/runs/<run-id>/` contains:
 - `status.json`, `preparation.json`, `training.json`: state, provenance, configuration and W&B URL.
 - `training.jsonl`, `stage1.json`, `stage2.json`, `training-results.json`: curves and resource measurements.
 - `checkpoints/`: native model, optimizer and metadata at steps 500 and 1000, committed before final evaluation.
-- `bpb.json`, `core-500.json`, `core-1000.json`, `result.json`: saved evaluation results.
+- `bpb.json`, `result.json`: saved evaluation results. Historical CORE files, if any,
+  are left untouched and are not consumed by this pipeline.
 - W&B run files alongside the persistent JSON records.
 
 Datasets and tokenizer stay under `/cache/` on the volume. Model and optimizer
