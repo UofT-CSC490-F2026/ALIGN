@@ -1,0 +1,35 @@
+{
+  "cpu_tests": [
+    {
+      "variant": "baseline",
+      "loss": 5.544819355010986,
+      "status": "passed"
+    },
+    {
+      "variant": "cla2",
+      "loss": 5.544984340667725,
+      "status": "passed"
+    },
+    {
+      "variant": "fox",
+      "loss": 5.545762538909912,
+      "status": "passed"
+    },
+    {
+      "variant": "dcmha",
+      "loss": 5.545060634613037,
+      "status": "passed"
+    },
+    {
+      "variant": "diff_v2",
+      "loss": 5.5462117195129395,
+      "status": "passed"
+    },
+    {
+      "variant": "fope",
+      "loss": 5.545934200286865,
+      "status": "passed"
+    }
+  ],
+  "prepared": true
+}

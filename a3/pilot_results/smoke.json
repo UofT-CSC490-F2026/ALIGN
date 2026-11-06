@@ -1,0 +1,32 @@
+[
+  {
+    "variant": "baseline",
+    "loss": 5.540809154510498,
+    "status": "passed"
+  },
+  {
+    "variant": "cla2",
+    "loss": 5.540718078613281,
+    "status": "passed"
+  },
+  {
+    "variant": "fox",
+    "loss": 5.540805816650391,
+    "status": "passed"
+  },
+  {
+    "variant": "dcmha",
+    "loss": 5.540804386138916,
+    "status": "passed"
+  },
+  {
+    "variant": "diff_v2",
+    "loss": 5.540853500366211,
+    "status": "passed"
+  },
+  {
+    "variant": "fope",
+    "loss": 5.546050548553467,
+    "status": "passed"
+  }
+]
