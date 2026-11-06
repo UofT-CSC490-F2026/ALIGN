@@ -45,7 +45,8 @@ The standard loader packs different streams at different sequence lengths.
 Compare checkpoints within the same evaluation context. The continued model
 has also seen 16.384M more training tokens: this experiment measures the outcome
 of context extension plus continued training, not an isolated causal effect of
-context length. No improvement is assumed before results arrive.
+context length. The matched-target evaluation below additionally holds the
+scored text fixed across context lengths.
 
 ## Run
 
@@ -114,3 +115,54 @@ MODAL_PROFILE=a3-p4 a3/A3part4/.venv/bin/modal volume get a3-part4-baseline runs
 
 This folder contains no LaTeX report. Interpret and write up the results only
 after confirming that training and evaluations completed.
+
+## Matched text-continuation evaluation
+
+`continuation_modal.py` compares identical passage endings with different
+amounts of preceding text, adapting sliding-window language-model evaluation
+from [Shortformer](https://aclanthology.org/2021.acl-long.427/). It is a separate
+analysis, not an official benchmark score.
+
+Select the first 256 distinct held-out documents containing at least 2048
+native tokenizer tokens; retain their first 2048 tokens. Score only the final
+128 tokens, with either 384 or 1920 preceding text tokens, plus BOS. Shifted
+input/target tensors have length 512 or 2048 respectively. Both checkpoints
+receive exactly the same targets and context condition. Earlier targets are
+masked to -1 and scoring uses native `evaluate_bpb`. No generation, training,
+new tokenizer, or instruction following is involved.
+
+```sh
+PYTHONPATH=a3 MODAL_PROFILE=a3-p4 a3/A3part4/.venv/bin/modal run --detach a3/A3part4/continuation_modal.py
+```
+
+Results are under `matched-continuation-v1/` in the existing run directory on
+volume `a3-part4-baseline`. The job saves protocol/checkpoint/tokenizer hashes,
+selected token sequences and document identifiers, per-document `scores.json`,
+`summary.json`, and a separate `status.json`. Scores are atomic and committed
+every 16 comparisons; a relaunch reuses completed comparisons. Avoid concurrent
+jobs using the same output directory. One H100 has a 30-minute timeout.
+
+Aggregate BPB is byte-weighted. Paired document bootstrap intervals describe
+checkpoint differences and context gains on the selected long documents;
+they do not capture variability across training seeds. Positive context gain
+means lower target BPB with the longer window. The held-out corpus was already
+used for monitoring, and this length-filtered sample is not representative of
+all text. SSSL window sizes also change with context. Additional training and
+the learning-rate restart remain confounders in comparisons of checkpoints.
+Existing BPB outputs are unchanged.
+
+Completed results (256 documents; the same 32,768 target positions per cell):
+
+| Checkpoint | Target BPB, window 512 | Target BPB, window 2048 |
+|---|---:|---:|
+| 1: trained at 512 | 1.35955 | 1.43645 |
+| 2: continued at 2048 | 1.26039 | 1.22042 |
+
+Checkpoint 2 improves at both window lengths. The longer window worsens
+checkpoint 1 by 0.07690 BPB but improves checkpoint 2 by 0.03997 BPB (3.17%).
+For checkpoint 2, 2,000 paired document-bootstrap resamples give a 95% interval
+of [0.03367, 0.04645] for the reduction. This supports a benefit from the longer
+context setting on these continuations, without isolating context-extension
+training from the additional updates or learning-rate restart.
+
+Alignment checks: `python3 -m unittest discover -s a3/A3part4 -p 'test_*.py'`.
