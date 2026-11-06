@@ -116,26 +116,18 @@ def default_validation(output, models=('pico', 'nano')):
 
 
 def summarize(output, rows):
-    """Apply the fixed scaling formula to the final, matched evaluation inputs."""
+    """Save measured BPB and token accounting; scaling is a separate study."""
     output = Path(output)
-    values = {(r['model'], r['context']): r['bpb'] for r in rows}
-    pico = json.loads((output / 'pico/comparison.json').read_text())
     config = json.loads((output / 'configuration.json').read_text())
-    law = json.loads(Path(__file__).with_name('scaling_prediction.json').read_text())
-    predicted = values['pico', 512] * (config['counts']['transformer_matrices'] /
-                                     pico['counts']['transformer_matrices']) ** (-law['exponent'])
-    result = dict(bpb=rows, predicted_bpb_512=predicted,
-                  prediction_error=values['nano', 512] - predicted,
-                  interpretation='Fixed-exponent comparison applied to final evaluation measurements; not a newly preregistered forecast',
+    result = dict(bpb=rows,
                   actual_training_tokens=checkpoint_steps(output)['nano'] * config['total_batch_size'])
     record(output / RESULT_FOLDER / 'evaluation.json', result)
-    print('RESULT final BPB and scaling summary saved', flush=True)
+    print('RESULT final BPB summary saved', flush=True)
 
 
 def pico(output):
     """Train the reference only if no previous attempt or checkpoint exists."""
     from pico.train import train
-    from pico.variants import build
     output = Path(output)
     if (output / 'result.json').exists():
         result = json.loads((output / 'result.json').read_text())
@@ -150,12 +142,7 @@ def pico(output):
         result = json.loads((output / 'result.json').read_text())
         if result['completed_steps'] != 500:
             raise RuntimeError('Pico reference did not finish 500 steps')
-    rows = default_validation(output.parent, models=('pico',))
-    # This file supplies parameter counts to the scaling comparison.
-    if not (output / 'comparison.json').exists():
-        model = build('fox', seed=42)
-        record(output / 'comparison.json', {'counts': model.num_scaling_params(),
-               'bpb': [r for r in rows if r['model'] == 'pico']})
+    default_validation(output.parent, models=('pico',))
 
 
 def nano(output):

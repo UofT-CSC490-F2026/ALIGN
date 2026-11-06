@@ -28,7 +28,7 @@ image = (modal.Image.debian_slim(python_version="3.12")
                "TORCHINDUCTOR_CACHE_DIR": "/vol/compile", "TRITON_CACHE_DIR": "/vol/triton"})
          .add_local_dir(str(HERE.parent / "pico"), "/root/a3/pico", ignore=["__pycache__", "*.pyc"]))
 for filename in ("__init__.py", "fox.py", "run_train.py", "evaluate.py",
-                 "evaluation_questions.json", "evaluation_questions_extra.json", "scaling_prediction.json", "state.py"):
+                 "evaluation_questions.json", "evaluation_questions_extra.json", "state.py"):
     image = image.add_local_file(str(HERE / filename), f"/root/a3/A3part5/{filename}")
 
 
@@ -192,15 +192,6 @@ def pipeline(run_id, with_core=False):
         volume.commit()
         pico_reference.remote(run_id)
         volume.reload()
-        pico = json.loads((output / "pico/comparison.json").read_text())
-        prediction = json.loads(Path("/root/a3/A3part5/scaling_prediction.json").read_text())
-        prediction.update(pico_bpb_512=pico["bpb"][0]["bpb"],
-                          nano_transformer_params=counts["transformer_matrices"],
-                          pico_transformer_params=pico["counts"]["transformer_matrices"],
-                          recorded_before_main_training=True)
-        prediction["predicted_bpb_512"] = prediction["pico_bpb_512"] * (
-            prediction["nano_transformer_params"] / prediction["pico_transformer_params"])**(-prediction["exponent"])
-        record(output / "scaling_prediction.json", prediction)
         record(output / "status.json", {"status": "ready_for_main_training"})
         volume.commit()
         training.remote(run_id)
@@ -225,7 +216,7 @@ def continue_prepared(run_id, with_core=False):
     """Reuse preparation, resume a complete checkpoint, then finish evaluation."""
     volume.reload()
     output = Path("/vol/runs") / run_id
-    for name in ("configuration.json", "scaling_prediction.json", "pico/comparison.json"):
+    for name in ("configuration.json", "pico/result.json", "pico/model.pt"):
         if not (output / name).is_file():
             raise RuntimeError(f"Missing prerequisite: {name}")
     try:

@@ -111,6 +111,36 @@ class RecoveryTests(unittest.TestCase):
             else:sys.modules['A3part5.state']=old
         return calls
 
+    def test_bpb_summary_needs_only_measured_results_and_configuration(self):
+        folder = self.root / RESULT_FOLDER
+        folder.mkdir()
+        record(self.root / 'configuration.json', {'total_batch_size': 1048576})
+        rows = [self.row(m, c) for m in ('pico', 'nano') for c in (512, 2048)]
+        env = dict(Path=Path, json=json, record=record, RESULT_FOLDER=RESULT_FOLDER,
+                   checkpoint_steps=lambda *a: {'nano': 5571})
+        load_function('evaluate.py', 'summarize', env)(self.root, rows)
+        result = json.loads((folder / 'evaluation.json').read_text())
+        self.assertEqual(result, {'bpb': rows, 'actual_training_tokens': 5841616896})
+
+    def test_prepared_recovery_uses_saved_pico_artifacts(self):
+        from types import SimpleNamespace as NS
+        record(self.root / 'configuration.json', {})
+        (self.root / 'pico').mkdir()
+        record(self.root / 'pico/result.json', {'status': 'complete'})
+        (self.root / 'pico/model.pt').write_bytes(b'checkpoint')
+        calls = []
+        env = dict(Path=lambda _: self.root.parent, record=record,
+                   volume=NS(reload=lambda: None, commit=lambda: None),
+                   training=NS(remote=lambda run: calls.append(run)),
+                   evaluation=NS(remote=lambda run: {'bpb': []}))
+        resume = load_function('modal_app.py', 'continue_prepared', env)
+        self.assertEqual(resume(self.root.name), {'bpb': []})
+        self.assertEqual(calls, [self.root.name])
+        (self.root / 'pico/model.pt').unlink()
+        with self.assertRaises(RuntimeError):
+            resume(self.root.name)
+        self.assertEqual(calls, [self.root.name])
+
     def test_training_resumes_existing_checkpoint(self):
         calls=self.training_case(500,started=True)
         self.assertIn('--resume-from-step=500',calls[0][0])
