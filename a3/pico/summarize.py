@@ -11,7 +11,9 @@ def summarize(folder):
         (folder / 'sweep.json').write_text(json.dumps(rows, indent=2), encoding='utf-8')
     else:
         rows = json.loads((folder / 'sweep.json').read_text())
-    variants = ('baseline', 'cla2', 'fox', 'dcmha', 'diff_v2', 'fope')
+    variants = ('baseline', 'cla2', 'fox')
+    # Preserve the historical sweep on disk; summarize only the selected scope.
+    rows = [r for r in rows if r['variant'] in variants]
     assert len({(r['variant'], r['seed']) for r in rows}) == len(rows), 'Duplicate results'
     assert len({r['variant_source_sha256'] for r in rows}) == 1, 'Architecture changed during sweep'
     assert len({json.dumps(r['model'], sort_keys=True) for r in rows}) == 1, 'Configuration mismatch'
@@ -42,9 +44,7 @@ def summarize(folder):
               'and any failed calls add cost. Credits are not deducted in this estimate.', '',
               '## Limitations', '',
               '- CLA2 is adjacent sharing with per-layer value embeddings, not FusedKV-Lite.',
-              '- FoX/DCMHA use dense reference attention; speed is implementation-specific.',
-              '- DIFF V2 has more parameters; this is not parameter- or FLOP-matched.',
-              '- FoPE is a head-shared Eq.13 adaptation; no context extrapolation was tested.',
+              '- FoX uses dense reference attention; speed is implementation-specific.',
               '- No cached decoding, CORE, SFT, or final-model claims.',
               '- Two seeds, 16.384M tokens each, one short training schedule; do not extrapolate a winner.',
               '- GPU timings include implementation differences and hardware/run variability.',
@@ -52,7 +52,7 @@ def summarize(folder):
               '', '## W&B runs', '']
     for r in rows:
         lines.append(f"- [{r['variant']} seed {r['seed']}]({r['wandb_url']})")
-    if len(rows) == 12 and all(r['status'] == 'complete' for r in rows):
+    if len(rows) == 6 and all(r['status'] == 'complete' for r in rows):
         means = {v: statistics.mean(r['val_bpb'] for r in groups[v]) for v in variants}
         best = min(means, key=means.get)
         lines += ['', '## Screening conclusion', '',

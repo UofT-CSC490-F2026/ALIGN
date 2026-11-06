@@ -33,7 +33,7 @@ do not repeat the full sweep without checking cumulative spend.
 - Compare BPB, parameters, tokens/s, peak allocated VRAM, wall time, and estimated cost.
 - W&B project: a3-picochat-pilot. Secret: wandb-secret. Never store the key in Git.
 
-## Precise adaptations
+## Selected implementations
 
 1. **CLA2**: adjacent pairs share projected K/V; each recipient retains its own
    value-embedding addition. This is a nanochat-specific CLA adaptation, **not**
@@ -44,27 +44,17 @@ do not repeat the full sweep without checking cumulative spend.
    Dense reference attention, not the authors' optimized forgetting kernel.
    This intervention combines forgetting gates with removing RoPE; the pilot
    does not isolate the contribution of either change.
-3. **DCMHA**: Appendix D rank-2 query/key compositions before and after softmax.
-   Zero initialization of diagonal gates; small nonzero low-rank projections.
-   Dense reference implementation. No claim of reproducing DCFormer's throughput.
-4. **DIFF V2**: double query heads, shared K/V for paired heads, token/head sigmoid
-   lambda, no output RMSNorm. Additional parameters are NOT offset by shrinking
-   the MLP; report parameter count as a confound.
-5. **FoPE**: paper Eq.13 Fourier-series adaptation, fixed head-shared independent
-   cosine/sine coefficients (identity + Normal(0, .1)); frequencies below 2*pi/512
-   are represented by cos=1, sin=0. This is NOT the authors' per-head OLMo config.
-   No length-generalization conclusion from the 512-token validation alone.
+The other screened implementations have been removed from this PR.
+Historical JSON records and execution notes are retained as evidence, not
+as claims that the current launcher can reproduce the removed variants.
 
 ## Sources
 
 - CLA: https://arxiv.org/abs/2405.12981
 - FoX: https://arxiv.org/abs/2503.02130
-- DCMHA Appendix D: https://arxiv.org/html/2405.08553v2
-- DIFF V2: https://huggingface.co/blog/microsoft/diff-attn-v2
-- FoPE: https://arxiv.org/abs/2412.17739
 - Pricing checked Nov 3: https://modal.com/pricing
 
-## Commands (PowerShell, workspace root)
+## Current commands (PowerShell, workspace root)
 
 ```powershell
 $env:PYTHONUTF8='1'
@@ -81,6 +71,7 @@ Run sweep only after both smoke stages pass. Results are persisted in the Modal
 volume a3-picochat-pilot and downloaded as JSON under a3/pilot_results. Upstream
 nanochat source is not edited. Checkpoints are remote and should not be committed.
 
-The actual launch runs `--stage single --variant baseline` and `--stage variants`
-concurrently (six GPUs maximum) to reduce wall-clock waiting. Token and timeout
-limits are unchanged. `variants` maps the five non-baseline configurations.
+The current sweep runs baseline, CLA2, and FoX serially (six seed runs).
+The `variants` stage runs only CLA2 and FoX. Historical broader-screening
+launches described above used an older implementation; no new runs were
+performed for this cleanup.

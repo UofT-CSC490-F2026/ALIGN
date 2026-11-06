@@ -6,9 +6,10 @@ The selected interventions are FoX without RoPE and CLA2.
 This PR excludes the assignment report,
 diagrams, and Part 3 hardware experiments.
 
-The broader six-configuration screening code and raw results are retained for
-reproducibility in `pico/` and `pilot_results/`. `REPORT.md` summarizes the original
-screening.
+Only baseline, FoX, and CLA2 are implemented and exposed by the launcher.
+Historical six-configuration JSON records remain unmodified for provenance;
+`REPORT.md` summarizes only the selected configurations. Historical source
+hashes refer to the original screening code, not this scope-only cleanup.
 See `PILOT_PROTOCOL.md` for implementation details and limitations.
 
 ## Reproducing Part 2

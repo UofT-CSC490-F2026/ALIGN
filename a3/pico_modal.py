@@ -1,6 +1,6 @@
 """Run from ALIGN: a3/.venv/Scripts/modal run a3/pico_modal.py --stage smoke
 
-Stages: prepare (CPU), smoke (GPU), sweep (six serial GPU calls).
+Stages: prepare (CPU), smoke (GPU), sweep (three serial GPU calls).
 No deployment, no retries, no automatic repeat runs. $40 approved pilot ceiling.
 """
 from pathlib import Path
@@ -106,15 +106,15 @@ def main(stage: str = 'prepare', variant: str = 'baseline'):
         (dest / f'{variant}.json').write_text(json.dumps(result, indent=2))
     elif stage == 'variants':
         result = []
-        for row in experiment.map(('cla2', 'fox', 'dcmha', 'diff_v2', 'fope'), order_outputs=False):
+        for row in experiment.map(('cla2', 'fox'), order_outputs=False):
             result.extend(row)
             (dest / 'variants.json').write_text(json.dumps(result, indent=2))
     elif stage == 'sweep':
-        # 6*2400s + 600s smoke = ~16.5 GPU dollars at $0.001097/s.
+        # 3*2400s + 600s smoke = ~8.6 GPU dollars at $0.001097/s.
         # CPU/RAM/build allowance leaves substantial room below $40.
         # Do not rerun failed jobs automatically or silently enlarge these limits.
         result = []
-        for variant in ('baseline', 'cla2', 'fox', 'dcmha', 'diff_v2', 'fope'):
+        for variant in ('baseline', 'cla2', 'fox'):
             row = experiment.remote(variant)
             result.extend(row)
             (dest / 'sweep.json').write_text(json.dumps(result, indent=2))

@@ -95,9 +95,7 @@ def train(variant, seed, output, steps=500, seconds=1000):
                       steady_tokens_per_second=tokens_per_step / (sum(timings[5:]) / len(timings[5:])) if len(timings)>5 else None,
                       peak_allocated_gib=torch.cuda.max_memory_allocated() / 2**30,
                       wandb_url=run.url, history=history)
-        torch.save({'model': model.state_dict(), 'config': config,
-                    'fope_cos': model.cos if variant == 'fope' else None,
-                    'fope_sin': model.sin if variant == 'fope' else None}, output / 'model.pt')
+        torch.save({'model': model.state_dict(), 'config': config}, output / 'model.pt')
         (output / 'result.json').write_text(json.dumps(result, indent=2))
         run.summary.update({k: v for k, v in result.items() if k not in ('history', 'model')})
         return result
