@@ -1,0 +1,6 @@
+{
+  "sha256": "84e4dd79c71dc65bd2d7a0adbf7724b15b2abd7ddcb18447f82f8c720d035092",
+  "calibration_targets": 524288,
+  "test_targets": 524288,
+  "source": "held-out shard 06542; fixed BOS-bestfit rows; first/second 256 rows"
+}

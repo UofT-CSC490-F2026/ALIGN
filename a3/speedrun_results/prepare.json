@@ -1,0 +1,18 @@
+{
+  "parameters": {
+    "wte": 50331648,
+    "value_embeds": 603979776,
+    "lm_head": 50331648,
+    "transformer_matrices": 679921632,
+    "scalars": 74,
+    "total": 1384564778
+  },
+  "scaling_parameters": 730253280,
+  "global_batch": 1048576,
+  "steps": 5571,
+  "tokens": 5841616896,
+  "tokenizer_sha256": "ae73c5f7a960edc56022dfd46a653df2b9b38d84456e5e9f48eb5e02a60c21c2",
+  "train_shards": 170,
+  "stopping_rule": "upstream ratio 8; not one full epoch",
+  "seed": 42
+}

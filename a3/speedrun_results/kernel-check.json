@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "torch_version": "2.9.1+cu128",
+  "checks": [
+    "forward and Q/K/V/gate gradients vs dense reference",
+    "native FoX vs pilot FoX",
+    "cached prefill/decode vs full sequence",
+    "cache replication"
+  ],
+  "model_source_sha256": "1fcf0ff458d3599b4043b502a8e640fd22c7f6d5914c2cecfd0635044502049d"
+}
