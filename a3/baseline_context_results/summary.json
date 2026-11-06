@@ -1,0 +1,39 @@
+{
+  "means": {
+    "0": {
+      "512": 1.3611829806740094,
+      "2048": 1.431337071583438
+    },
+    "512": {
+      "512": 1.24543475690809,
+      "2048": 1.359563374532899
+    },
+    "2048": {
+      "512": 1.2523232533525093,
+      "2048": 1.1953468963765967
+    }
+  },
+  "paired_document_stats": {
+    "42": {
+      "mean_document_delta_bpb": -0.15712864441932745,
+      "bootstrap_95_percent_interval": [
+        -0.18487255746768783,
+        -0.13372490207253418
+      ],
+      "limitations": "Document bootstrap conditional on this checkpoint; not training-seed uncertainty."
+    },
+    "43": {
+      "mean_document_delta_bpb": -0.18388602671459608,
+      "bootstrap_95_percent_interval": [
+        -0.21297474787387408,
+        -0.15963556866913764
+      ],
+      "limitations": "Document bootstrap conditional on this checkpoint; not training-seed uncertainty."
+    }
+  },
+  "aggregate_deltas": {
+    "42": -0.151105798658147,
+    "43": -0.17732715765445795
+  },
+  "continuation_runtime_cost_estimate": 0.6996506116776313
+}
