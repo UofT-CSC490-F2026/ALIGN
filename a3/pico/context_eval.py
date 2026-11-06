@@ -65,9 +65,8 @@ def suffix_eval(model, data, token_bytes, context):
         nats = (losses * (sizes > 0)).sum().item()
         nbytes = sizes.sum().item()
         rows.append(dict(document=i, nats=nats, bytes=nbytes,
+        rows.append(dict(document=i, nats=nats, bytes=nbytes,
                          bpb=nats / (math.log(2) * nbytes)))
     return {'context': context, 'target_tokens': len(rows)*256,
             'bpb': sum(r['nats'] for r in rows)/(math.log(2)*sum(r['bytes'] for r in rows)),
             'documents': rows}
-
-
