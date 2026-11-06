@@ -15,7 +15,7 @@ from nanochat.loss_eval import evaluate_bpb
 from pico.variants import build
 
 
-def train(variant, seed, output, steps=500, seconds=1000):
+def train(variant, seed, output, steps=500, seconds=1000, hardware=None):
     started = time.monotonic()
     compute_init('cuda')
     tokenizer = get_tokenizer()
@@ -32,9 +32,12 @@ def train(variant, seed, output, steps=500, seconds=1000):
                   gpu=torch.cuda.get_device_name(), torch_version=str(torch.__version__),
                   upstream_commit='92d63d4e8bb4df75c3b71618f31ddde2378b2bcd',
                   variant_source_sha256=hashlib.sha256(Path(__file__).with_name('variants.py').read_bytes()).hexdigest())
+    if hardware is not None:
+        from pico.hardware import describe
+        config.update(describe(model, variant, hardware))
     run = wandb.init(project='a3-picochat-pilot',
-                     name=f'{variant}-seed{seed}',
-                     group='pilot-v1', config=config)
+                     name=f'{hardware + "-" if hardware else ""}{variant}-seed{seed}',
+                     group=('hardware-v1' if hardware else 'pilot-v1'), config=config)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     loader = tokenizing_distributed_data_loader_bos_bestfit(tokenizer, batch, seq, 'train')
@@ -74,6 +77,8 @@ def train(variant, seed, output, steps=500, seconds=1000):
             losses.append(loss_sum.item())
             metrics = {'step': step + 1, 'tokens': (step + 1) * tokens_per_step,
                        'train/loss': losses[-1], 'train/tokens_per_second': tokens_per_step / elapsed}
+            if hardware is not None:
+                metrics['train/estimated_mfu_percent'] = 100 * config['model_flops_per_token'] * tokens_per_step / elapsed / config['dense_bf16_peak_flops']
             if (step + 1) % 100 == 0 or step == steps - 1:
                 model.eval()
                 validation = tokenizing_distributed_data_loader_bos_bestfit(tokenizer, batch, seq, 'val')
@@ -95,6 +100,13 @@ def train(variant, seed, output, steps=500, seconds=1000):
                       steady_tokens_per_second=tokens_per_step / (sum(timings[5:]) / len(timings[5:])) if len(timings)>5 else None,
                       peak_allocated_gib=torch.cuda.max_memory_allocated() / 2**30,
                       wandb_url=run.url, history=history)
+        if hardware is not None:
+            result.update(warmup_step_seconds=sum(timings[:5]),
+                          steady_step_seconds=sum(timings[5:]),
+                          step_seconds=timings,
+                          estimated_mfu_percent=100 * config['model_flops_per_token'] * result['steady_tokens_per_second'] / config['dense_bf16_peak_flops'],
+                          seed_elapsed_gpu_cost_estimate=result['elapsed_seconds'] * config['gpu_dollars_per_second'],
+                          training_gpu_cost_estimate=train_seconds * config['gpu_dollars_per_second'])
         torch.save({'model': model.state_dict(), 'config': config}, output / 'model.pt')
         (output / 'result.json').write_text(json.dumps(result, indent=2))
         run.summary.update({k: v for k, v in result.items() if k not in ('history', 'model')})

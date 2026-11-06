@@ -1,0 +1,182 @@
+[
+  {
+    "hardware": "A10",
+    "variant": "baseline",
+    "train_seconds": 225.27104419450023,
+    "warmup_step_seconds": 13.964356704999897,
+    "elapsed_seconds": 238.789932305,
+    "steady_tokens_per_second": 76761.26391171064,
+    "estimated_mfu_percent": 16.040668851620453,
+    "seed_elapsed_gpu_cost_estimate": 0.07306971928533001,
+    "val_bpb": 1.3425882150999642,
+    "seeds": [
+      {
+        "seed": 42,
+        "val_bpb": 1.3340911261970287,
+        "steady_tokens_per_second": 76706.0084374744,
+        "estimated_mfu_percent": 16.029122210524466,
+        "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/wzcz67eu"
+      },
+      {
+        "seed": 43,
+        "val_bpb": 1.3510853040028996,
+        "steady_tokens_per_second": 76816.5193859469,
+        "estimated_mfu_percent": 16.052215492716442,
+        "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/ipoc49x3"
+      }
+    ],
+    "backends": [
+      "FA3:/vol/hf/hub/models--kernels-community--flash-attn3/snapshots/e29f138fc363b396e5d2706c8a5f6fa7d36f41e0/build/torch29-cxx11-cu128-x86_64-linux/flash_attn_interface.py"
+    ]
+  },
+  {
+    "hardware": "A10",
+    "variant": "fox",
+    "train_seconds": 308.6375349094982,
+    "warmup_step_seconds": 4.955813578999994,
+    "elapsed_seconds": 325.24250832999996,
+    "steady_tokens_per_second": 53411.71650582188,
+    "estimated_mfu_percent": 11.16769953678029,
+    "seed_elapsed_gpu_cost_estimate": 0.09952420754898,
+    "val_bpb": 1.3385900139428335,
+    "seeds": [
+      {
+        "seed": 42,
+        "val_bpb": 1.3254841484458582,
+        "steady_tokens_per_second": 53392.92511845598,
+        "estimated_mfu_percent": 11.163770500574186,
+        "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/ntyi74mq"
+      },
+      {
+        "seed": 43,
+        "val_bpb": 1.3516958794398088,
+        "steady_tokens_per_second": 53430.50789318777,
+        "estimated_mfu_percent": 11.171628572986394,
+        "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/cp2i516l"
+      }
+    ],
+    "backends": [
+      "dense-reference-fp32-QK-bf16-PV"
+    ]
+  },
+  {
+    "hardware": "A100-80GB",
+    "variant": "baseline",
+    "train_seconds": 112.49243805349957,
+    "warmup_step_seconds": 12.21852900149996,
+    "elapsed_seconds": 122.3267240255,
+    "steady_tokens_per_second": 161776.0604947665,
+    "estimated_mfu_percent": 7.5846938870618175,
+    "seed_elapsed_gpu_cost_estimate": 0.08489474647369699,
+    "val_bpb": 1.3388094970311313,
+    "seeds": [
+      {
+        "seed": 42,
+        "val_bpb": 1.3432292824826972,
+        "steady_tokens_per_second": 160091.95330522818,
+        "estimated_mfu_percent": 7.505736361043551,
+        "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/yftlg2uj"
+      },
+      {
+        "seed": 43,
+        "val_bpb": 1.3343897115795655,
+        "steady_tokens_per_second": 163460.16768430485,
+        "estimated_mfu_percent": 7.663651413080085,
+        "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/f5r0o41j"
+      }
+    ],
+    "backends": [
+      "FA3:/vol/hf/hub/models--kernels-community--flash-attn3/snapshots/e29f138fc363b396e5d2706c8a5f6fa7d36f41e0/build/torch29-cxx11-cu128-x86_64-linux/flash_attn_interface.py"
+    ]
+  },
+  {
+    "hardware": "A100-80GB",
+    "variant": "fox",
+    "train_seconds": 122.42218871000038,
+    "warmup_step_seconds": 3.0386924780000015,
+    "elapsed_seconds": 131.974819675,
+    "steady_tokens_per_second": 135886.9594507044,
+    "estimated_mfu_percent": 6.374533573586697,
+    "seed_elapsed_gpu_cost_estimate": 0.09159052485444999,
+    "val_bpb": 1.330144555122078,
+    "seeds": [
+      {
+        "seed": 42,
+        "val_bpb": 1.337595195797317,
+        "steady_tokens_per_second": 134199.96440022276,
+        "estimated_mfu_percent": 6.295395688455997,
+        "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/7lopbmk9"
+      },
+      {
+        "seed": 43,
+        "val_bpb": 1.3226939144468393,
+        "steady_tokens_per_second": 137573.95450118606,
+        "estimated_mfu_percent": 6.4536714587173964,
+        "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/9y27i2p9"
+      }
+    ],
+    "backends": [
+      "dense-reference-fp32-QK-bf16-PV"
+    ]
+  },
+  {
+    "hardware": "H100",
+    "variant": "baseline",
+    "train_seconds": 74.29039644399992,
+    "warmup_step_seconds": 7.911010604000023,
+    "elapsed_seconds": 82.236953007,
+    "steady_tokens_per_second": 245947.15144380438,
+    "estimated_mfu_percent": 3.6376750517582725,
+    "seed_elapsed_gpu_cost_estimate": 0.090213937448679,
+    "val_bpb": 1.3606737688797943,
+    "seeds": [
+      {
+        "seed": 42,
+        "val_bpb": 1.3647810487126864,
+        "steady_tokens_per_second": 226160.99866750927,
+        "estimated_mfu_percent": 3.345028465277877,
+        "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/a2m887pi"
+      },
+      {
+        "seed": 43,
+        "val_bpb": 1.356566489046902,
+        "steady_tokens_per_second": 265733.30422009947,
+        "estimated_mfu_percent": 3.9303216382386683,
+        "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/syd9k3ss"
+      }
+    ],
+    "backends": [
+      "FA3:/vol/hf/hub/models--varunneal--flash-attention-3/snapshots/de87b9b5af06dd9984df595bef90b2eba44b181a/build/torch29-cxx11-cu128-x86_64-linux/flash_attention_3/flash_attn_interface.py"
+    ]
+  },
+  {
+    "hardware": "H100",
+    "variant": "fox",
+    "train_seconds": 72.86764072649984,
+    "warmup_step_seconds": 1.877447519499988,
+    "elapsed_seconds": 79.154226248,
+    "steady_tokens_per_second": 228507.97344232525,
+    "estimated_mfu_percent": 3.3816627434387705,
+    "seed_elapsed_gpu_cost_estimate": 0.086832186194056,
+    "val_bpb": 1.3492621949812094,
+    "seeds": [
+      {
+        "seed": 42,
+        "val_bpb": 1.3526714744020885,
+        "steady_tokens_per_second": 226192.804881101,
+        "estimated_mfu_percent": 3.3474008349795947,
+        "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/3i7zorb3"
+      },
+      {
+        "seed": 43,
+        "val_bpb": 1.3458529155603303,
+        "steady_tokens_per_second": 230823.1420035495,
+        "estimated_mfu_percent": 3.4159246518979463,
+        "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/zs8mhkj8"
+      }
+    ],
+    "backends": [
+      "dense-reference-fp32-QK-bf16-PV"
+    ]
+  }
+]
