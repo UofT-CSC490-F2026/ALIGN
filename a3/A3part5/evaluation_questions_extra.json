@@ -1,0 +1,56 @@
+{
+  "protocol": "Additional factual questions selected after reviewing the original 20. Same saved checkpoints, context 512, greedy completion, 48 new tokens. Grade full responses; flag false additions and contradictions. Preserve all outcomes.",
+  "max_new_tokens": 48,
+  "questions": [
+    {
+      "id": 21,
+      "prompt": "Question: What is the chemical formula for water?\nAnswer:",
+      "criterion": "H2O"
+    },
+    {
+      "id": 22,
+      "prompt": "Question: What is the capital of Japan?\nAnswer:",
+      "criterion": "Tokyo"
+    },
+    {
+      "id": 23,
+      "prompt": "Question: Which star is at the center of our solar system?\nAnswer:",
+      "criterion": "The Sun"
+    },
+    {
+      "id": 24,
+      "prompt": "Question: What is the largest planet in our solar system?\nAnswer:",
+      "criterion": "Jupiter"
+    },
+    {
+      "id": 25,
+      "prompt": "Question: What is the chemical symbol for oxygen?\nAnswer:",
+      "criterion": "O"
+    },
+    {
+      "id": 26,
+      "prompt": "Question: On which continent is Egypt located?\nAnswer:",
+      "criterion": "Africa"
+    },
+    {
+      "id": 27,
+      "prompt": "Question: What is the opposite of hot?\nAnswer:",
+      "criterion": "Cold"
+    },
+    {
+      "id": 28,
+      "prompt": "Question: Which animal is known as the king of the jungle?\nAnswer:",
+      "criterion": "Lion"
+    },
+    {
+      "id": 29,
+      "prompt": "Question: What is the name of the natural satellite of Earth?\nAnswer:",
+      "criterion": "The Moon"
+    },
+    {
+      "id": 30,
+      "prompt": "Question: Which organ do humans primarily use to breathe?\nAnswer:",
+      "criterion": "Lungs"
+    }
+  ]
+}
