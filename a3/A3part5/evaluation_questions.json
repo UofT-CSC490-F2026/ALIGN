@@ -1,0 +1,26 @@
+{
+  "protocol": "Greedy base-model completion, same prompts and tokenizer, no chat SFT; review answers manually against the criteria. Report every question, including failures. Ten successes unique to nano are not guaranteed.",
+  "max_new_tokens": 48,
+  "questions": [
+    {"id": 1, "prompt": "Question: What is the capital of France?\nAnswer:", "criterion": "Paris"},
+    {"id": 2, "prompt": "Question: What is the chemical symbol for gold?\nAnswer:", "criterion": "Au"},
+    {"id": 3, "prompt": "Question: If yesterday was Friday, what day is tomorrow?\nAnswer:", "criterion": "Sunday"},
+    {"id": 4, "prompt": "Question: Solve 5*x + 3 = 13. What is x?\nAnswer:", "criterion": "x = 2"},
+    {"id": 5, "prompt": "Question: Which planet is closest to the Sun?\nAnswer:", "criterion": "Mercury"},
+    {"id": 6, "prompt": "Question: What gas do plants absorb from the atmosphere during photosynthesis?\nAnswer:", "criterion": "Carbon dioxide"},
+    {"id": 7, "prompt": "Question: How many centimeters are in two meters?\nAnswer:", "criterion": "200 centimeters"},
+    {"id": 8, "prompt": "Question: All roses are flowers. Are roses plants or animals?\nAnswer:", "criterion": "Plants"},
+    {"id": 9, "prompt": "Question: A box has three red balls and two blue balls. How many balls are in the box?\nAnswer:", "criterion": "Five"},
+    {"id": 10, "prompt": "Question: What is the largest ocean on Earth?\nAnswer:", "criterion": "Pacific Ocean"},
+    {"id": 11, "prompt": "Question: Why does ice float on liquid water?\nAnswer:", "criterion": "Ice is less dense than liquid water"},
+    {"id": 12, "prompt": "Question: What language is primarily spoken in Brazil?\nAnswer:", "criterion": "Portuguese"},
+    {"id": 13, "prompt": "Question: What is the square root of 81?\nAnswer:", "criterion": "9"},
+    {"id": 14, "prompt": "Question: Which organ pumps blood around the human body?\nAnswer:", "criterion": "Heart"},
+    {"id": 15, "prompt": "Question: A train leaves at 14:00 and arrives at 16:30. How long was the journey?\nAnswer:", "criterion": "Two hours and thirty minutes"},
+    {"id": 16, "prompt": "Question: Translate the English word 'hello' into French.\nAnswer:", "criterion": "Bonjour or salut"},
+    {"id": 17, "prompt": "Question: What does the Python expression len([10, 20, 30]) return?\nAnswer:", "criterion": "3"},
+    {"id": 18, "prompt": "Question: If all birds have feathers and a robin is a bird, does a robin have feathers?\nAnswer:", "criterion": "Yes"},
+    {"id": 19, "prompt": "Question: What force keeps planets in orbit around the Sun?\nAnswer:", "criterion": "Gravity"},
+    {"id": 20, "prompt": "Question: Put these numbers in ascending order: 7, 2, 5.\nAnswer:", "criterion": "2, 5, 7"}
+  ]
+}
