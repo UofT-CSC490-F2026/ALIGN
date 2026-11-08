@@ -1,6 +1,7 @@
 """Run nanochat SFT or midtraining on the A3 FoX checkpoint in the Modal volume a4-base.
 
-    modal run a4/modal_launch.py --script sft --mode dry          # 1 GPU, 5 steps, nothing saved to the model
+    modal run a4/modal_launch.py --script sft --mode dry     # 1 GPU, one step, 30 minute limit
+    modal run a4/modal_launch.py --script sft --mode smoke   # 8 GPUs, a few steps, 25 minute limit
     modal run a4/modal_launch.py --script sft --mode full --run a4-sft-default   # 8 GPUs, default settings
 
 The volume is mounted as nanochat's base directory, so the scripts read
@@ -47,6 +48,12 @@ DRY_ARGS = {
 }
 # mid_train.py does not inherit the pretraining batch size, so give it A3's per-GPU batch of 2.
 FULL_ARGS = {"sft": [], "mid": ["--device-batch-size", "2"]}
+# A few steps at the real settings on 8 GPUs (warm-start on). --num-iterations counts mini-batches and one
+# step is 32 of them here, so 100 is about 3 steps. Evaluation is shortened; ChatCORE already ran in dry mode.
+SMOKE_ARGS = {
+    "sft": ["--num-iterations", "100", "--eval-every", "-1", "--eval-tokens", "1048576", "--chatcore-every", "-1"],
+    "mid": ["--dry-run", "--num-iterations", "100", "--eval-every", "-1", "--eval-tokens", "1048576"],
+}
 
 
 def build_command(script, mode, run, extra):
@@ -55,8 +62,9 @@ def build_command(script, mode, run, extra):
     arguments = ["--model-tag", MODEL_TAG, "--model-step", MODEL_STEP, "--run", run]
     if mode == "dry":
         return [f"{VENV}/python", "/root/a4/run_script.py", module, *arguments, *DRY_ARGS[script], *extra]
+    shortened = SMOKE_ARGS[script] if mode == "smoke" else []
     return [f"{VENV}/torchrun", "--standalone", "--nproc_per_node=8", "/root/a4/run_script.py",
-            module, *arguments, *FULL_ARGS[script], *extra]
+            module, *arguments, *FULL_ARGS[script], *shortened, *extra]
 
 
 def execute(command):
@@ -74,6 +82,11 @@ def one_gpu(command):
     execute(command)
 
 
+@app.function(image=image, gpu="H100:8", timeout=25 * 60, volumes={"/vol": volume}, secrets=secrets, retries=0)
+def eight_gpus_smoke(command):
+    execute(command)
+
+
 @app.function(image=image, gpu="H100:8", timeout=3 * 3600, volumes={"/vol": volume}, secrets=secrets, retries=0)
 def eight_gpus(command):
     execute(command)
@@ -81,7 +94,7 @@ def eight_gpus(command):
 
 @app.local_entrypoint()
 def main(script: str = "sft", mode: str = "dry", run: str = "dummy", extra: str = ""):
-    if script not in MODULES or mode not in ("dry", "full"):
-        raise SystemExit("--script must be sft or mid, and --mode must be dry or full")
-    command = build_command(script, mode, run, shlex.split(extra))
-    (one_gpu if mode == "dry" else eight_gpus).remote(command)
+    functions = {"dry": one_gpu, "smoke": eight_gpus_smoke, "full": eight_gpus}
+    if script not in MODULES or mode not in functions:
+        raise SystemExit("--script must be sft or mid, and --mode must be dry, smoke or full")
+    functions[mode].remote(build_command(script, mode, run, shlex.split(extra)))
