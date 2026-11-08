@@ -105,7 +105,7 @@ base_dir = get_base_dir()
 identity_conversations_filepath = os.path.join(base_dir, "identity_conversations.jsonl")
 train_dataset = TaskMixture([
     SmolTalk(split="train"), # 460K rows of general conversations
-    MMLU(subset="auxiliary_train", split="train"), # 100K rows of multiple choice problems drawn from ARC, MC_TEST, OBQA, RACE
+    MMLU(subset="all", split="auxiliary_train"), # 100K rows of multiple choice problems drawn from ARC, MC_TEST, OBQA, RACE
     GSM8K(subset="main", split="train"), # 8K rows teaching simple math and (calculator) tool use
     CustomJSON(filepath=identity_conversations_filepath), # 1000 rows of synthetic identity conversations
     CustomJSON(filepath=identity_conversations_filepath), # let's do 2 epochs of these
