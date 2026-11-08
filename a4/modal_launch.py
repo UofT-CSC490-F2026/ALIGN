@@ -6,9 +6,13 @@
 
 The volume is mounted as nanochat's base directory, so the scripts read
 base_checkpoints/fox-d24 and tokenizer/ from it and write chatsft_checkpoints/ or
-mid_checkpoints/ back into it. Every job has a timeout.
+mid_checkpoints/ back into it. The scripts name their output folder after the base model's tag, so a
+full run moves it to a folder named after --run (RL then loads it with --model-tag <run>), and dry and
+smoke runs delete it. A job refuses to start if it would overwrite an existing folder. Every job has a timeout.
 """
+import re
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -38,6 +42,7 @@ image = (modal.Image.debian_slim(python_version="3.12")
          .add_local_file(str(HERE / "run_script.py"), "/root/a4/run_script.py"))
 
 MODULES = {"sft": "scripts.chat_sft", "mid": "scripts.mid_train"}
+OUTPUT_ROOT = {"sft": "/vol/chatsft_checkpoints", "mid": "/vol/mid_checkpoints"}
 # A few steps of tiny batches: checks that the model, data and evaluation run, not that it learns.
 DRY_ARGS = {
     "sft": ["--load-optimizer", "0", "--num-iterations", "5", "--total-batch-size", "16384",
@@ -67,29 +72,35 @@ def build_command(script, mode, run, extra):
             module, *arguments, *FULL_ARGS[script], *shortened, *extra]
 
 
-def execute(command):
+def execute(command, output_root, run, keep):
+    """Run one job, then move its output from <output_root>/<model tag> to <output_root>/<run>, or delete it."""
     if "scripts.mid_train" in command and not Path("/vol/identity_conversations.jsonl").is_file():
         raise FileNotFoundError("mid_train needs /vol/identity_conversations.jsonl in the a4-base volume")
+    source, target = Path(output_root) / MODEL_TAG, Path(output_root) / run
+    if source.exists() or (keep and target.exists()):
+        raise FileExistsError(f"{source} or {target} already exists; move or delete it first")
     print("COMMAND", shlex.join(command), flush=True)
     try:
         subprocess.run(command, check=True)
     finally:
-        volume.commit()  # keep checkpoints even if the job failed late
+        if source.exists():
+            shutil.move(source, target) if keep else shutil.rmtree(source)
+        volume.commit()  # keep what was written even if the job failed late
 
 
 @app.function(image=image, gpu="H100", timeout=1800, volumes={"/vol": volume}, secrets=secrets, retries=0)
-def one_gpu(command):
-    execute(command)
+def one_gpu(command, output_root, run, keep):
+    execute(command, output_root, run, keep)
 
 
 @app.function(image=image, gpu="H100:8", timeout=25 * 60, volumes={"/vol": volume}, secrets=secrets, retries=0)
-def eight_gpus_smoke(command):
-    execute(command)
+def eight_gpus_smoke(command, output_root, run, keep):
+    execute(command, output_root, run, keep)
 
 
 @app.function(image=image, gpu="H100:8", timeout=3 * 3600, volumes={"/vol": volume}, secrets=secrets, retries=0)
-def eight_gpus(command):
-    execute(command)
+def eight_gpus(command, output_root, run, keep):
+    execute(command, output_root, run, keep)
 
 
 @app.local_entrypoint()
@@ -97,4 +108,7 @@ def main(script: str = "sft", mode: str = "dry", run: str = "dummy", extra: str 
     functions = {"dry": one_gpu, "smoke": eight_gpus_smoke, "full": eight_gpus}
     if script not in MODULES or mode not in functions:
         raise SystemExit("--script must be sft or mid, and --mode must be dry, smoke or full")
-    functions[mode].remote(build_command(script, mode, run, shlex.split(extra)))
+    if mode == "full" and (run in ("dummy", MODEL_TAG) or not re.fullmatch(r"[A-Za-z0-9_-]+", run)):
+        raise SystemExit(f"--run needs its own name (letters, digits, - and _), not dummy or {MODEL_TAG}")
+    command = build_command(script, mode, run, shlex.split(extra))
+    functions[mode].remote(command, OUTPUT_ROOT[script], run, mode == "full")
