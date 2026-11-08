@@ -39,7 +39,11 @@ image = (modal.Image.debian_slim(python_version="3.12")
          .add_local_dir(str(A3 / "pico"), "/root/a3/pico", ignore=["__pycache__", "*.pyc"])
          .add_local_file(str(A3 / "A3part5" / "fox.py"), "/root/a3/A3part5/fox.py")
          .add_local_file(str(HERE / "fox_cache.py"), "/root/a4/fox_cache.py")
-         .add_local_file(str(HERE / "run_script.py"), "/root/a4/run_script.py"))
+         .add_local_file(str(HERE / "run_script.py"), "/root/a4/run_script.py")
+         # midtraining was deleted from nanochat before the pinned commit; see a4/nanochat/README.md
+         .add_local_file(str(HERE / "nanochat/scripts/mid_train.py"), "/root/nanochat/scripts/mid_train.py")
+         .add_local_file(str(HERE / "nanochat/tasks/customjson.py"), "/root/nanochat/tasks/customjson.py")
+         .add_local_file(str(HERE / "nanochat/tasks/spellingbee.py"), "/root/nanochat/tasks/spellingbee.py"))
 
 MODULES = {"sft": "scripts.chat_sft", "mid": "scripts.mid_train"}
 OUTPUT_ROOT = {"sft": "/vol/chatsft_checkpoints", "mid": "/vol/mid_checkpoints"}
