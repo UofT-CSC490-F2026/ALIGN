@@ -17,5 +17,9 @@ Two edits were needed in `mid_train.py`. First, nanochat's MMLU task changed its
 commit, and the import crashed the non-master ranks while rank 0 was still writing the checkpoint, which killed it and left a
 truncated model file. Every other call was checked against the current task classes and helpers.
 
+`scripts/chat_rl.py` is nanochat's file at the pinned commit (identical to master) plus about a dozen lines: a
+`--rollouts-dir` option that saves, for every training problem, the question, the reference answer and all sampled
+answers with their rewards (Part 3 reviews the right and wrong answers during training). Nothing else changed.
+
 nanochat is MIT licensed (Andrej Karpathy). Midtraining also reads `identity_conversations.jsonl` from the volume,
 which comes from the download line in nanochat's old `speedrun.sh`.

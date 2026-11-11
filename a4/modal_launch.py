@@ -5,6 +5,8 @@
     modal run a4/modal_launch.py --script sft --mode full --run a4-sft-default   # 8 GPUs, default settings
     modal run a4/modal_launch.py --script sft --mode full --run a4-sft-math --extra-data extra_math.jsonl
     modal run a4/modal_launch.py --script rl --mode full --run a4-rl --start a4-sft-default   # RL from a saved SFT model
+    modal run --detach a4/modal_launch.py ... --spawn   # start and return: the job no longer depends on this terminal;
+                                                        # follow it with: modal app logs <app id>
     modal run a4/modal_launch.py --script answers --mode full --run x --extra "--models sft:a4-sft-default"
 
 The volume is mounted as nanochat's base directory, so the scripts read
@@ -45,15 +47,18 @@ image = (modal.Image.debian_slim(python_version="3.12")
          .add_local_file(str(HERE / "run_script.py"), "/root/a4/run_script.py")
          .add_local_file(str(HERE / "eval_models.py"), "/root/a4/eval_models.py")
          .add_local_file(str(HERE / "dump_answers.py"), "/root/a4/dump_answers.py")
+         .add_local_file(str(HERE / "diagnose_stops.py"), "/root/a4/diagnose_stops.py")
          # midtraining was deleted from nanochat before the pinned commit; see a4/nanochat/README.md
          .add_local_file(str(HERE / "nanochat/scripts/mid_train.py"), "/root/nanochat/scripts/mid_train.py")
+         # chat_rl.py with --rollouts-dir added (saves every sampled answer); see a4/nanochat/README.md
+         .add_local_file(str(HERE / "nanochat/scripts/chat_rl.py"), "/root/nanochat/scripts/chat_rl.py")
          .add_local_file(str(HERE / "nanochat/tasks/customjson.py"), "/root/nanochat/tasks/customjson.py")
          .add_local_file(str(HERE / "nanochat/tasks/spellingbee.py"), "/root/nanochat/tasks/spellingbee.py"))
 
 MODULES = {"sft": "scripts.chat_sft", "mid": "scripts.mid_train", "eval": "eval_models",
-           "answers": "dump_answers", "rl": "scripts.chat_rl"}
+           "answers": "dump_answers", "diagnose": "diagnose_stops", "rl": "scripts.chat_rl"}
 OUTPUT_ROOT = {"sft": "/vol/chatsft_checkpoints", "mid": "/vol/mid_checkpoints", "eval": "/vol/eval_results",  # eval and answers write no checkpoints
-               "answers": "/vol/answers", "rl": "/vol/chatrl_checkpoints"}
+               "answers": "/vol/answers", "diagnose": "/vol/answers", "rl": "/vol/chatrl_checkpoints"}
 # A few steps of tiny batches: checks that the model, data and evaluation run, not that it learns.
 DRY_ARGS = {
     "sft": ["--load-optimizer", "0", "--num-iterations", "5", "--total-batch-size", "16384",
@@ -63,10 +68,11 @@ DRY_ARGS = {
             "--eval-every", "-1", "--eval-tokens", "65536"],
     "eval": ["--max-problems", "16"],
     "answers": ["--max-problems", "16"],
+    "diagnose": ["--max-problems", "40"],
     "rl": ["--eval-examples", "8", "--save-every", "100000"],
 }
 # mid_train.py does not inherit the pretraining batch size, so give it A3's per-GPU batch of 2.
-FULL_ARGS = {"sft": [], "mid": ["--device-batch-size", "2"], "eval": [], "answers": [], "rl": []}
+FULL_ARGS = {"sft": [], "mid": ["--device-batch-size", "2"], "eval": [], "answers": [], "diagnose": [], "rl": []}
 # A few steps at the real settings on 8 GPUs (warm-start on). --num-iterations counts mini-batches and one
 # step is 32 of them here, so 100 is about 3 steps. Evaluation is shortened; ChatCORE already ran in dry mode.
 SMOKE_ARGS = {
@@ -85,7 +91,7 @@ def build_command(script, mode, run, extra, extra_data="", start=""):
     prefix = ["env", f"EXTRA_DATA=/vol/{extra_data}"] if extra_data else []
     arguments = ["--model-tag", MODEL_TAG, "--model-step", MODEL_STEP, "--run", run]
     if script == "rl":  # RL starts from a saved SFT folder, whose last step is used
-        arguments = ["--model-tag", start, "--run", run]
+        arguments = ["--model-tag", start, "--run", run, "--rollouts-dir", f"/vol/rollouts/{run}"]
     if mode == "dry":
         return [*prefix, f"{VENV}/python", "/root/a4/run_script.py", module, *arguments, *DRY_ARGS[script], *extra]
     shortened = SMOKE_ARGS[script] if mode == "smoke" else []
@@ -123,13 +129,14 @@ def eight_gpus_smoke(command, output_root, run, keep, tag):
     execute(command, output_root, run, keep, tag)
 
 
-@app.function(image=image, gpu="H100:8", timeout=3 * 3600, volumes={"/vol": volume}, secrets=secrets, retries=0)
+@app.function(image=image, gpu="H100:8", timeout=4 * 3600, volumes={"/vol": volume}, secrets=secrets, retries=0)
 def eight_gpus(command, output_root, run, keep, tag):
     execute(command, output_root, run, keep, tag)
 
 
 @app.local_entrypoint()
-def main(script: str = "sft", mode: str = "dry", run: str = "dummy", extra: str = "", extra_data: str = "", start: str = ""):
+def main(script: str = "sft", mode: str = "dry", run: str = "dummy", extra: str = "", extra_data: str = "",
+         start: str = "", spawn: bool = False):
     functions = {"dry": one_gpu, "smoke": eight_gpus_smoke, "full": eight_gpus}
     if script not in MODULES or mode not in functions:
         raise SystemExit("--script must be sft, mid, eval, answers or rl, and --mode must be dry, smoke or full")
@@ -138,4 +145,5 @@ def main(script: str = "sft", mode: str = "dry", run: str = "dummy", extra: str 
     if script == "rl" and not start:
         raise SystemExit("--script rl needs --start <name of a folder in chatsft_checkpoints>")
     command = build_command(script, mode, run, shlex.split(extra), extra_data, start)
-    functions[mode].remote(command, OUTPUT_ROOT[script], run, mode == "full", start if script == "rl" else MODEL_TAG)
+    call = functions[mode].spawn if spawn else functions[mode].remote
+    call(command, OUTPUT_ROOT[script], run, mode == "full", start if script == "rl" else MODEL_TAG)
