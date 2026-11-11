@@ -99,23 +99,57 @@ def build_command(script, mode, run, extra, extra_data="", start=""):
             module, *arguments, *FULL_ARGS[script], *shortened, *extra]
 
 
+def latest_checkpoint(output_root, names):
+    """The newest saved step among the folders called `names` under output_root, as (folder name, step), or None."""
+    found = []
+    for name in names:
+        for path in (Path(output_root) / name).glob("model_*.pt"):
+            found.append((int(path.stem.split("_")[1]), name))
+    return (max(found)[1], max(found)[0]) if found else None
+
+
+def merge_move(source, target):
+    """Move the files in source into target, creating it if needed, and remove source."""
+    target.mkdir(parents=True, exist_ok=True)
+    for path in source.iterdir():
+        shutil.move(path, target / path.name)
+    source.rmdir()
+
+
 def execute(command, output_root, run, keep, tag):
     """Run one job, then move its output from <output_root>/<tag> to <output_root>/<run>, or delete it. The scripts
     name their output folder after the model tag they were given."""
     if "scripts.mid_train" in command and not Path("/vol/identity_conversations.jsonl").is_file():
         raise FileNotFoundError("mid_train needs /vol/identity_conversations.jsonl in the a4-base volume")
     source, target = Path(output_root) / tag, Path(output_root) / run
-    if source.exists() or (keep and target.exists()):
+    # Modal restarts a preempted job from the start with the same input. An RL job that finds its own saved
+    # checkpoints in the folder named after this run continues from the newest one instead of refusing to run (the last
+    # occurrence of an option wins).
+    point = latest_checkpoint(output_root, [run]) if "scripts.chat_rl" in command else None
+    if point:
+        command = [*command, "--resume-from", point[0], "--resume-step", str(point[1])]
+        print(f"RESUMING from {point[0]} step {point[1]}", flush=True)
+    elif source.exists() or (keep and target.exists()):
         raise FileExistsError(f"{source} or {target} already exists; move or delete it first")
     for argument in command:
         if argument.startswith("EXTRA_DATA=") and not Path(argument.split("=", 1)[1]).is_file():
             raise FileNotFoundError(f"{argument} is not in the a4-base volume")
     print("COMMAND", shlex.join(command), flush=True)
     try:
-        subprocess.run(command, check=True)
+        # Commit the volume every two minutes while the job runs. Modal can preempt a GPU job at any time, and
+        # anything not committed by then (checkpoints, saved answers) is lost.
+        process = subprocess.Popen(command)
+        while True:
+            try:
+                code = process.wait(timeout=120)
+                break
+            except subprocess.TimeoutExpired:
+                volume.commit()
+        if code:
+            raise subprocess.CalledProcessError(code, command)
     finally:
         if source.exists():
-            shutil.move(source, target) if keep else shutil.rmtree(source)
+            merge_move(source, target) if keep else shutil.rmtree(source)
         volume.commit()  # keep what was written even if the job failed late
 
 
