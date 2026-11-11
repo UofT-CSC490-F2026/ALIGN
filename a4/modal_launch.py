@@ -3,6 +3,7 @@
     modal run a4/modal_launch.py --script sft --mode dry     # 1 GPU, one step, 30 minute limit
     modal run a4/modal_launch.py --script sft --mode smoke   # 8 GPUs, a few steps, 25 minute limit
     modal run a4/modal_launch.py --script sft --mode full --run a4-sft-default   # 8 GPUs, default settings
+    modal run a4/modal_launch.py --script sft --mode full --run a4-sft-math --extra-data extra_math.jsonl
 
 The volume is mounted as nanochat's base directory, so the scripts read
 base_checkpoints/fox-d24 and tokenizer/ from it and write chatsft_checkpoints/ or
@@ -65,14 +66,16 @@ SMOKE_ARGS = {
 }
 
 
-def build_command(script, mode, run, extra):
-    """The shell command for one job, as a list of arguments."""
+def build_command(script, mode, run, extra, extra_data=""):
+    """The shell command for one job, as a list of arguments. extra_data names a CustomJSON file in the volume
+    that run_script.py adds to the training mix."""
     module = MODULES[script]
+    prefix = ["env", f"EXTRA_DATA=/vol/{extra_data}"] if extra_data else []
     arguments = ["--model-tag", MODEL_TAG, "--model-step", MODEL_STEP, "--run", run]
     if mode == "dry":
-        return [f"{VENV}/python", "/root/a4/run_script.py", module, *arguments, *DRY_ARGS[script], *extra]
+        return [*prefix, f"{VENV}/python", "/root/a4/run_script.py", module, *arguments, *DRY_ARGS[script], *extra]
     shortened = SMOKE_ARGS[script] if mode == "smoke" else []
-    return [f"{VENV}/torchrun", "--standalone", "--nproc_per_node=8", "/root/a4/run_script.py",
+    return [*prefix, f"{VENV}/torchrun", "--standalone", "--nproc_per_node=8", "/root/a4/run_script.py",
             module, *arguments, *FULL_ARGS[script], *shortened, *extra]
 
 
@@ -83,6 +86,9 @@ def execute(command, output_root, run, keep):
     source, target = Path(output_root) / MODEL_TAG, Path(output_root) / run
     if source.exists() or (keep and target.exists()):
         raise FileExistsError(f"{source} or {target} already exists; move or delete it first")
+    for argument in command:
+        if argument.startswith("EXTRA_DATA=") and not Path(argument.split("=", 1)[1]).is_file():
+            raise FileNotFoundError(f"{argument} is not in the a4-base volume")
     print("COMMAND", shlex.join(command), flush=True)
     try:
         subprocess.run(command, check=True)
@@ -108,11 +114,11 @@ def eight_gpus(command, output_root, run, keep):
 
 
 @app.local_entrypoint()
-def main(script: str = "sft", mode: str = "dry", run: str = "dummy", extra: str = ""):
+def main(script: str = "sft", mode: str = "dry", run: str = "dummy", extra: str = "", extra_data: str = ""):
     functions = {"dry": one_gpu, "smoke": eight_gpus_smoke, "full": eight_gpus}
     if script not in MODULES or mode not in functions:
         raise SystemExit("--script must be sft or mid, and --mode must be dry, smoke or full")
     if mode == "full" and (run in ("dummy", MODEL_TAG) or not re.fullmatch(r"[A-Za-z0-9_-]+", run)):
         raise SystemExit(f"--run needs its own name (letters, digits, - and _), not dummy or {MODEL_TAG}")
-    command = build_command(script, mode, run, shlex.split(extra))
+    command = build_command(script, mode, run, shlex.split(extra), extra_data)
     functions[mode].remote(command, OUTPUT_ROOT[script], run, mode == "full")
