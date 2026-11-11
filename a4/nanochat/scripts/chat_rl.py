@@ -38,6 +38,8 @@ parser.add_argument("--rollouts-dir", type=str, default=None, help="if set, save
 parser.add_argument("--device-type", type=str, default="", help="cuda|cpu|mps (empty = autodetect)")
 # Model loading
 parser.add_argument("--model-tag", type=str, default=None, help="model tag to load from")
+parser.add_argument("--resume-from", type=str, default=None, help="continue a stopped RL run: name of its folder in chatrl_checkpoints")
+parser.add_argument("--resume-step", type=int, default=0, help="step of the checkpoint to continue from; training restarts at the next step because the checkpoint already includes that step's update (needs --resume-from)")
 parser.add_argument("--model-step", type=int, default=None, help="model step to load from")
 # Training horizon
 parser.add_argument("--num-epochs", type=int, default=1, help="number of epochs over GSM8K")
@@ -73,17 +75,20 @@ use_dummy_wandb = args.run == "dummy" or not master_process
 wandb_run = DummyWandb() if use_dummy_wandb else wandb.init(project="nanochat-rl", name=args.run, config=user_config)
 
 # Init model and tokenizer
-model, tokenizer, meta = load_model("sft", device, phase="eval", model_tag=args.model_tag, step=args.model_step)
+if args.resume_from:
+    model, tokenizer, meta = load_model("rl", device, phase="eval", model_tag=args.resume_from, step=args.resume_step)
+else:
+    model, tokenizer, meta = load_model("sft", device, phase="eval", model_tag=args.model_tag, step=args.model_step)
 engine = Engine(model, tokenizer) # for sampling rollouts
 
 # -----------------------------------------------------------------------------
 # Rollout / sampling generator loop that yields batches of examples for training
 
 train_task = GSM8K(subset="main", split="train")
-rollouts_file = None
+rollouts_path = None
 if args.rollouts_dir:
     os.makedirs(args.rollouts_dir, exist_ok=True)
-    rollouts_file = open(os.path.join(args.rollouts_dir, f"rank{ddp_rank}.jsonl"), "a", buffering=1)
+    rollouts_path = os.path.join(args.rollouts_dir, f"rank{ddp_rank}.jsonl")
 val_task = GSM8K(subset="main", split="test")
 num_steps = (len(train_task) // args.examples_per_step) * args.num_epochs
 print0(f"Calculated number of steps: {num_steps}")
@@ -92,7 +97,10 @@ print0(f"Calculated number of steps: {num_steps}")
 def get_batch():
     assistant_end = tokenizer.encode_special("<|assistant_end|>") # ok to use this token, it's only for padding and isn't used in the loss.
     rank_indices = range(ddp_rank, len(train_task), ddp_world_size) # each rank is responsible for different examples in the training data
-    for example_idx in itertools.cycle(rank_indices):
+    # when resuming, skip the examples the earlier steps already used
+    first_step = args.resume_step + 1 if args.resume_from else 0
+    skip = first_step * (args.examples_per_step // ddp_world_size)
+    for example_idx in itertools.islice(itertools.cycle(rank_indices), skip, None):
 
         # First get the full conversation of both user and assistant messages
         conversation = train_task[example_idx]
@@ -133,12 +141,15 @@ def get_batch():
             rewards.append(reward)
             generated_texts.append(generated_text)
 
-        if rollouts_file:  # one line per training problem: the question, the reference and all sampled answers with rewards
-            rollouts_file.write(json.dumps({
-                "step": step, "problem": example_idx, "question": conversation["messages"][0]["content"],
-                "reference": conversation["messages"][-1]["content"][-1]["text"],
-                "samples": [{"text": t, "reward": r} for t, r in zip(generated_texts, rewards)],
-            }) + "\n")
+        if rollouts_path:  # one line per training problem: the question, the reference and all sampled answers with rewards
+            # open and close the file on every write: Modal only keeps a file's contents once it is closed, and the
+            # job can be preempted at any time
+            with open(rollouts_path, "a") as rollouts_file:
+                rollouts_file.write(json.dumps({
+                    "step": step, "problem": example_idx, "question": conversation["messages"][0]["content"],
+                    "reference": conversation["messages"][-1]["content"][-1]["text"],
+                    "samples": [{"text": t, "reward": r} for t, r in zip(generated_texts, rewards)],
+                }) + "\n")
 
         # Pad the sequences so that their lengths (in time) match
         max_length = max(len(seq) for seq in generated_token_sequences)
@@ -234,7 +245,7 @@ print0(f"Calculated examples per rank: {examples_per_rank}")
 
 # Kick off the training loop
 batch_iterator = get_batch()
-for step in range(num_steps):
+for step in range(args.resume_step + 1 if args.resume_from else 0, num_steps):
 
     # Evaluate the model once in a while and log to wandb
     if step % args.eval_every == 0:

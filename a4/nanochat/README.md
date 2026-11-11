@@ -19,7 +19,12 @@ truncated model file. Every other call was checked against the current task clas
 
 `scripts/chat_rl.py` is nanochat's file at the pinned commit (identical to master) plus about a dozen lines: a
 `--rollouts-dir` option that saves, for every training problem, the question, the reference answer and all sampled
-answers with their rewards (Part 3 reviews the right and wrong answers during training). Nothing else changed.
+answers with their rewards (Part 3 reviews the right and wrong answers during training). It also gains `--resume-from`
+and `--resume-step`, which continue a stopped run from one of its saved checkpoints: the weights are loaded, training
+carries on at the next step (a checkpoint already includes its own step's update), the learning-rate schedule continues,
+and the training problems already used are skipped. The
+optimizer state is not saved by nanochat, so it restarts empty. Modal can preempt GPU jobs, so this is the safeguard.
+Nothing else changed.
 
 nanochat is MIT licensed (Andrej Karpathy). Midtraining also reads `identity_conversations.jsonl` from the volume,
 which comes from the download line in nanochat's old `speedrun.sh`.
