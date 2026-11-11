@@ -11,9 +11,11 @@ commit `92d63d4` (`a4/modal_launch.py`):
 | `tasks/customjson.py` | `950a1dc^` |
 | `tasks/spellingbee.py` | `950a1dc^` |
 
-One edit was needed in `mid_train.py`: nanochat's MMLU task changed its arguments after January, so
+Two edits were needed in `mid_train.py`. First, nanochat's MMLU task changed its arguments after January, so
 `MMLU(subset="auxiliary_train", split="train")` became `MMLU(subset="all", split="auxiliary_train")`, the same call
-`chat_sft.py` uses. Every other call was checked against the current task classes and helpers.
+`chat_sft.py` uses. Second, the closing `nanochat.report` block is removed: that module does not exist at the pinned
+commit, and the import crashed the non-master ranks while rank 0 was still writing the checkpoint, which killed it and left a
+truncated model file. Every other call was checked against the current task classes and helpers.
 
 nanochat is MIT licensed (Andrej Karpathy). Midtraining also reads `identity_conversations.jsonl` from the volume,
 which comes from the download line in nanochat's old `speedrun.sh`.
