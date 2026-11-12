@@ -79,6 +79,26 @@ class CachedFoXTests(unittest.TestCase):
         for row in rows:
             self.assertEqual(row, expected)
 
+    def test_sampled_continuations_after_a_shared_prefill(self):
+        """With sampling, rows that share one prefill must diverge, and each must match an uncached loop given the
+        same random numbers (the greedy test above makes every row follow the same path)."""
+        model = tiny_model(2)
+        prompt = [3, 14, 15, 9, 26, 5, 35]
+        steps, samples, seed = 12, 3, 7
+        rows, _ = engine.Engine(model, FakeTokenizer()).generate_batch(
+            prompt, num_samples=samples, max_tokens=steps, temperature=1.0, seed=seed)
+        rng = torch.Generator()
+        rng.manual_seed(seed)
+        histories = [list(prompt) for _ in range(samples)]
+        with torch.no_grad():
+            for _ in range(steps):
+                logits = torch.stack([model(torch.tensor([history]))[0, -1] for history in histories])
+                for history, token in zip(histories, engine.sample_next_token(logits, rng, 1.0, None)[:, 0].tolist()):
+                    history.append(token)
+        self.assertEqual(len({tuple(row) for row in rows}), samples)
+        for row, expected in zip(rows, histories):
+            self.assertEqual(row, expected)
+
 
 if __name__ == "__main__":
     unittest.main()
