@@ -9,6 +9,8 @@ base_checkpoints/fox-d24 and tokenizer/ from it and write chatsft_checkpoints/ o
 mid_checkpoints/ back into it. The scripts name their output folder after the base model's tag, so a
 full run moves it to a folder named after --run (RL then loads it with --model-tag <run>), and dry and
 smoke runs delete it. A job refuses to start if it would overwrite an existing folder. Every job has a timeout.
+A run folder holds a file named COMPLETE if the job finished and INCOMPLETE if it failed or was stopped, so a partial
+run is never mistaken for a finished one.
 """
 import re
 import shlex
@@ -84,11 +86,18 @@ def execute(command, output_root, run, keep):
     if source.exists() or (keep and target.exists()):
         raise FileExistsError(f"{source} or {target} already exists; move or delete it first")
     print("COMMAND", shlex.join(command), flush=True)
+    completed = False
     try:
         subprocess.run(command, check=True)
+        completed = True
     finally:
         if source.exists():
-            shutil.move(source, target) if keep else shutil.rmtree(source)
+            if keep:
+                shutil.move(source, target)
+                # A failed, stopped or preempted job leaves partial checkpoints; say so, so it is never mistaken for a finished run.
+                (target / ("COMPLETE" if completed else "INCOMPLETE")).write_text(f"{run}\n")
+            else:
+                shutil.rmtree(source)
         volume.commit()  # keep what was written even if the job failed late
 
 
