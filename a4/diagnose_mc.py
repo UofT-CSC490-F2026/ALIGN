@@ -53,7 +53,7 @@ for entry in args.models.split(","):
             first_token[tokenizer.decode([int(logits[row, position].argmax())])] += 1
             correct += int(task.evaluate(conversation, predicted))
             total += 1
-    summary = {"questions": total, "accuracy": round(correct / total, 4),
+    summary = {"gpu": torch.cuda.get_device_name(), "questions": total, "accuracy": round(correct / total, 4),
                "letter_chosen": {l: chosen[l] for l in "ABCD"}, "letter_correct": {l: gold[l] for l in "ABCD"},
                "mean_score_per_letter": {l: round(score_sum[l] / total, 2) for l in "ABCD"},
                "first_token_if_unrestricted": first_token.most_common(5)}

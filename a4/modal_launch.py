@@ -32,6 +32,7 @@ REVISION = "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd"
 MODEL_TAG, MODEL_STEP = "fox-d24", "5571"
 VENV = "/root/nanochat/.venv/bin"
 
+# "H100!" asks for exactly H100s. Plain "H100" lets Modal upgrade a job to an H200, and two of our SFT runs got one.
 app = modal.App("a4-launch")
 volume = modal.Volume.from_name("a4-base")
 secrets = [modal.Secret.from_name("wandb-secret")]
@@ -185,17 +186,17 @@ def execute(command, output_root, run, keep, tag):
         volume.commit()  # keep what was written even if the job failed late
 
 
-@app.function(image=image, gpu="H100", timeout=1800, volumes={"/vol": volume}, secrets=secrets, retries=0)
+@app.function(image=image, gpu="H100!", timeout=1800, volumes={"/vol": volume}, secrets=secrets, retries=0)
 def one_gpu(command, output_root, run, keep, tag):
     execute(command, output_root, run, keep, tag)
 
 
-@app.function(image=image, gpu="H100:8", timeout=25 * 60, volumes={"/vol": volume}, secrets=secrets, retries=0)
+@app.function(image=image, gpu="H100!:8", timeout=25 * 60, volumes={"/vol": volume}, secrets=secrets, retries=0)
 def eight_gpus_smoke(command, output_root, run, keep, tag):
     execute(command, output_root, run, keep, tag)
 
 
-@app.function(image=image, gpu="H100:8", timeout=4 * 3600, volumes={"/vol": volume}, secrets=secrets, retries=0)
+@app.function(image=image, gpu="H100!:8", timeout=4 * 3600, volumes={"/vol": volume}, secrets=secrets, retries=0)
 def eight_gpus(command, output_root, run, keep, tag):
     execute(command, output_root, run, keep, tag)
 
