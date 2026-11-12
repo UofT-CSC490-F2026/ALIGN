@@ -39,3 +39,12 @@ def test_merge_move_creates_the_target():
         make(root, "tag", [60])
         launch.merge_move(root / "tag", root / "run")
         assert (root / "run" / "model_000060.pt").exists() and not (root / "tag").exists()
+
+
+def test_mark_run_tells_finished_from_unfinished():
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp)
+        launch.mark_run(folder, "run", completed=False)
+        assert (folder / "INCOMPLETE").exists() and not (folder / "COMPLETE").exists()
+        launch.mark_run(folder, "run", completed=True)  # a resumed job that finishes replaces the earlier marker
+        assert (folder / "COMPLETE").exists() and not (folder / "INCOMPLETE").exists()

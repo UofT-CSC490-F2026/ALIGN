@@ -27,6 +27,9 @@ parser.add_argument("--max-problems", type=int, default=None)
 parser.add_argument("--run", default="eval")
 args, _ = parser.parse_known_args()  # run_script.py's launcher also passes the training options
 
+result_path = os.path.join(get_base_dir(), "eval_results", f"{args.run}.json")
+if args.run != "dummy" and os.path.exists(result_path):
+    raise FileExistsError(f"{result_path} already exists; use a new --run name")
 _, rank, _, _, device = compute_init(autodetect_device_type())
 results = {}
 for entry in args.models.split(","):
@@ -43,6 +46,6 @@ for entry in args.models.split(","):
     torch.cuda.empty_cache()
 if rank == 0:
     os.makedirs(os.path.join(get_base_dir(), "eval_results"), exist_ok=True)
-    with open(os.path.join(get_base_dir(), "eval_results", f"{args.run}.json"), "w") as f:
+    with open(result_path, "w") as f:
         json.dump(results, f, indent=2)
 compute_cleanup()
