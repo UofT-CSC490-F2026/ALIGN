@@ -14,6 +14,8 @@ base_checkpoints/fox-d24 and tokenizer/ from it and write chatsft_checkpoints/ o
 mid_checkpoints/ back into it. The scripts name their output folder after the base model's tag, so a
 full run moves it to a folder named after --run (RL then loads it with --model-tag <run>), and dry and
 smoke runs delete it. A job refuses to start if it would overwrite an existing folder. Every job has a timeout.
+A run folder holds a file named COMPLETE if the job finished and INCOMPLETE if it failed or was stopped, so a partial
+run is never mistaken for a finished one.
 """
 import re
 import shlex
@@ -116,12 +118,21 @@ def merge_move(source, target):
     source.rmdir()
 
 
+def mark_run(target, run, completed):
+    """Leave a file named COMPLETE or INCOMPLETE in a run folder, replacing the other one."""
+    marker, stale = ("COMPLETE", "INCOMPLETE") if completed else ("INCOMPLETE", "COMPLETE")
+    (target / stale).unlink(missing_ok=True)
+    (target / marker).write_text(f"{run}\n")
+
+
 def execute(command, output_root, run, keep, tag):
     """Run one job, then move its output from <output_root>/<tag> to <output_root>/<run>, or delete it. The scripts
     name their output folder after the model tag they were given."""
     if "scripts.mid_train" in command and not Path("/vol/identity_conversations.jsonl").is_file():
         raise FileNotFoundError("mid_train needs /vol/identity_conversations.jsonl in the a4-base volume")
     source, target = Path(output_root) / tag, Path(output_root) / run
+    if (target / "COMPLETE").exists():
+        raise FileExistsError(f"{target} is already a finished run; use a new --run name")
     # Modal restarts a preempted job from the start with the same input. An RL job that finds its own saved
     # checkpoints in the folder named after this run continues from the newest one instead of refusing to run (the last
     # occurrence of an option wins).
@@ -135,6 +146,7 @@ def execute(command, output_root, run, keep, tag):
         if argument.startswith("EXTRA_DATA=") and not Path(argument.split("=", 1)[1]).is_file():
             raise FileNotFoundError(f"{argument} is not in the a4-base volume")
     print("COMMAND", shlex.join(command), flush=True)
+    completed = False
     try:
         # Commit the volume every two minutes while the job runs. Modal can preempt a GPU job at any time, and
         # anything not committed by then (checkpoints, saved answers) is lost.
@@ -147,9 +159,16 @@ def execute(command, output_root, run, keep, tag):
                 volume.commit()
         if code:
             raise subprocess.CalledProcessError(code, command)
+        completed = True
     finally:
         if source.exists():
-            merge_move(source, target) if keep else shutil.rmtree(source)
+            if keep:
+                merge_move(source, target)
+                # A failed, stopped or preempted job leaves partial checkpoints; say so, so it is never mistaken for a
+                # finished run. A resumed job that finishes replaces the earlier INCOMPLETE marker.
+                mark_run(target, run, completed)
+            else:
+                shutil.rmtree(source)
         volume.commit()  # keep what was written even if the job failed late
 
 

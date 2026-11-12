@@ -1,6 +1,6 @@
 """Find out why some answers stop early: does the model itself predict the end token there, or is it a cache artifact?
 
-    python a4/run_script.py diagnose_stops --models rl:a4-rl --max-problems 40
+    python a4/run_script.py diagnose_stops --models rl:a4-rl --answers-file <run>_rl_a4-rl.jsonl --max-problems 40
 
 Takes the first problems whose saved answer (from dump_answers.py) has no '####', regenerates each with the cached
 Engine, then checks the token right after the answer with a plain full forward pass (no cache).
@@ -21,12 +21,13 @@ FOLDERS = {"sft": "chatsft_checkpoints", "mid": "mid_checkpoints", "rl": "chatrl
 parser = argparse.ArgumentParser()
 parser.add_argument("--models", required=True)
 parser.add_argument("--max-problems", type=int, default=40)
+parser.add_argument("--answers-file", default=None, help="file in <base dir>/answers written by dump_answers.py")
 args, _ = parser.parse_known_args()
 
 device = compute_init(autodetect_device_type())[-1]
 task = GSM8K(subset="main", split="test")
 source, tag = args.models.split(",")[0].split(":")
-saved = [json.loads(line) for line in open(os.path.join(get_base_dir(), "answers", f"{source}_{tag}.jsonl"))]
+saved = [json.loads(line) for line in open(os.path.join(get_base_dir(), "answers", args.answers_file or f"{source}_{tag}.jsonl"))]
 stopped = [row for row in saved if "####" not in row["answer"]][:args.max_problems]
 model, tokenizer, _ = load_model_from_dir(os.path.join(get_base_dir(), FOLDERS[source]), device, "eval", model_tag=tag)
 engine = Engine(model, tokenizer)
