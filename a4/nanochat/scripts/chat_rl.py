@@ -89,6 +89,12 @@ rollouts_path = None
 if args.rollouts_dir:
     os.makedirs(args.rollouts_dir, exist_ok=True)
     rollouts_path = os.path.join(args.rollouts_dir, f"rank{ddp_rank}.jsonl")
+    if args.resume_from and os.path.exists(rollouts_path):
+        # steps after the restored checkpoint were already written once and are about to be run again: drop them
+        with open(rollouts_path) as rollouts_file:
+            kept = [line for line in rollouts_file if json.loads(line)["step"] <= args.resume_step]
+        with open(rollouts_path, "w") as rollouts_file:
+            rollouts_file.writelines(kept)
 val_task = GSM8K(subset="main", split="test")
 num_steps = (len(train_task) // args.examples_per_step) * args.num_epochs
 print0(f"Calculated number of steps: {num_steps}")

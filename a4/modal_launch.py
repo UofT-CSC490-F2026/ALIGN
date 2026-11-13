@@ -17,6 +17,7 @@ smoke runs delete it. A job refuses to start if it would overwrite an existing f
 A run folder holds a file named COMPLETE if the job finished and INCOMPLETE if it failed or was stopped, so a partial
 run is never mistaken for a finished one.
 """
+import json
 import re
 import shlex
 import shutil
@@ -102,10 +103,17 @@ def build_command(script, mode, run, extra, extra_data="", start=""):
 
 
 def latest_checkpoint(output_root, names):
-    """The newest saved step among the folders called `names` under output_root, as (folder name, step), or None."""
+    """The newest fully saved step among the folders called `names` under output_root, as (folder name, step), or None.
+    nanochat writes model_<step>.pt first and meta_<step>.json after it, so a step with no readable meta file was cut
+    off mid-save and is skipped."""
     found = []
     for name in names:
         for path in (Path(output_root) / name).glob("model_*.pt"):
+            meta = path.with_name(path.name.replace("model_", "meta_").replace(".pt", ".json"))
+            try:
+                json.loads(meta.read_text())
+            except (OSError, ValueError):
+                continue
             found.append((int(path.stem.split("_")[1]), name))
     return (max(found)[1], max(found)[0]) if found else None
 
@@ -136,7 +144,9 @@ def execute(command, output_root, run, keep, tag):
     # Modal restarts a preempted job from the start with the same input. An RL job that finds its own saved
     # checkpoints in the folder named after this run continues from the newest one instead of refusing to run (the last
     # occurrence of an option wins).
-    point = latest_checkpoint(output_root, [run]) if "scripts.chat_rl" in command else None
+    # A job killed outright never reaches the move below, so its checkpoints can still be in the folder named after the
+    # model tag; look there too.
+    point = latest_checkpoint(output_root, [run, tag]) if "scripts.chat_rl" in command else None
     if point:
         command = [*command, "--resume-from", point[0], "--resume-step", str(point[1])]
         print(f"RESUMING from {point[0]} step {point[1]}", flush=True)
