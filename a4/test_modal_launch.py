@@ -41,6 +41,14 @@ def test_latest_checkpoint_looks_in_every_folder_given():
         assert launch.latest_checkpoint(root, ["run", "tag"]) == ("tag", 120)
 
 
+def test_single_process_scripts_never_use_torchrun():
+    for mode in ("dry", "smoke", "full"):
+        command = launch.build_command("mcdiag", mode, "x", [])
+        assert not any("torchrun" in part for part in command), mode
+        assert any(part.endswith("/python") for part in command), mode
+    assert any("torchrun" in part for part in launch.build_command("sft", "full", "x", []))
+
+
 def test_merge_move_adds_files_to_an_existing_folder():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
