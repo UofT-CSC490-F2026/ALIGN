@@ -23,6 +23,24 @@ def test_latest_checkpoint_picks_highest_step_in_named_folder():
         assert launch.latest_checkpoint(root, ["missing"]) is None
 
 
+def test_latest_checkpoint_skips_a_step_that_was_cut_off_mid_save():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        make(root, "run", [60, 120])
+        (root / "run" / "meta_000120.json").unlink()  # model file written, job killed before the meta file
+        assert launch.latest_checkpoint(root, ["run"]) == ("run", 60)
+        (root / "run" / "meta_000060.json").write_text('{"model_con')  # meta file cut off
+        assert launch.latest_checkpoint(root, ["run"]) is None
+
+
+def test_latest_checkpoint_looks_in_every_folder_given():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        make(root, "run", [60])
+        make(root, "tag", [120])  # a job killed before the move leaves its newest steps under the tag
+        assert launch.latest_checkpoint(root, ["run", "tag"]) == ("tag", 120)
+
+
 def test_merge_move_adds_files_to_an_existing_folder():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
