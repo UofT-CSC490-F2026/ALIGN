@@ -9,8 +9,9 @@ _NUMBER = r"[+-]?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?
 _NUMERIC = re.compile(rf"{_NUMBER}\Z")
 _ANNOTATION = re.compile(r"<<([^<>]+)>>")
 _TOOL = re.compile(r"<\|python_start\|>(.*?)<\|python_end\|>\s*<\|output_start\|>(.*?)<\|output_end\|>", re.S)
-_CHUNK = r"(?:\d[\d,.]*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?|[+*/()\- \t])+"
-_EQUATION = re.compile(rf"(?<![\w.])({_CHUNK})=[ \t]*({_NUMBER})(?![\w.]|\d)")
+_ARITHMETIC_CHARACTERS = frozenset('0123456789.,eE+*/()- \t')
+_RESULT = re.compile(_NUMBER)
+
 
 
 def _normalize(text):
@@ -94,16 +95,41 @@ def completion_calculations(completion):
         equation = _validated_equation(*match.groups())
         if equation is not None:
             steps.add(equation)
-    ordinary = _TOOL.sub(' ', completion)
+    # Newlines prevent an invalid tool call from being erased into a valid
+    # ordinary equation spanning across it (e.g. "3*4=<wrong tool>12").
+    ordinary = _TOOL.sub('\n', completion)
     ordinary = re.sub(r'<\|python_start\|>.*', '', ordinary, flags=re.S)
     ordinary = _normalize(ordinary)
-    for match in _EQUATION.finditer(ordinary):
-        expression, result = match.groups()
-        # An operator immediately after a variable is not a standalone numeric
-        # expression: never accept the numeric suffix of "x + 3*4=12".
-        if expression.lstrip().startswith(('+', '-', '*', '/')) and ordinary[:match.start()].rstrip()[-1:].isalnum():
+    for equal in re.finditer('=', ordinary):
+        end = equal.start()
+        start = end
+        while start and ordinary[start - 1] in _ARITHMETIC_CHARACTERS:
+            start -= 1
+        # A prose word ending in e/E is not part of a scientific literal.
+        if (start and ordinary[start:start + 1] in ('e', 'E')
+                and ordinary[start - 1].isalpha() and ordinary[start + 1:start + 2].isspace()):
+            start += 1
+        raw_expression = ordinary[start:end]
+        expression = raw_expression.strip()
+        if not expression:
             continue
-        equation = _validated_equation(expression, result)
+        # Reject numeric suffixes of variable arithmetic and function calls.
+        prefix = ordinary[:start].rstrip()
+        if expression.startswith(('+', '-', '*', '/')) and prefix[-1:].isalnum():
+            continue
+        if start and ordinary[start - 1].isalnum() and not raw_expression[:1].isspace():
+            continue
+        result_start = equal.end()
+        while result_start < len(ordinary) and ordinary[result_start] in ' \t':
+            result_start += 1
+        result_match = _RESULT.match(ordinary, result_start)
+        if result_match is None:
+            continue
+        # Do not accept a numeric prefix of a longer malformed result.
+        tail = ordinary[result_match.end():result_match.end() + 1]
+        if tail and (tail.isalnum() or tail in '.,_'):
+            continue
+        equation = _validated_equation(expression, result_match.group())
         if equation is not None:
             steps.add(equation)
     return steps

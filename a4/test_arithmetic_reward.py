@@ -148,3 +148,19 @@ def test_large_integer_output_must_not_be_off_by_one():
 @pytest.mark.parametrize('expression', ['1e99999999+1', '1e-99999999+1', '1'*121+'+1'])
 def test_extreme_numeric_literals_are_bounded(expression):
     assert not reference_calculations(f'<<{expression}=1>>')
+
+
+
+def test_long_digit_and_operator_spans_do_not_backtrack():
+    assert not completion_calculations('1' * 10000)
+    assert not completion_calculations('1' * 10000 + '=1')
+    assert not completion_calculations('1+' * 5000 + '1=2')
+
+
+def test_invalid_tool_does_not_become_a_valid_ordinary_equation():
+    assert arithmetic_score('<<3*4=12>>', '3*4=' + tool('3*4','13') + '12') == 0
+
+
+@pytest.mark.parametrize('text', ['x3*4=12','f(3*4)=12','3*4=12,34','3*4=12_0'])
+def test_invalid_expression_or_result_prefix_is_not_rewarded(text):
+    assert arithmetic_score('<<3*4=12>>',text) == 0
