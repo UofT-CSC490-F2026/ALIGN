@@ -35,7 +35,7 @@ The last two commands **only print documentation**. Do not pipe their output int
 shell or execute it during local validation. Neither preview nor planning imports
 Modal, torch, model weights, W&B, or a cloud client. Launcher tests use pure helpers;
 production-loop tests select local functions with AST and use in-memory stubs.
-The Part 4 suite passed **123 tests**, and `compileall -q a4` passed. The separate
+The Part 4 suite passed **129 tests**, and `compileall -q a4` passed. The separate
 existing `test_fox_cache.py` could not collect because this local Python lacks
 `torch`; its actual CPU model checks were not run. No torch installation, weights,
 or cloud runtime was needed for the Part 4 suite.
