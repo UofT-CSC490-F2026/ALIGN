@@ -1,4 +1,4 @@
-﻿"""Conservative reference-aligned arithmetic shaping. Never executes model code."""
+"""Conservative reference-aligned arithmetic shaping. Never executes model code."""
 from __future__ import annotations
 import ast
 import math
@@ -9,7 +9,8 @@ _NUMBER = r"[+-]?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?
 _NUMERIC = re.compile(rf"{_NUMBER}\Z")
 _ANNOTATION = re.compile(r"<<([^<>]+)>>")
 _TOOL = re.compile(r"<\|python_start\|>(.*?)<\|python_end\|>\s*<\|output_start\|>(.*?)<\|output_end\|>", re.S)
-_EQUATION = re.compile(rf"(?<![\w.])([\d.,eE+*/()\- \t]+)=[ \t]*({_NUMBER})(?![\w.]|\d)")
+_CHUNK = r"(?:\d[\d,.]*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?|[+*/()\- \t])+"
+_EQUATION = re.compile(rf"(?<![\w.])({_CHUNK})=[ \t]*({_NUMBER})(?![\w.]|\d)")
 
 
 def _normalize(text):
@@ -70,7 +71,7 @@ def _validated_equation(expression, result):
             return None
         key, value = _parse(expression)
         claimed = Fraction(result.strip().replace(',', ''))
-        if abs(value - claimed) > max(Fraction(1, 10**9), abs(value) / 10**12):
+        if abs(value - claimed) > Fraction(1, 10**9):
             return None
         return key, value
     except (SyntaxError, TypeError, ValueError, ZeroDivisionError, OverflowError, RecursionError):
@@ -95,8 +96,14 @@ def completion_calculations(completion):
             steps.add(equation)
     ordinary = _TOOL.sub(' ', completion)
     ordinary = re.sub(r'<\|python_start\|>.*', '', ordinary, flags=re.S)
-    for match in _EQUATION.finditer(_normalize(ordinary)):
-        equation = _validated_equation(*match.groups())
+    ordinary = _normalize(ordinary)
+    for match in _EQUATION.finditer(ordinary):
+        expression, result = match.groups()
+        # An operator immediately after a variable is not a standalone numeric
+        # expression: never accept the numeric suffix of "x + 3*4=12".
+        if expression.lstrip().startswith(('+', '-', '*', '/')) and ordinary[:match.start()].rstrip()[-1:].isalnum():
+            continue
+        equation = _validated_equation(expression, result)
         if equation is not None:
             steps.add(equation)
     return steps

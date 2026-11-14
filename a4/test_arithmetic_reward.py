@@ -57,8 +57,6 @@ def test_invalid_reference_step_is_not_credited():
 
 def test_division_decimals_commas_and_parentheses():
     ref = "<<1200/3=400>> <<2.5+1.5=4>> <<(2+3)*4=20>>"
-    # The parser deliberately skips expressions with nested parentheses in
-    # the model extraction for now, but does support the first two equations.
     assert arithmetic_score(ref, "1,200 / 3 = 400\n2.5+1.5 = 4") == pytest.approx(2 / 3)
 
 
@@ -131,3 +129,22 @@ def test_bad_commas_and_oversized_expressions():
 def test_nonfinite_and_over_cap_weight(weight):
     with pytest.raises(ValueError):
         arithmetic_reward(REFERENCE, '', weight)
+
+
+@pytest.mark.parametrize('prefix', ['We have ', 'There are ', 'The price is ', 'Compute ', 'Total: '])
+def test_equations_following_prose(prefix):
+    assert arithmetic_score('<<3*4=12>>', prefix+'3*4=12') == 1
+
+
+@pytest.mark.parametrize('text', ['x + 3*4=12', 'x - 3*4=-12', '2**3*4=12', '3*4=120', '3*4=12.5'])
+def test_do_not_extract_suffix_or_wrong_claim(text):
+    assert arithmetic_score('<<3*4=12>>', text) == 0
+
+
+def test_large_integer_output_must_not_be_off_by_one():
+    assert arithmetic_score('<<1000000*1000000=1000000000000>>', tool('1000000*1000000','999999999999')) == 0
+
+
+@pytest.mark.parametrize('expression', ['1e99999999+1', '1e-99999999+1', '1'*121+'+1'])
+def test_extreme_numeric_literals_are_bounded(expression):
+    assert not reference_calculations(f'<<{expression}=1>>')
