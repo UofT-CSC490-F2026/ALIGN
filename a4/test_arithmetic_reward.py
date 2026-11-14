@@ -85,3 +85,49 @@ def test_weight_validation():
 def test_text_type_validation():
     with pytest.raises(TypeError):
         arithmetic_score(None, "3*4=12")
+
+
+def tool(expression, result):
+    return f'<|python_start|>{expression}<|python_end|><|output_start|>{result}<|output_end|>'
+
+
+@pytest.mark.parametrize('expression,result', [
+    ('(2+3)*4', '20'), ('-2 + +3', '1'), ('1,200/3', '400'),
+    ('.5*8', '4.0'), ('1e2/4', '25'), ('1/3', '0.3333333333333333'),
+    ('0.1+0.2', '0.30000000000000004'),
+])
+def test_numeric_and_tool_formats(expression, result):
+    ref = f'<<{expression}={result}>>'
+    assert arithmetic_score(ref, tool(expression, result)) == 1
+    assert arithmetic_score(ref, f'{expression} = {result}') == 1
+
+
+@pytest.mark.parametrize('expression,result', [
+    ('3*4', '13'), ('6*2', '12'), ('12', '12'),
+    ('__import__("os").system("echo bad")', '12'),
+    ('print(3*4)', '12'), ('x=3*4', '12'), ('2**100000000', '12'),
+    ('[3*4][0]', '12'), ('True*12', '12'), ('3*4 # comment', '12'),
+    ('3*4', '12 extra'), ('3*4', 'nan'), ('3*4', 'inf'),
+])
+def test_invalid_or_unaligned_tools(expression, result):
+    assert arithmetic_score('<<3*4=12>>', tool(expression, result)) == 0
+
+
+def test_tool_and_ordinary_deduplicate_numeric_spellings():
+    assert arithmetic_score('<<5*7=35>><<5.0*7=35.0>><<2+2=4>>',
+                            tool('5*7', '35') + '\n5.0*7=35') == .5
+
+
+def test_nested_parentheses_and_signs():
+    assert arithmetic_score('<<((2+3)*(-4))/2=-10>>', '((2+3)*(-4))/2=-10') == 1
+
+
+def test_bad_commas_and_oversized_expressions():
+    assert arithmetic_score('<<12*2=24>>', '1,2*2=24') == 0
+    assert not reference_calculations('<<' + '1+' * 200 + '1=201>>')
+
+
+@pytest.mark.parametrize('weight', [float('nan'), float('inf'), .21])
+def test_nonfinite_and_over_cap_weight(weight):
+    with pytest.raises(ValueError):
+        arithmetic_reward(REFERENCE, '', weight)
