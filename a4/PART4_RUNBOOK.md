@@ -11,6 +11,11 @@ signals in historical sampled training responses, not a change in GSM8K test acc
 - `royce/a4-reward-integration` -> `royce/a4-arithmetic`: RL integration, local analysis,
   pure launcher configuration/preview, tests, experiment manifest and this runbook.
 
+PRs: [#41 completion](https://github.com/UofT-CSC490-F2026/ALIGN/pull/41),
+[#42 arithmetic](https://github.com/UofT-CSC490-F2026/ALIGN/pull/42),
+[#43 integration](https://github.com/UofT-CSC490-F2026/ALIGN/pull/43).
+They were created through the connected GitHub tools because `gh` is not installed locally.
+
 Parent updates were incorporated by normal merges; no shared history was rewritten.
 Each PR must target its immediate parent. No PR should be merged automatically.
 

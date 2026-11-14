@@ -110,4 +110,3 @@ def mark_run(target, run, completed):
     marker, stale = ("COMPLETE", "INCOMPLETE") if completed else ("INCOMPLETE", "COMPLETE")
     (target / stale).unlink(missing_ok=True)
     (target / marker).write_text(f"{run}\n")
-
