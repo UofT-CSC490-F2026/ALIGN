@@ -90,6 +90,11 @@ SMOKE_ARGS = {
 }
 
 
+# Scripts that are not written for several processes. Under torchrun every process would repeat the same work and print the
+# same output, so they always run as one process on one GPU.
+SINGLE_PROCESS = {"mcdiag"}
+
+
 def build_command(script, mode, run, extra, extra_data="", start="", mix_seed=-1):
     """The shell command for one job, as a list of arguments. extra_data names a CustomJSON file in the volume
     that run_script.py adds to the training mix."""
@@ -101,6 +106,8 @@ def build_command(script, mode, run, extra, extra_data="", start="", mix_seed=-1
         arguments = ["--model-tag", start, "--run", run, "--rollouts-dir", f"/vol/rollouts/{run}"]
     if mode == "dry":
         return [*prefix, f"{VENV}/python", "/root/a4/run_script.py", module, *arguments, *DRY_ARGS[script], *extra]
+    if script in SINGLE_PROCESS:
+        return [*prefix, f"{VENV}/python", "/root/a4/run_script.py", module, *arguments, *FULL_ARGS[script], *extra]
     shortened = SMOKE_ARGS[script] if mode == "smoke" else []
     return [*prefix, f"{VENV}/torchrun", "--standalone", "--nproc_per_node=8", "/root/a4/run_script.py",
             module, *arguments, *FULL_ARGS[script], *shortened, *extra]
@@ -212,5 +219,6 @@ def main(script: str = "sft", mode: str = "dry", run: str = "dummy", extra: str 
     if script == "rl" and not start:
         raise SystemExit("--script rl needs --start <name of a folder in chatsft_checkpoints>")
     command = build_command(script, mode, run, shlex.split(extra), extra_data, start, mix_seed)
-    call = functions[mode].spawn if spawn else functions[mode].remote
+    function = one_gpu if script in SINGLE_PROCESS else functions[mode]  # one GPU is enough for these scripts
+    call = function.spawn if spawn else function.remote
     call(command, OUTPUT_ROOT[script], run, mode == "full", start if script == "rl" else MODEL_TAG)
