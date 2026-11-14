@@ -1,10 +1,10 @@
-"""Unit tests for the checkpoint helpers in modal_launch.py (run with the modal tool's python: they need `import modal`)."""
+"""Unit tests for the checkpoint helpers in modal_launch.py (run with the modal tool's python: no Modal import or remote calls)."""
 import sys
 import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-import modal_launch as launch
+import launcher_config as launch
 
 
 def make(root, folder, steps):

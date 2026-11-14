@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "workspace": "royce-csc490",
+  "volume": "a4-base",
+  "nanochat_revision": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+  "sft_model_step": null,
+  "sft_step_policy": "Before any run, freeze/verify the same complete a4-sft-default checkpoint pair for all experiments. Null uses latest model file; archive its step and hashes.",
+  "training": {
+    "num_epochs": 1,
+    "device_batch_size": 8,
+    "examples_per_step": 16,
+    "num_samples": 16,
+    "max_new_tokens": 256,
+    "temperature": 1.0,
+    "top_k": 50,
+    "embedding_lr": 0.2,
+    "unembedding_lr": 0.004,
+    "matrix_lr": 0.02,
+    "weight_decay": 0.0,
+    "init_lr_frac": 0.05,
+    "eval_every": 60,
+    "eval_examples": 400,
+    "save_every": 60
+  },
+  "evaluation": {
+    "dataset": "GSM8K main test",
+    "num_problems": 1319,
+    "decoding": "greedy",
+    "temperature": 0.0,
+    "max_new_tokens": 512,
+    "shaping": false,
+    "paired": true
+  },
+  "resources": {
+    "dry": {
+      "gpu": "H100!",
+      "count": 1,
+      "optimizer_steps": 1,
+      "timeout_seconds": 1800
+    },
+    "smoke": {
+      "gpu": "H100!",
+      "count": 8,
+      "optimizer_steps": 3,
+      "timeout_seconds": 1500
+    },
+    "full": {
+      "gpu": "H100!",
+      "count": 8,
+      "optimizer_steps": null,
+      "timeout_seconds": 14400
+    }
+  },
+  "billing": {
+    "currency": "USD",
+    "source": "https://modal.com/pricing",
+    "checked": "2026-11-14",
+    "h100_per_gpu_second": 0.001097,
+    "excludes": [
+      "CPU",
+      "RAM",
+      "image build",
+      "storage",
+      "network",
+      "taxes"
+    ],
+    "warning": "Estimate only; recheck actual workspace pricing, credits and budgets before any manual launch."
+  },
+  "experiments": [
+    {
+      "id": "original-baseline",
+      "status": "historical",
+      "reward_mode": "baseline",
+      "start": "a4-sft-default",
+      "checkpoint": "a4-rl3-resume",
+      "checkpoint_step": 466,
+      "reported_paired_gsm8k_accuracy_approx": 0.147,
+      "note": "User-provided result; not re-evaluated here. Earlier stage a4-rl3. Optimizer state restarted on resume."
+    },
+    {
+      "id": "baseline",
+      "status": "planned",
+      "optional": true,
+      "reward_mode": "baseline",
+      "start": "a4-sft-default",
+      "run": "a4-p4-baseline-v1",
+      "wandb_run": "a4-p4-baseline-v1",
+      "checkpoint_dir": "/vol/chatrl_checkpoints/a4-p4-baseline-v1",
+      "rollouts_dir": "/vol/rollouts/a4-p4-baseline-v1",
+      "completion_weight": 0.15,
+      "arithmetic_weight": 0.2,
+      "max_steps": null,
+      "note": "Optional uninterrupted baseline control"
+    },
+    {
+      "id": "completion",
+      "status": "planned",
+      "optional": false,
+      "reward_mode": "completion",
+      "start": "a4-sft-default",
+      "run": "a4-p4-completion-v1",
+      "wandb_run": "a4-p4-completion-v1",
+      "checkpoint_dir": "/vol/chatrl_checkpoints/a4-p4-completion-v1",
+      "rollouts_dir": "/vol/rollouts/a4-p4-completion-v1",
+      "completion_weight": 0.15,
+      "arithmetic_weight": 0.2,
+      "max_steps": null,
+      "note": "Primary Part 4 experiment"
+    },
+    {
+      "id": "arithmetic",
+      "status": "planned",
+      "optional": false,
+      "reward_mode": "arithmetic",
+      "start": "a4-sft-default",
+      "run": "a4-p4-arithmetic-v1",
+      "wandb_run": "a4-p4-arithmetic-v1",
+      "checkpoint_dir": "/vol/chatrl_checkpoints/a4-p4-arithmetic-v1",
+      "rollouts_dir": "/vol/rollouts/a4-p4-arithmetic-v1",
+      "completion_weight": 0.15,
+      "arithmetic_weight": 0.2,
+      "max_steps": null,
+      "note": "Primary Part 4 experiment"
+    },
+    {
+      "id": "combined",
+      "status": "planned",
+      "optional": false,
+      "reward_mode": "combined",
+      "start": "a4-sft-default",
+      "run": "a4-p4-combined-v1",
+      "wandb_run": "a4-p4-combined-v1",
+      "checkpoint_dir": "/vol/chatrl_checkpoints/a4-p4-combined-v1",
+      "rollouts_dir": "/vol/rollouts/a4-p4-combined-v1",
+      "completion_weight": 0.15,
+      "arithmetic_weight": 0.2,
+      "max_steps": null,
+      "note": "Primary Part 4 experiment"
+    }
+  ]
+}

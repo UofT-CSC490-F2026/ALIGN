@@ -27,10 +27,12 @@ from nanochat.common import compute_init, compute_cleanup, print0, get_base_dir,
 from nanochat.checkpoint_manager import save_checkpoint, load_model
 from nanochat.engine import Engine
 from tasks.gsm8k import GSM8K
+from reward_integration import (add_reward_arguments, validate_reward_arguments,
+                                optimizer_steps, reference_text, reward_components)
 
 # -----------------------------------------------------------------------------
 # CLI arguments
-parser = argparse.ArgumentParser(description="Reinforcement learning on GSM8K")
+parser = argparse.ArgumentParser(description="Reinforcement learning on GSM8K", allow_abbrev=False)
 # Logging
 parser.add_argument("--run", type=str, default="dummy", help="wandb run name ('dummy' disables wandb logging)")
 parser.add_argument("--rollouts-dir", type=str, default=None, help="if set, save every sampled answer and its reward here (one jsonl file per rank)")
@@ -61,7 +63,9 @@ parser.add_argument("--init-lr-frac", type=float, default=0.05, help="initial LR
 parser.add_argument("--eval-every", type=int, default=60, help="evaluate pass@k every N steps")
 parser.add_argument("--eval-examples", type=int, default=400, help="number of examples for pass@k evaluation")
 parser.add_argument("--save-every", type=int, default=60, help="save checkpoint every N steps")
+add_reward_arguments(parser)
 args = parser.parse_args()
+validate_reward_arguments(args)
 user_config = vars(args).copy()
 # -----------------------------------------------------------------------------
 
@@ -89,12 +93,12 @@ rollouts_path = None
 if args.rollouts_dir:
     os.makedirs(args.rollouts_dir, exist_ok=True)
     rollouts_path = os.path.join(args.rollouts_dir, f"rank{ddp_rank}.jsonl")
-    if args.resume_from and os.path.exists(rollouts_path):
-        # steps after the restored checkpoint were already written once and are about to be run again: drop them
-        with open(rollouts_path) as rollouts_file:
-            kept = [line for line in rollouts_file if json.loads(line)["step"] <= args.resume_step]
-        with open(rollouts_path, "w") as rollouts_file:
-            rollouts_file.writelines(kept)
+    if args.resume_from:
+        # Preserve earlier logs, including any samples after the restored step.
+        import uuid
+        rollouts_path = os.path.join(args.rollouts_dir, f"rank{ddp_rank}.resume{args.resume_step}.{uuid.uuid4().hex}.jsonl")
+    with open(rollouts_path, "x"):
+        pass  # Refuse to append a new run to existing logs.
 val_task = GSM8K(subset="main", split="test")
 num_steps = (len(train_task) // args.examples_per_step) * args.num_epochs
 print0(f"Calculated number of steps: {num_steps}")
@@ -137,6 +141,8 @@ def get_batch():
         # Calculate the rewards for each sample
         rewards = []
         generated_texts = []
+        components = []
+        reference = reference_text(conversation)
         for sample_tokens in generated_token_sequences:
             # Get just the generated tokens (after the prompt)
             generated_tokens = sample_tokens[prefix_length:]
@@ -144,7 +150,10 @@ def get_batch():
             generated_text = tokenizer.decode(generated_tokens)
             # Calculate the reward
             reward = train_task.reward(conversation, generated_text)
-            rewards.append(reward)
+            component = reward_components(reward, reference, generated_text, args.reward_mode,
+                                          args.completion_weight, args.arithmetic_weight)
+            rewards.append(component['total'])
+            components.append(component)
             generated_texts.append(generated_text)
 
         if rollouts_path:  # one line per training problem: the question, the reference and all sampled answers with rewards
@@ -153,8 +162,9 @@ def get_batch():
             with open(rollouts_path, "a") as rollouts_file:
                 rollouts_file.write(json.dumps({
                     "step": step, "problem": example_idx, "question": conversation["messages"][0]["content"],
-                    "reference": conversation["messages"][-1]["content"][-1]["text"],
-                    "samples": [{"text": t, "reward": r} for t, r in zip(generated_texts, rewards)],
+                    "reference": reference,
+                    "reward_mode": args.reward_mode,
+                    "samples": [{"text": t, "reward": c["correctness"], **c} for t, c in zip(generated_texts, components)],
                 }) + "\n")
 
         # Pad the sequences so that their lengths (in time) match
@@ -175,7 +185,7 @@ def get_batch():
         mu = rewards.mean()
         advantages = rewards - mu
         # yield inputs/targets as (B, T) of ids and rewards as (B,) of floats
-        yield generated_token_sequences, inputs, targets, rewards, advantages
+        yield generated_token_sequences, inputs, targets, rewards, advantages, components
 
 # -----------------------------------------------------------------------------
 # Simple evaluation loop for GSM8K pass@k
@@ -251,7 +261,8 @@ print0(f"Calculated examples per rank: {examples_per_rank}")
 
 # Kick off the training loop
 batch_iterator = get_batch()
-for step in range(args.resume_step + 1 if args.resume_from else 0, num_steps):
+training_steps = optimizer_steps(num_steps, args.resume_step if args.resume_from else None, args.max_steps)
+for step in training_steps:
 
     # Evaluate the model once in a while and log to wandb
     if step % args.eval_every == 0:
@@ -276,10 +287,16 @@ for step in range(args.resume_step + 1 if args.resume_from else 0, num_steps):
 
     # Forward/Backward on rollouts over multiple examples in the dataset
     rewards_list = []
+    component_sums = {key: 0.0 for key in ("correctness", "completion", "arithmetic", "total")}
+    component_count = 0
     sequence_lengths = []
     for example_step in range(examples_per_rank):
         # Get one batch corresponding to one example in the training dataset
-        sequences_all, inputs_all, targets_all, rewards_all, advantages_all = next(batch_iterator)
+        sequences_all, inputs_all, targets_all, rewards_all, advantages_all, components = next(batch_iterator)
+        for component in components:
+            for key in component_sums:
+                component_sums[key] += component[key]
+            component_count += 1
         # Evaluate the loss and gradients
         model.train() # ensure the model is in train mode
         # We need one more loop because we can never exceed the device_batch_size
@@ -319,7 +336,12 @@ for step in range(args.resume_step + 1 if args.resume_from else 0, num_steps):
         mean_reward = mean_reward_tensor.item()
         mean_sequence_length = mean_sequence_length_tensor.item()
     print0(f"Step {step}/{num_steps} | Average reward: {mean_reward} | Average sequence length: {mean_sequence_length:.2f}")
+    component_means = torch.tensor([component_sums[key] / component_count for key in component_sums],
+                                   dtype=torch.float, device=device)
+    if ddp:
+        dist.all_reduce(component_means, op=dist.ReduceOp.AVG)
     wandb_run.log({
+        **{f"reward/{key}": value for key, value in zip(component_sums, component_means.tolist())},
         "step": step,
         "reward": mean_reward,
         "sequence_length": mean_sequence_length,
@@ -337,12 +359,15 @@ for step in range(args.resume_step + 1 if args.resume_from else 0, num_steps):
     })
 
     # Master process saves the model once in a while. Skip first step. Save last step.
-    if master_process and ((step > 0 and step % args.save_every == 0) or step == num_steps - 1):
+    if master_process and ((step > 0 and step % args.save_every == 0) or step == training_steps.stop - 1):
         base_dir = get_base_dir()
         depth = model.config.n_layer
-        output_dirname = args.model_tag if args.model_tag else f"d{depth}" # base the model tag on the depth of the base model
+        output_dirname = args.output_tag or args.model_tag or f"d{depth}" # base the model tag on the depth of the base model
         checkpoint_dir = os.path.join(base_dir, "chatrl_checkpoints", output_dirname)
         model_config_kwargs = model.config.__dict__ # slightly naughty, abusing the simplicity of GPTConfig, TODO nicer
+        if any(os.path.exists(os.path.join(checkpoint_dir, name)) for name in
+               (f"model_{step:06d}.pt", f"meta_{step:06d}.json")):
+            raise FileExistsError(f"checkpoint step {step} already exists in {checkpoint_dir}")
         save_checkpoint(
             checkpoint_dir,
             step,
@@ -350,6 +375,7 @@ for step in range(args.resume_step + 1 if args.resume_from else 0, num_steps):
             None, # note: we don't bother to save the optimizer state
             {
                 "model_config": model_config_kwargs,
+                "reward_config": user_config,
             }
         )
         print(f"✅ Saved model checkpoint to {checkpoint_dir}")
