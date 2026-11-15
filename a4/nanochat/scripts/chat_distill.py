@@ -1,19 +1,9 @@
-"""
-On-policy GSM8K distillation: student samples, frozen RL teacher scores token log-probs.
+"""On-policy reverse-KL distillation on GSM8K using student rollouts and a frozen RL teacher.
 
-I put GRPO in quotes because we actually end up with something a lot
-simpler and more similar to just REINFORCE:
-
-1) Delete trust region, so there is no KL regularization to a reference model
-2) We are on policy, so there's no need for PPO ratio+clip.
-3) We use DAPO style normalization that is token-level, not sequence-level.
-4) Instead of z-score normalization (r - mu)/sigma, only use (r - mu) as the advantage.
-
-1 GPU:
-python -m scripts.chat_rl
-
-8 GPUs:
-torchrun --standalone --nproc_per_node=8 -m scripts.chat_rl -- --run=default
+Adapted from the pinned nanochat RL script. Student samples its own tokens;
+the teacher scores those same tokens under no_grad, and the student receives a
+detached per-token advantage equal to teacher logp minus student logp.
+Correctness is logged for diagnostics but is NOT used as a training reward.
 """
 
 import argparse
