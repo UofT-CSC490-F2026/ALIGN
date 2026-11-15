@@ -75,7 +75,7 @@ If the personal volume is empty, arrange a **specific, authorized, one-time** tr
 - [ ] Personal `wandb-secret` and intended W&B project configured, without disclosing secrets.
 - [ ] Credits, current Modal billing/pricing and effective spending/concurrency controls verified; explicit permission before billable run.
 - [ ] Single-H100 one-update dry succeeds; inspect logs and COMPLETE marker.
-- [ ] Eight-H100 three-update smoke succeeds, with fresh run identifier.
+- [ ] Eight-H100 one-update smoke succeeds, with fresh run identifier.
 - [ ] A-only, B1-only and combined full runs finish; archive checkpoints and raw logs (optional uninterrupted baseline if budget allows).
 - [ ] Paired 1,319-question GSM8K evaluation, uncertainties and error analysis completed; fill the Part 4 assignment report.
 
