@@ -143,7 +143,7 @@ def one_gpu(command, output_root, run, keep, tag):
     execute(command, output_root, run, keep, tag)
 
 
-@app.function(image=image, gpu="H100!:8", timeout=25 * 60, volumes={"/vol": volume}, secrets=secrets, retries=0)
+@app.function(image=image, gpu="H100!:8", timeout=10 * 60, volumes={"/vol": volume}, secrets=secrets, retries=0)
 def eight_gpus_smoke(command, output_root, run, keep, tag):
     execute(command, output_root, run, keep, tag)
 
