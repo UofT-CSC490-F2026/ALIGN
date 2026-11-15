@@ -1,5 +1,7 @@
 # Method B selection: verified intermediate arithmetic, with a narrow commutative proposal
 
+> **Final integration decision (2026-11-14):** Freeze **B1** as the production Method B for the initial A4 Part 4 training matrix. B2 remains a promising *offline* alternative but is not adopted because it adds only one all-wrong group beyond A+B1 in this historical subset and the small targeted audit found semantic unit/role aliases; no sufficiently large independent blinded audit has validated its additional credits. This decision prioritizes a reproducible, conservative first experiment over speculative coverage. The rest of this report retains the earlier B2 proposal and measured comparisons for transparency.
+
 ## Recommendation and decision boundary
 
 **B2 is the strongest narrowly scoped candidate for review; keep B1 in production
