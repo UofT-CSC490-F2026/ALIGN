@@ -97,7 +97,7 @@ def test_configuration_rejected(field,value):
     with pytest.raises(ValueError): validate_reward_arguments(args)
 
 
-@pytest.mark.parametrize('mode,steps,processes', [('dry','1',1),('smoke','3',8),('full',None,8)])
+@pytest.mark.parametrize('mode,steps,processes', [('dry','1',1),('smoke','1',8),('full',None,8)])
 def test_launcher_caps_identity_and_rewards(mode,steps,processes):
     command=build_command('rl',mode,'new-run',[],start='a4-sft-default',reward_mode='combined')
     assert command[command.index('--output-tag')+1]=='new-run'
@@ -117,7 +117,7 @@ def test_no_smoke_cap_or_artifact_identity_override(extra):
 def test_local_preview_imports_no_cloud_or_model_modules():
     code="import sys; sys.path.insert(0,sys.argv[1]); import preview_launch; assert not any(m in sys.modules for m in ('modal','torch','wandb')); sys.argv=['preview','--run','preview','--reward-mode','combined']; preview_launch.main()"
     result=subprocess.run([sys.executable,'-c',code,str(HERE)],capture_output=True,text=True,check=True)
-    assert '--max-steps 3' in result.stdout
+    assert '--max-steps 1' in result.stdout
 
 
 def test_merge_move_refuses_collisions(tmp_path):
