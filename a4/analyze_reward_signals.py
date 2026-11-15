@@ -66,7 +66,7 @@ def load_records(paths):
                 if samples:
                     seen[key] = row
                     records.append(dict(source=path.name, step=key[0], problem=key[1],
-                                        reference=row['reference'], samples=samples))
+                                        question=row['question'], reference=row['reference'], samples=samples))
     return records, counts, issues
 
 

@@ -93,6 +93,11 @@ New RL logs reconstruct the original annotated reference from all trusted refere
 parts, fixing coverage for future analysis. Tests cover the real GSM8K syntax and
 nanochat tool format without any generated code execution.
 
+**Research follow-up:** full training references have since been recovered by exact
+question matching and seed-42 index validation. The B1-B5 comparison is documented
+in [METHOD_B_SELECTION.md](METHOD_B_SELECTION.md). The figures above still describe
+the original raw-file-only analysis; neither input file was modified.
+
 No claim of training improvement or test-accuracy improvement follows from these
 reward statistics. Completion shaping is dense but also rewards many wrong answers.
 
