@@ -41,8 +41,8 @@
     "smoke": {
       "gpu": "H100!",
       "count": 8,
-      "optimizer_steps": 3,
-      "timeout_seconds": 1500
+      "optimizer_steps": 1,
+      "timeout_seconds": 600
     },
     "full": {
       "gpu": "H100!",
