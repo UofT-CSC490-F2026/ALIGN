@@ -53,6 +53,7 @@ image = (modal.Image.debian_slim(python_version="3.12")
          .add_local_file(str(HERE / "rewards.py"), "/root/a4/rewards.py")
          .add_local_file(str(HERE / "arithmetic_reward.py"), "/root/a4/arithmetic_reward.py")
          .add_local_file(str(HERE / "reward_integration.py"), "/root/a4/reward_integration.py")
+         .add_local_file(str(HERE / "part5_distillation.py"), "/root/a4/part5_distillation.py")
          .add_local_file(str(HERE / "launcher_config.py"), "/root/a4/launcher_config.py")
          .add_local_file(str(HERE / "run_script.py"), "/root/a4/run_script.py")
          .add_local_file(str(HERE / "eval_models.py"), "/root/a4/eval_models.py")
@@ -63,6 +64,7 @@ image = (modal.Image.debian_slim(python_version="3.12")
          .add_local_file(str(HERE / "nanochat/scripts/mid_train.py"), "/root/nanochat/scripts/mid_train.py")
          # chat_rl.py with --rollouts-dir added (saves every sampled answer); see a4/nanochat/README.md
          .add_local_file(str(HERE / "nanochat/scripts/chat_rl.py"), "/root/nanochat/scripts/chat_rl.py")
+         .add_local_file(str(HERE / "nanochat/scripts/chat_distill.py"), "/root/nanochat/scripts/chat_distill.py")
          .add_local_file(str(HERE / "nanochat/tasks/customjson.py"), "/root/nanochat/tasks/customjson.py")
          .add_local_file(str(HERE / "nanochat/tasks/spellingbee.py"), "/root/nanochat/tasks/spellingbee.py"))
 
@@ -99,7 +101,7 @@ def execute_isolated_rl(command, output_root, run):
 def execute(command, output_root, run, keep, tag):
     """Run one job, then move its output from <output_root>/<tag> to <output_root>/<run>, or delete it. The scripts
     name their output folder after the model tag they were given."""
-    if "scripts.chat_rl" in command:
+    if "scripts.chat_rl" in command or "scripts.chat_distill" in command:
         return execute_isolated_rl(command, output_root, run)
     if "scripts.mid_train" in command and not Path("/vol/identity_conversations.jsonl").is_file():
         raise FileNotFoundError("mid_train needs /vol/identity_conversations.jsonl in the a4-base volume")
@@ -156,16 +158,19 @@ def eight_gpus(command, output_root, run, keep, tag):
 @app.local_entrypoint()
 def main(script: str = "sft", mode: str = "dry", run: str = "dummy", extra: str = "", extra_data: str = "",
          start: str = "", spawn: bool = False, mix_seed: int = -1,
-         reward_mode: str = "baseline", completion_weight: float = .15, arithmetic_weight: float = .20):
+         reward_mode: str = "baseline", completion_weight: float = .15, arithmetic_weight: float = .20,
+         teacher_tag: str = ""):
     functions = {"dry": one_gpu, "smoke": eight_gpus_smoke, "full": eight_gpus}
     if script not in MODULES or mode not in functions:
-        raise SystemExit("--script must be sft, mid, eval, answers or rl, and --mode must be dry, smoke or full")
+        raise SystemExit("--script must be sft, mid, eval, answers, rl or distill; mode dry, smoke or full")
     if mode == "full" and (run in ("dummy", MODEL_TAG) or not re.fullmatch(r"[A-Za-z0-9_-]+", run)):
         raise SystemExit(f"--run needs its own name (letters, digits, - and _), not dummy or {MODEL_TAG}")
-    if script == "rl" and not start:
-        raise SystemExit("--script rl needs --start <name of a folder in chatsft_checkpoints>")
+    if script in ("rl", "distill") and not start:
+        raise SystemExit("RL/distill needs --start <SFT checkpoint folder>")
+    if script == "distill" and not teacher_tag:
+        raise SystemExit("--script distill needs --teacher-tag <completed RL folder>")
     command = build_command(script, mode, run, shlex.split(extra), extra_data, start, mix_seed,
-                            reward_mode, completion_weight, arithmetic_weight)
+                            reward_mode, completion_weight, arithmetic_weight, teacher_tag)
     function = one_gpu if script in SINGLE_PROCESS else functions[mode]  # one GPU is enough for these scripts
     call = function.spawn if spawn else function.remote
-    call(command, OUTPUT_ROOT[script], run, mode == "full", start if script == "rl" else MODEL_TAG)
+    call(command, OUTPUT_ROOT[script], run, mode == "full", start if script in ("rl", "distill") else MODEL_TAG)
