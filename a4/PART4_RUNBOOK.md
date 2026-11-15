@@ -141,6 +141,20 @@ and create a unique resume shard; checkpoint writes refuse existing step files.
 Optimizer state is not saved/restored by the original RL implementation, so historical
 resumed baseline behavior is not identical to an uninterrupted rerun.
 
+
+## Final Method B decision (pre-training code freeze)
+
+**Production Method B for the three initial Part 4 experiments: B1, strict reference-aligned arithmetic (existing `arithmetic_reward.py`, unchanged).** Method A remains the reviewed +0.15 completion reward. Experimental B2-B5 are offline diagnostics only, not additional training objectives. This is a conservative choice, not proof B1 will improve test-set accuracy.
+
+- From the clean historical subset, B1 differentiated 252/353 original all-wrong groups (71.39%); A+B1 differentiated 339/353 (96.03%).
+- B2 differentiated 258/353 alone and 340/353 with A, only **one additional all-wrong group** beyond A+B1. Correlation/variance differences do not establish causal learning gains.
+- The targeted 55-response audit flagged genuine semantic role/unit mismatches in some B2-only matches, while B1 also has semantic limitations. No independent blinded audit of B2-only credits was completed; thus B2 is **not promoted to production**.
+- B3 numeric grounding rejected useful conversions; B4 could reward intermediate-as-final mistakes; B5 penalized legitimate floating-point results.
+
+The run matrix stays historical baseline + A + B1 + A+B1, with optional fresh correctness-only control. Do not rename B1 results as B2. If a future B2 ablation is desired, it must have its own documented reward version and distinct run name.
+
+**PR ownership/stack:** #41 `royce/a4-part4` → `laith/a4-controls` (A); #42 `royce/a4-arithmetic` → `royce/a4-part4` (B1); #43 `royce/a4-reward-integration` → `royce/a4-arithmetic` (integration, offline research, run configuration). All are deliberately open and unmerged until reviewed. No existing code changes were made to A or B1 by this decision.
+
 ## Workspace and asset prerequisites: manual, read-only checks
 
 Before any **separately authorized manual launch**, run these local/read-only checks
@@ -188,12 +202,7 @@ for RL from an existing SFT checkpoint. The image supplies FoX/pico source, the 
 patch, nanochat at the pinned revision, the runner and reward modules. Do not copy
 or overwrite teammate artifacts. No volume assets were inspected or changed here.
 
-The exact SFT step and file availability are **not yet verified**. The manifest's
-`sft_model_step: null` uses the pinned loader's latest model file. Before training,
-verify the highest model file has matching metadata and freeze that folder, or set
-`sft_model_step` to the verified step so generated commands explicitly pin it. The
-same checkpoint pair must be used for all new experiments. Do not start from
-`a4-sft-math`; it is a stronger but uncontrolled starting point for this comparison.
+The experiment manifest and generated manual commands now **pin `a4-sft-default` step 466** with `--model-step 466`, matching Laith's recorded original SFT checkpoint. **This is a configuration pin, not a claim that the files have been transferred into your Modal workspace.** Before any training, verify that `royce-csc490`'s `a4-base` volume contains a complete `model_000466.pt` + `meta_000466.json` pair and matching `tokenizer.pkl`; STOP otherwise. Do not start from `a4-sft-math`, which would confound the controlled comparison.
 
 ## Future manual commands: BILLABLE, documentation only
 
