@@ -32,7 +32,7 @@ SMOKE_ARGS = {
     "mid": ["--dry-run", "--num-iterations", "100", "--eval-every", "-1", "--eval-tokens", "1048576"],
     "eval": ["--max-problems", "64"],
     "answers": ["--max-problems", "64"],
-    "rl": ["--max-steps", "3", "--eval-examples", "8", "--save-every", "100000"],
+    "rl": ["--max-steps", "1", "--eval-examples", "8", "--save-every", "100000"],
 }
 
 
