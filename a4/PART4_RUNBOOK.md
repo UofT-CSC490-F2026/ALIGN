@@ -25,6 +25,60 @@ py -3.12 a4/plan_experiments.py --mode full
 
 The planner prints **documentation only**; it does not invoke Modal. `preview_launch.py` can preview a single local command. Verify all commands use `--model-step 466`. Do not paste the printed `modal run` commands into the shell unless intentionally authorizing a billed job.
 
+## Restore Royce's personal Modal profile (mandatory after using Laith's workspace)
+
+The last observed CLI output showed active profile **`allaith2004`**, token workspace **`allaith2004`**, and only Laith's `a4-base` contents and `wandb-secret`. This is NOT authorization to run or transfer from Laith's workspace. First switch profiles and verify **both** the active profile and authenticated token workspace:
+
+```powershell
+py -m modal profile list
+py -m modal profile activate royce-csc490
+py -m modal profile current
+py -m modal token info
+Get-ChildItem Env:MODAL_* | Select-Object -ExpandProperty Name
+```
+
+STOP if `modal token info` still identifies `allaith2004`, if an environment override routes to another workspace, or if the profile is missing. Never print token-secret values or other credentials. A profile change selects credentials; it does not copy volumes or secrets between workspaces.
+
+After confirming `royce-csc490`:
+
+```powershell
+py -m modal volume list
+py -m modal volume ls a4-base
+py -m modal volume ls a4-base /chatsft_checkpoints/a4-sft-default
+py -m modal volume ls a4-base /tokenizer
+py -m modal secret list
+```
+
+The required files are `/chatsft_checkpoints/a4-sft-default/model_000466.pt`, matching `meta_000466.json`, and `/tokenizer/tokenizer.pkl`. The historical RL baseline `chatrl_checkpoints/a4-rl3-resume/model_000466.pt` plus matching metadata is needed only if reevaluating that checkpoint on Royce's workspace. Verify the checkpoint and tokenizer pair by hash/config, not by filename alone.
+
+If the personal volume is empty, arrange a **specific, authorized, one-time** transfer of just these files: download from Laith's volume to a temporary local directory while explicitly using his permitted profile, then **reactivate and verify** `royce-csc490` before uploading to its `a4-base`. Example CLI argument shapes (do not blindly execute until filenames, permission and local free disk space are verified):
+
+```powershell
+# SOURCE profile must be explicitly verified as allaith2004, with permission:
+# py -m modal volume get a4-base /chatsft_checkpoints/a4-sft-default/model_000466.pt <local-file-path>
+# py -m modal volume get a4-base /chatsft_checkpoints/a4-sft-default/meta_000466.json <local-file-path>
+# py -m modal volume get a4-base /tokenizer/tokenizer.pkl <local-file-path>
+# Then explicitly activate royce-csc490 and verify token info again.
+# py -m modal volume put a4-base <local-model-file-path> /chatsft_checkpoints/a4-sft-default/model_000466.pt
+# py -m modal volume put a4-base <local-meta-file-path> /chatsft_checkpoints/a4-sft-default/meta_000466.json
+# py -m modal volume put a4-base <local-tokenizer-file-path> /tokenizer/tokenizer.pkl
+```
+
+`modal volume get/put` operate in the *currently selected workspace and environment*. Avoid `--force` and any overwrite of existing files. Transfers may incur storage/network charges even without GPU usage; check remaining credits. Do not create or copy secret material from Laith's workspace. Create your **own** `wandb-secret` with your authorized W&B key and verify intended W&B project via the dashboard. End on Royce's active profile and check that the source/model paths resolve correctly.
+
+### Remaining readiness checklist (record outcomes before launch)
+
+- [ ] Latest three-PR stack pulled locally; relevant `pytest`, compilation, and no-cloud command planning pass.
+- [ ] Active profile and token both say `royce-csc490`; no overriding `MODAL_*` environment.
+- [ ] Personal `a4-base` volume has complete verified SFT step-466 model, metadata and matching tokenizer.
+- [ ] Local/remote dataset cache and available disk/volume space are sufficient.
+- [ ] Personal `wandb-secret` and intended W&B project configured, without disclosing secrets.
+- [ ] Credits, current Modal billing/pricing and effective spending/concurrency controls verified; explicit permission before billable run.
+- [ ] Single-H100 one-update dry succeeds; inspect logs and COMPLETE marker.
+- [ ] Eight-H100 three-update smoke succeeds, with fresh run identifier.
+- [ ] A-only, B1-only and combined full runs finish; archive checkpoints and raw logs (optional uninterrupted baseline if budget allows).
+- [ ] Paired 1,319-question GSM8K evaluation, uncertainties and error analysis completed; fill the Part 4 assignment report.
+
 ## Preflight — required BEFORE any billable operation
 
 1. **Workspace:** Run `py -m modal profile current` and `py -m modal token info` (read-only). Both must refer to **royce-csc490**, never Laith's workspace. Inspect names only of `MODAL_*` environment overrides; avoid revealing token values.
