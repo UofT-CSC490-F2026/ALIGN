@@ -74,7 +74,7 @@ def build_command(script, mode, run, extra, extra_data="", start="", mix_seed=-1
                      "--output-tag", run, "--reward-mode", reward_mode,
                      "--completion-weight", str(completion_weight), "--arithmetic-weight", str(arithmetic_weight)]
         if script == "distill":
-            arguments.extend(["--teacher-tag", teacher_tag, "--teacher-step", "466"])
+            arguments.extend(["--teacher-tag", teacher_tag, "--teacher-step", "466", "--model-step", "466"])
     if mode == "dry":
         return [*prefix, f"{VENV}/python", "/root/a4/run_script.py", module, *arguments, *DRY_ARGS[script], *extra]
     if script in SINGLE_PROCESS:
