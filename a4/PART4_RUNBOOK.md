@@ -93,11 +93,11 @@ If the personal volume is empty, arrange a **specific, authorized, one-time** tr
 The single source of truth is `a4/part4_experiments.json`, with **SFT step 466 pinned** and the original hyperparameters. Generate exact commands locally with `plan_experiments.py`. Run only after preflight and explicit user authorization, in this order:
 
 1. One-GPU, **one-update dry** for completion or combined, to establish imports/model loading/logging.
-2. Eight-GPU, **three-update smoke** for an isolated run name, if the one-GPU dry succeeds.
+2. Eight-GPU, **one-update smoke** for an isolated run name, if the one-GPU dry succeeds.
 3. Three **full** one-epoch runs: `a4-p4-completion-v1`, `a4-p4-arithmetic-v1`, `a4-p4-combined-v1`; optional fresh `a4-p4-baseline-v1` if budgets permit. Do not interpret an incomplete experiment's final checkpoint as complete.
 4. Paired greedy GSM8K test evaluation (1,319 questions, 512 tokens), using the same scoring and questions for SFT, historical baseline (if its checkpoint is available), and all new runs.
 
-The RL launcher saves distinct checkpoint and rollout folders plus COMPLETE/INCOMPLETE markers. `--max-steps` caps optimizer updates per invocation; dry=1, smoke=3, full=no additional cap. JSONL logs distinguish `correctness`, `completion`, `arithmetic`, `total` and preserve historical `reward` as binary. W&B logs components separately. `a4/eval_models.py` and `a4/dump_answers.py` support evaluation and paired error analysis. The historical `a4-rl3-resume` step 466 checkpoint must also be present in the correct workspace if re-evaluating it.
+The RL launcher saves distinct checkpoint and rollout folders plus COMPLETE/INCOMPLETE markers. `--max-steps` caps optimizer updates per invocation; dry=1, smoke=1, full=no additional cap. JSONL logs distinguish `correctness`, `completion`, `arithmetic`, `total` and preserve historical `reward` as binary. W&B logs components separately. `a4/eval_models.py` and `a4/dump_answers.py` support evaluation and paired error analysis. The historical `a4-rl3-resume` step 466 checkpoint must also be present in the correct workspace if re-evaluating it.
 
 ### After training — analysis required to finish Part 4
 
@@ -105,6 +105,6 @@ Record checkpoint names, full hashes and final optimizer steps. Compare paired t
 
 ## GPU cost planning (estimates, not billing caps)
 
-The saved planning estimate from 2026-11-14 was **US$0.001097/H100-second** (source: https://modal.com/pricing); recheck it before every manual launch. GPU-only costs at configured timeouts: dry one H100 ×30 min ~US$1.97; smoke eight H100s ×25 min ~US$13.16; full eight H100s ×4 hours ~US$126.37 **per full run**. Three full runs at their timeouts total ~US$379.12 GPU-only. CPU/RAM, builds, storage, transfers and tax may add cost. Timeouts are **not** payment limits.
+The saved planning estimate from 2026-11-14 was **US$0.001097/H100-second** (source: https://modal.com/pricing); recheck it before every manual launch. GPU-only costs at configured timeouts: dry one H100 ×30 min ~US$1.97; smoke eight H100s ×10 min ~US$5.27; full eight H100s ×4 hours ~US$126.37 **per full run**. Three full runs at their timeouts total ~US$379.12 GPU-only. CPU/RAM, builds, storage, transfers and tax may add cost. Timeouts are **not** payment limits.
 
 **No GPU/cloud job is started by these instructions.**
