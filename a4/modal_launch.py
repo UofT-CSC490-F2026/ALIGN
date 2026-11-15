@@ -1,12 +1,12 @@
 """Run nanochat training (BILLABLE: never use this module for a local preview).
 
-RL dry/smoke cap optimizer updates to 1/3 respectively, retain isolated outputs,
+RL dry/smoke each cap optimizer updates to 1, retain isolated outputs,
 and refuse existing experiment folders. Use preview_launch.py for local/free commands.
 
 Run nanochat SFT or midtraining on the A3 FoX checkpoint in the Modal volume a4-base.
 
     modal run a4/modal_launch.py --script sft --mode dry     # 1 GPU, one step, 30 minute limit
-    modal run a4/modal_launch.py --script sft --mode smoke   # 8 GPUs, a few steps, 25 minute limit
+    modal run a4/modal_launch.py --script sft --mode smoke   # 8 GPUs, 10 minute limit
     modal run a4/modal_launch.py --script sft --mode full --run a4-sft-default   # 8 GPUs, default settings
     modal run a4/modal_launch.py --script sft --mode full --run a4-sft-math --extra-data extra_math.jsonl
     modal run a4/modal_launch.py --script rl --mode full --run a4-rl --start a4-sft-default   # RL from a saved SFT model
