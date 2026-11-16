@@ -43,11 +43,20 @@ SMOKE_ARGS = {
 SINGLE_PROCESS = {"mcdiag"}
 
 
-def build_command(script, mode, run, extra, extra_data="", start="", mix_seed=-1, reward_mode="baseline", completion_weight=.15, arithmetic_weight=.20, teacher_tag=""):
+def build_command(script, mode, run, extra, extra_data="", start="", mix_seed=-1, reward_mode="baseline", completion_weight=.15, arithmetic_weight=.20, teacher_tag="", resume_from="", resume_step=None):
     """The shell command for one job, as a list of arguments. extra_data names a CustomJSON file in the volume
     that run_script.py adds to the training mix."""
     if mode not in ('dry', 'smoke', 'full'):
         raise ValueError('invalid mode')
+    if resume_from or resume_step is not None:
+        if script != "distill" or mode != "full":
+            raise ValueError("resuming is supported only for full distillation runs")
+        if not resume_from or resume_step is None:
+            raise ValueError("both resume_from and resume_step are required")
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", resume_from) or resume_from == run:
+            raise ValueError("resume source must be a valid, different run folder")
+        if not isinstance(resume_step, int) or not 0 <= resume_step < 466:
+            raise ValueError("resume step must be a saved checkpoint step from 0 through 465")
     if script in ('rl', 'distill'):
         from argparse import Namespace
         from reward_integration import validate_reward_arguments, MODES
@@ -75,6 +84,8 @@ def build_command(script, mode, run, extra, extra_data="", start="", mix_seed=-1
                      "--completion-weight", str(completion_weight), "--arithmetic-weight", str(arithmetic_weight)]
         if script == "distill":
             arguments.extend(["--teacher-tag", teacher_tag, "--teacher-step", "466", "--model-step", "466"])
+            if resume_from:
+                arguments.extend(["--resume-from", resume_from, "--resume-step", str(resume_step)])
     if mode == "dry":
         return [*prefix, f"{VENV}/python", "/root/a4/run_script.py", module, *arguments, *DRY_ARGS[script], *extra]
     if script in SINGLE_PROCESS:
@@ -116,3 +127,25 @@ def mark_run(target, run, completed):
     marker, stale = ("COMPLETE", "INCOMPLETE") if completed else ("INCOMPLETE", "COMPLETE")
     (target / stale).unlink(missing_ok=True)
     (target / marker).write_text(f"{run}\n")
+
+
+def verify_resume_source(checkpoint_root, source, step, target):
+    """Validate a distinct, fully saved source checkpoint without modifying it.
+
+    A source marked INCOMPLETE is valid: it is precisely what recovery is for.
+    This only validates checkpoint files and metadata, not optimizer state.
+    """
+    if not source or source == target or not re.fullmatch(r"[A-Za-z0-9_-]+", source):
+        raise ValueError("resume source must differ from the output run")
+    folder = Path(checkpoint_root) / source
+    model = folder / f"model_{step:06d}.pt"
+    meta = folder / f"meta_{step:06d}.json"
+    if not model.is_file() or not meta.is_file():
+        raise FileNotFoundError(f"missing saved resume model/metadata: {folder}, step {step}")
+    try:
+        obj = json.loads(meta.read_text())
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"invalid resume metadata: {meta}") from exc
+    if not isinstance(obj, dict) or not isinstance(obj.get("model_config"), dict):
+        raise ValueError(f"resume metadata lacks model_config: {meta}")
+    return folder
