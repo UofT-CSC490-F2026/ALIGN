@@ -62,3 +62,32 @@ def test_teacher_required_and_reward_shaping_prohibited():
         build_command("distill", "full", "fresh", [],
                       start="a4-sft-default", teacher_tag="a4-p4-completion-v1",
                       reward_mode="completion")
+
+
+def test_full_distillation_resume_uses_new_output_and_original_checkpoint():
+    command = build_command(
+        "distill", "full", "a4-p5-distill-low-lr-resume-v1",
+        ["--init-lr-frac", "0.01"],
+        start="a4-sft-default", teacher_tag="a4-p4-completion-v1",
+        resume_from="a4-p5-distill-low-lr-v1", resume_step=180,
+    )
+    assert command[command.index("--resume-from") + 1] == "a4-p5-distill-low-lr-v1"
+    assert command[command.index("--resume-step") + 1] == "180"
+    assert command[command.index("--output-tag") + 1] == "a4-p5-distill-low-lr-resume-v1"
+    assert command[command.index("--init-lr-frac") + 1] == "0.01"
+
+
+@pytest.mark.parametrize("source,step,mode,run", [
+    ("", 180, "full", "new"),
+    ("source", None, "full", "new"),
+    ("source", 180, "smoke", "new"),
+    ("source", 466, "full", "new"),
+    ("source", -1, "full", "new"),
+    ("source", 180, "full", "source"),
+    ("../source", 180, "full", "new"),
+])
+def test_invalid_resume_configuration_rejected(source, step, mode, run):
+    with pytest.raises(ValueError):
+        build_command("distill", mode, run, [],
+                      start="a4-sft-default", teacher_tag="a4-p4-completion-v1",
+                      resume_from=source, resume_step=step)
