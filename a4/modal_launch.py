@@ -69,7 +69,7 @@ image = (modal.Image.debian_slim(python_version="3.12")
          .add_local_file(str(HERE / "nanochat/tasks/spellingbee.py"), "/root/nanochat/tasks/spellingbee.py"))
 
 from launcher_config import (MODEL_TAG, MODEL_STEP, VENV, MODULES, OUTPUT_ROOT, DRY_ARGS, FULL_ARGS, SMOKE_ARGS,
-                             SINGLE_PROCESS, build_command, latest_checkpoint, merge_move, mark_run)
+                             SINGLE_PROCESS, build_command, latest_checkpoint, merge_move, mark_run, verify_resume_source)
 
 
 def execute_isolated_rl(command, output_root, run):
@@ -78,6 +78,10 @@ def execute_isolated_rl(command, output_root, run):
     rollouts = Path('/vol/rollouts') / run
     if target.exists() or rollouts.exists():
         raise FileExistsError('RL artifacts already exist; choose a fresh run name')
+    if "--resume-from" in command:
+        source = command[command.index("--resume-from") + 1]
+        step = int(command[command.index("--resume-step") + 1])
+        verify_resume_source(output_root, source, step, run)
     target.mkdir(parents=True, exist_ok=False)
     mark_run(target, run, False)
     volume.commit()
@@ -159,7 +163,7 @@ def eight_gpus(command, output_root, run, keep, tag):
 def main(script: str = "sft", mode: str = "dry", run: str = "dummy", extra: str = "", extra_data: str = "",
          start: str = "", spawn: bool = False, mix_seed: int = -1,
          reward_mode: str = "baseline", completion_weight: float = .15, arithmetic_weight: float = .20,
-         teacher_tag: str = ""):
+         teacher_tag: str = "", resume_from: str = "", resume_step: int = -1):
     functions = {"dry": one_gpu, "smoke": eight_gpus_smoke, "full": eight_gpus}
     if script not in MODULES or mode not in functions:
         raise SystemExit("--script must be sft, mid, eval, answers, rl or distill; mode dry, smoke or full")
@@ -170,7 +174,8 @@ def main(script: str = "sft", mode: str = "dry", run: str = "dummy", extra: str 
     if script == "distill" and not teacher_tag:
         raise SystemExit("--script distill needs --teacher-tag <completed RL folder>")
     command = build_command(script, mode, run, shlex.split(extra), extra_data, start, mix_seed,
-                            reward_mode, completion_weight, arithmetic_weight, teacher_tag)
+                            reward_mode, completion_weight, arithmetic_weight, teacher_tag,
+                            resume_from, None if resume_step == -1 else resume_step)
     function = one_gpu if script in SINGLE_PROCESS else functions[mode]  # one GPU is enough for these scripts
     call = function.spawn if spawn else function.remote
     call(command, OUTPUT_ROOT[script], run, mode == "full", start if script in ("rl", "distill") else MODEL_TAG)
