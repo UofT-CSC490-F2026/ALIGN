@@ -22,6 +22,7 @@ smoke runs delete it. A job refuses to start if it would overwrite an existing f
 A run folder holds a file named COMPLETE if the job finished and INCOMPLETE if it failed or was stopped, so a partial
 run is never mistaken for a finished one.
 """
+import json
 import re
 import shlex
 import shutil
@@ -69,22 +70,35 @@ image = (modal.Image.debian_slim(python_version="3.12")
          .add_local_file(str(HERE / "nanochat/tasks/spellingbee.py"), "/root/nanochat/tasks/spellingbee.py"))
 
 from launcher_config import (MODEL_TAG, MODEL_STEP, VENV, MODULES, OUTPUT_ROOT, DRY_ARGS, FULL_ARGS, SMOKE_ARGS,
-                             SINGLE_PROCESS, build_command, latest_checkpoint, merge_move, mark_run, verify_resume_source)
+                             SINGLE_PROCESS, build_command, latest_checkpoint, merge_move, mark_run, plan_recovery)
 
 
 def execute_isolated_rl(command, output_root, run):
-    """Fresh RL experiments only; never auto-resume or touch the SFT tag folder."""
+    """Isolated training with explicit resume and guarded Modal preemption recovery.
+
+    The original launch command is retained for restart comparison. Existing
+    completed runs, changed configurations, and incomplete checkpoints fail
+    closed. Running two concurrent jobs with the same name is not supported.
+    """
     target = Path(output_root) / run
-    rollouts = Path('/vol/rollouts') / run
-    if target.exists() or rollouts.exists():
-        raise FileExistsError('RL artifacts already exist; choose a fresh run name')
+    original_command = list(command)
+    resume_source = ""
+    resume_step = None
     if "--resume-from" in command:
-        source = command[command.index("--resume-from") + 1]
-        step = int(command[command.index("--resume-step") + 1])
-        verify_resume_source(output_root, source, step, run)
-    target.mkdir(parents=True, exist_ok=False)
-    mark_run(target, run, False)
-    volume.commit()
+        resume_source = command[command.index("--resume-from") + 1]
+        resume_step = int(command[command.index("--resume-step") + 1])
+    command, resuming = plan_recovery(
+        output_root, "/vol/rollouts", run, original_command,
+        resume_source, resume_step
+    )
+    if not target.exists():
+        target.mkdir(parents=True, exist_ok=False)
+        mark_run(target, run, False)
+        (target / "launch_command.json").write_text(json.dumps(original_command))
+        volume.commit()
+    if resuming:
+        print(f"RESUMING {run} from {command[-3]} step {command[-1]}", flush=True)
+        print("NOTE: optimizer state is not restored", flush=True)
     completed = False
     try:
         process = subprocess.Popen(command)
