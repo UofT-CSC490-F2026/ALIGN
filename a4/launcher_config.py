@@ -48,15 +48,7 @@ def build_command(script, mode, run, extra, extra_data="", start="", mix_seed=-1
     that run_script.py adds to the training mix."""
     if mode not in ('dry', 'smoke', 'full'):
         raise ValueError('invalid mode')
-    if resume_from or resume_step is not None:
-        if script != "distill" or mode != "full":
-            raise ValueError("resuming is supported only for full distillation runs")
-        if not resume_from or resume_step is None:
-            raise ValueError("both resume_from and resume_step are required")
-        if not re.fullmatch(r"[A-Za-z0-9_-]+", resume_from) or resume_from == run:
-            raise ValueError("resume source must be a valid, different run folder")
-        if not isinstance(resume_step, int) or not 0 <= resume_step < 466:
-            raise ValueError("resume step must be a saved checkpoint step from 0 through 465")
+    validate_resume_request(script, mode, run, resume_from, resume_step)
     if script in ('rl', 'distill'):
         from argparse import Namespace
         from reward_integration import validate_reward_arguments, MODES
@@ -84,8 +76,8 @@ def build_command(script, mode, run, extra, extra_data="", start="", mix_seed=-1
                      "--completion-weight", str(completion_weight), "--arithmetic-weight", str(arithmetic_weight)]
         if script == "distill":
             arguments.extend(["--teacher-tag", teacher_tag, "--teacher-step", "466", "--model-step", "466"])
-            if resume_from:
-                arguments.extend(["--resume-from", resume_from, "--resume-step", str(resume_step)])
+        if resume_from:
+            arguments.extend(["--resume-from", resume_from, "--resume-step", str(resume_step)])
     if mode == "dry":
         return [*prefix, f"{VENV}/python", "/root/a4/run_script.py", module, *arguments, *DRY_ARGS[script], *extra]
     if script in SINGLE_PROCESS:
@@ -128,24 +120,82 @@ def mark_run(target, run, completed):
     (target / stale).unlink(missing_ok=True)
     (target / marker).write_text(f"{run}\n")
 
+def validate_resume_request(script, mode, run, source, step):
+    """Fail closed on incomplete or unsafe explicit resume arguments."""
+    if not source and step is None:
+        return
+    if script not in ("rl", "distill") or mode != "full":
+        raise ValueError("resume is allowed only for full RL/distillation jobs")
+    if not source or step is None:
+        raise ValueError("resume requires both source and step")
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", source) or source == run:
+        raise ValueError("resume source must be a different valid run name")
+    if type(step) is not int or step < 0:
+        raise ValueError("resume step must be a nonnegative integer")
+
+
+def validate_checkpoint(root, source, step):
+    folder = Path(root) / source
+    weights = folder / f"model_{step:06d}.pt"
+    meta = folder / f"meta_{step:06d}.json"
+    if not weights.is_file() or not meta.is_file():
+        raise FileNotFoundError(f"resume checkpoint missing at {folder}, step {step}")
+    try:
+        data = json.loads(meta.read_text())
+    except (ValueError, OSError) as exc:
+        raise ValueError(f"invalid resume metadata: {meta}") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("model_config"), dict):
+        raise ValueError(f"missing model_config in resume metadata: {meta}")
+    return data
+
 
 def verify_resume_source(checkpoint_root, source, step, target):
-    """Validate a distinct, fully saved source checkpoint without modifying it.
+    """Compatibility helper for Part 5 and shared explicit resume validation."""
+    validate_resume_request("rl", "full", target, source, step)
+    validate_checkpoint(checkpoint_root, source, step)
+    return Path(checkpoint_root) / source
 
-    A source marked INCOMPLETE is valid: it is precisely what recovery is for.
-    This only validates checkpoint files and metadata, not optimizer state.
+
+def latest_valid_checkpoint(root, run):
+    folder = Path(root) / run
+    candidates = []
+    for path in folder.glob("model_*.pt"):
+        try:
+            step = int(path.stem.split("_")[-1])
+            validate_checkpoint(root, run, step)
+            candidates.append(step)
+        except (ValueError, FileNotFoundError):
+            continue
+    return max(candidates) if candidates else None
+
+
+def plan_recovery(root, rollouts_root, run, command, resume_from="", resume_step=None):
+    """Plan isolated training or recovery without modifying any files.
+
+    Automatic same-name recovery requires INCOMPLETE, a matching original
+    launch manifest and a complete checkpoint. The caller must ensure that
+    only one live function operates on a run name at once.
     """
-    if not source or source == target or not re.fullmatch(r"[A-Za-z0-9_-]+", source):
-        raise ValueError("resume source must differ from the output run")
-    folder = Path(checkpoint_root) / source
-    model = folder / f"model_{step:06d}.pt"
-    meta = folder / f"meta_{step:06d}.json"
-    if not model.is_file() or not meta.is_file():
-        raise FileNotFoundError(f"missing saved resume model/metadata: {folder}, step {step}")
+    root, rollouts_root = Path(root), Path(rollouts_root)
+    target = root / run
+    rollouts = rollouts_root / run
+    if (target / "COMPLETE").exists():
+        raise FileExistsError(f"run already COMPLETE: {run}")
+    if not target.exists() and not rollouts.exists():
+        if resume_from:
+            validate_checkpoint(root, resume_from, resume_step)
+            return list(command), True  # explicit flags already in command
+        return list(command), False
+    if not target.is_dir() or not (target / "INCOMPLETE").exists():
+        raise FileExistsError("existing run is not marked INCOMPLETE")
+    manifest = target / "launch_command.json"
     try:
-        obj = json.loads(meta.read_text())
-    except (OSError, ValueError) as exc:
-        raise ValueError(f"invalid resume metadata: {meta}") from exc
-    if not isinstance(obj, dict) or not isinstance(obj.get("model_config"), dict):
-        raise ValueError(f"resume metadata lacks model_config: {meta}")
-    return folder
+        previous = json.loads(manifest.read_text())
+    except (ValueError, OSError) as exc:
+        raise ValueError("incomplete run lacks a valid launch manifest; use explicit resume") from exc
+    if previous != list(command):
+        raise ValueError("restarted command differs from recorded launch; refusing automatic resume")
+    step = latest_valid_checkpoint(root, run)
+    if step is None:
+        raise FileNotFoundError("incomplete run has no complete checkpoint; use a new run name")
+    return [*command, "--resume-from", run, "--resume-step", str(step)], True
