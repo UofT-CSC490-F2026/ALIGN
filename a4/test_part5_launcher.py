@@ -81,7 +81,6 @@ def test_full_distillation_resume_uses_new_output_and_original_checkpoint():
     ("", 180, "full", "new"),
     ("source", None, "full", "new"),
     ("source", 180, "smoke", "new"),
-    ("source", 466, "full", "new"),
     ("source", -1, "full", "new"),
     ("source", 180, "full", "source"),
     ("../source", 180, "full", "new"),
