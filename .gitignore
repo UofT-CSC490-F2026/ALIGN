@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.DS_Store
+
+# Local Part 4 analysis outputs and scratch files (never commit rollout data)
+a4/.reward-analysis/

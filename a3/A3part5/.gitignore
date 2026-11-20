@@ -1,0 +1,9 @@
+.venv/
+local/
+__pycache__/
+*.pyc
+*.pt
+*.parquet
+wandb/
+.env*
+.DS_Store

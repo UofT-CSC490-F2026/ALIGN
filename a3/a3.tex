@@ -1,0 +1,1487 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{array,tabularx}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+
+\title{CSC490 Assignment 3: Pre-training Nanochat}
+\author{Allaith Alzoubi1 (1009064744), Royce Luo (1010192391), \\ Yujie Zeng  (1009321020), 
+    Jinhao Zhang (1008870839)}
+\date{November 2026}
+
+
+% BEGIN LAYOUT ONLY ADDITION
+\setlength{\emergencystretch}{3em}
+% END LAYOUT ONLY ADDITION
+\begin{document}
+\maketitle
+
+\section{Architecture Review}
+
+\paragraph{Version scope.}
+This architecture review and Figure~\ref{fig:original} describe the original
+October 13, 2025 implementation, commit \texttt{3a5e0bc}. Section 1.3 and 1.4 uses commit \texttt{92d63d4} (July 3, 2026), as its July baseline.
+
+\subsection{Original model architecture}
+The original nanochat uses token embeddings followed by parameter-free RMSNorm, \(L\) Transformer blocks, final RMSNorm, and an untied vocabulary projection~\cite{nanochat-code}.
+
+Each block has two pre-normalized residual sublayers. For residual-stream
+input $X$, the block computes
+\begin{align}
+ U &= X + \operatorname{Attention}(\operatorname{RMSNorm}(X)),\\
+ Y &= U + \operatorname{MLP}(\operatorname{RMSNorm}(U)).
+\end{align}
+All RMSNorm operations are parameter-free, and linear projections are bias-free.
+
+\paragraph{Causal self-attention.}
+Separate linear projections produce queries $Q$, keys $K$, and values $V$.
+Rotary position embeddings (RoPE) are applied to $Q$ and $K$, followed by
+per-head RMSNorm of both. With
+processed queries and keys denoted $\widehat Q$ and $\widehat K$, each head
+computes
+\begin{equation}
+ A = \operatorname{softmax}\!\left(
+ \frac{\widehat Q\widehat K^{\mathsf T}}{\sqrt{d_h}}+M
+ \right)V,
+\end{equation}
+where $d_h$ is the head dimension and $M$ masks future positions. The code supports fewer key/value
+heads than query heads (grouped-query or multi-query attention), although
+the original default uses equal head counts~\cite{nanochat-code}.
+
+\paragraph{Feed-forward network.}
+The MLP expands each position's representation from $d$ to $4d$, applies
+squared ReLU, and projects back to $d$:
+\begin{equation}
+ \operatorname{MLP}(H)
+ = \bigl[\operatorname{ReLU}(H W_1)\bigr]^{\odot 2}W_2,
+ \qquad W_1\in\mathbb{R}^{d\times4d},\quad
+ W_2\in\mathbb{R}^{4d\times d}.
+\end{equation}
+This is not a gated MLP such as SwiGLU.
+
+\paragraph{Output and learning objective.}
+The output projection is untied from the input embedding matrix. Logits are soft-capped using \(\widetilde z=15\tanh(z/15)\), and training minimizes next-token cross-entropy~\cite{nanochat-code}.
+
+
+\begin{figure}[!htbp]
+ \centering
+ % Embedded diagram: uploading this single TeX file is sufficient.
+ \resizebox{0.55\linewidth}{!}{%
+ \begin{tikzpicture}[
+ font=\small,
+ box/.style={draw=blue!45!black,fill=blue!5,rounded corners=2pt,
+ align=center,text width=5.2cm,minimum height=0.72cm,inner sep=5pt},
+ detail/.style={box,text width=5.5cm},
+ add/.style={circle,draw=blue!45!black,fill=white,inner sep=1pt,minimum size=6mm},
+ flow/.style={-{Latex[length=2mm]},thick,draw=blue!45!black}]
+ \node[font=\bfseries] at (0,0.7) {Model forward path};
+ \node[font=\bfseries] at (7.6,0.7) {Inside one Transformer block};
+ \node[box] (tokens) at (0,0) {Input token IDs};
+ \node[box,below=4mm of tokens] (embed) {Token embedding};
+ \node[box,below=4mm of embed] (initial) {RMSNorm};
+ \node[box,below=4mm of initial,minimum height=1.1cm,fill=blue!12]
+ (stack) {$L$ Transformer blocks\\(expanded on the right)};
+ \node[box,below=4mm of stack] (final) {Final RMSNorm};
+ \node[box,below=4mm of final] (head) {Vocabulary projection\\untied from token embedding};
+ \node[box,below=4mm of head] (cap) {Logit soft cap: $15\tanh(z/15)$};
+ \node[box,below=4mm of cap] (out) {Next-token logits\\cross-entropy during training};
+ \foreach \a/\b in {tokens/embed,embed/initial,initial/stack,stack/final,final/head,head/cap,cap/out}
+ \draw[flow] (\a) -- (\b);
+ \node[detail] (input) at (7.6,0) {Residual input $X$};
+ \node[detail,below=4mm of input] (norm1) {RMSNorm};
+ \node[detail,below=4mm of norm1,minimum height=2cm] (attn)
+ {Self-attention\\$Q,K,V$ projections\\RoPE on $Q,K$, then Q/K RMSNorm\\Full causal attention\\Concatenate heads; output projection};
+ \node[add,below=4mm of attn] (add1) {$+$};
+ \node[detail,below=4mm of add1] (norm2) {RMSNorm};
+ \node[detail,below=4mm of norm2,minimum height=1.2cm] (mlp)
+ {Feed-forward network\\Linear $d\to4d$; squared ReLU\\Linear $4d\to d$};
+ \node[add,below=4mm of mlp] (add2) {$+$};
+ \node[detail,below=4mm of add2] (output) {Residual output $Y$};
+ \foreach \a/\b in {input/norm1,norm1/attn,attn/add1,add1/norm2,norm2/mlp,mlp/add2,add2/output}
+ \draw[flow] (\a) -- (\b);
+ \draw[flow] (input.east) -- ++(0.5,0) |- (add1.east);
+ \draw[flow] (add1.west) -- ++(-3.2,0) |- (add2.west);
+ \end{tikzpicture}%
+ }
+ \caption{Original nanochat architecture (October 13, 2025, commit 3a5e0bc). Left: model forward path. Right: a pre-normalized Transformer block with attention, MLP, and residual connections~\cite{nanochat-code}.}
+ \label{fig:original}
+\end{figure}
+
+\subsection{From the original architecture to the July baseline}
+The original diagram is historical context, not the model used for the
+ablations. Comparing the October commit with the July 3 commit reveals the
+following structural differences~\cite{nanochat-code,nanochat-july}.
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}p{2.4cm}XX@{}}
+\hline
+Component & October 2025 & July 2026 baseline\\
+\hline
+Attention span & Full causal attention in each layer.
+& SSSL sliding/full-window schedule; final layer uses the full context.\\
+Value pathway & Each layer projects its own values from the residual stream.
+& Still has per-layer K/V projections; adds gated token-value embeddings
+in alternating layers, including the final layer.\\
+Residual pathway & Ordinary pre-normalized residual additions.
+& Adds learned residual scaling and initial-embedding blending, token
+smearing, and subtraction of a cached intermediate residual (backout).\\
+Position and heads & RoPE, Q/K RMSNorm, and GQA support.
+& Retains these features; also scales normalized Q and K by 1.2 each.\\
+\hline
+\end{tabularx}
+\caption{Selected code-level version differences. Gated value embeddings
+are not FoX forget gates; GQA is not cross-layer K/V sharing; ordinary RoPE
+is not FoPE.}
+\end{table}
+
+\subsection{Three selected architecture proposals}
+Relative to the July 2026 nanochat architecture, we propose three literature-backed modifications: Forgetting Transformer (FoX), Cross-Layer Attention (CLA2), and Fourier Position Embedding (FoPE). Table 2 summarizes their motivations, mechanisms, and potential impacts.
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\linewidth}{@{}p{1.7cm}XXX@{}}
+\hline
+Change & Motivation & Technical change & Measurable hypothesis\\
+\hline
+FoX~\cite{fox} & Allow attention to forget irrelevant history in an
+input-dependent way. & Add cumulative log-sigmoid forget gates to causal
+attention logits, down-weighting older keys according to intervening gates;
+the proposed model does not require positional embeddings.
+& At equal training tokens and on the same evaluation corpus, lower
+validation BPB than baseline at context 512. Extrapolation is a separate,
+currently untested hypothesis.\\
+\hline
+CLA~\cite{cla} & Reduce the memory required for the autoregressive KV cache.
+& Reuse projected keys and values across adjacent layers, while queries
+remain layer-specific. CLA2 shares across pairs of layers.
+& Quality: sharing increases BPB relative to baseline. Memory: a shared-cache
+implementation reduces inference KV bytes at fixed batch/context/dtype.
+Only the quality hypothesis is tested here.\\
+\hline
+FoPE~\cite{fope} & Improve positional representations outside the training
+context length. & Replace individual rotary-frequency components with
+Fourier-series representations and remove inadequately trained low-frequency
+components. & After equal training at context 512, lower BPB than RoPE
+at context 2048 on identical held-out tokens, without further training.
+Proposed only; not tested in Part Two.\\
+\hline
+\end{tabularx}
+\caption{The three selected proposals. These are different interventions:
+attention forgetting, cross-layer sharing, and positional representation.}
+\label{tab:proposals}
+\end{table}
+
+\paragraph{Operational definitions and decision rules.}
+For each paired seed $s$, define
+$\Delta_s=\mathrm{BPB}_{\mathrm{variant},s}-\mathrm{BPB}_{\mathrm{baseline},s}$
+on the same held-out tokens at context 512 and after 16,384,000 training
+tokens. For FoX, the directional quality hypothesis is $\Delta_s<0$;
+we report each seed and their mean rather than treating two seeds as a
+significance test. For CLA2, the directional quality-cost hypothesis is
+$\Delta_s>0$: sharing may reduce representational capacity. We quantify
+the degradation rather than calling it negligible without a predefined
+acceptable BPB margin. These are exploratory interpretations formulated
+for this report after screening, not preregistered hypotheses.
+
+The distinct CLA memory hypothesis is
+$M_{\mathrm{KV,CLA2}}<M_{\mathrm{KV,baseline}}$, where $M_{\mathrm{KV}}$
+counts stored inference K/V tensor bytes at equal batch size, context length,
+head dimensions, and dtype. Total training peak VRAM and parameter count
+are not substitutes for this measurement. An ideal pair-shared cache stores
+half as many layer-specific K/V tensors, but our recipient-specific value
+embeddings complicate sharing the final values; we neither implement that
+cache nor claim a measured twofold saving.
+
+FoPE's proposed length test compares models trained at 512 and evaluated
+without updates at 512, 1024, and 2048 on a common set of target tokens,
+changing only the available preceding context. The primary proposed
+contrast is BPB at 2048, with in-range BPB reported separately. Continued
+training at 2048 would instead test context adaptation, not zero-shot
+extrapolation. Likewise, FoX's positive 512-token result cannot establish
+long-context generalization.
+\pagebreak
+
+\section{Part Two: Picochat Ablations}
+\subsection{Experimental Setup}
+We compare FoX and CLA2 individually against the July 2026
+nanochat baseline (commit \texttt{92d63d4}). Each configuration
+was trained with seeds 42 and 43 for 500 optimizer steps,
+processing 16.384M tokens per run.
+
+Our picochat uses six layers, width 384, six attention heads,
+a 512-token context, and the SSSL attention schedule. A
+32,768-token BPE tokenizer was trained on 100M characters
+from four ClimbMix training shards. All runs used the same
+data order, learning-rate schedule, Muon/AdamW optimizer
+configuration, and BF16 precision on an NVIDIA H100 80GB GPU.
+Validation used 262,144 held-out tokens.
+
+\paragraph{Evaluation metric.}
+We evaluate predictive quality using validation bits per byte
+(BPB), the negative log-likelihood of held-out text normalized
+by its byte length:
+\begin{equation}
+\mathrm{BPB} =
+\frac{\sum_{t\in\mathcal I}-\ln p_\theta(x_t\mid x_{<t})}
+{\ln(2)\sum_{t\in\mathcal I}b(x_t)},
+\end{equation}
+where $b(x_t)$ is the byte length of target token $x_t$.
+Lower BPB indicates better predictive performance.
+
+\subsection{Picochat Configuration Justification}
+We use the July 2026 nanochat implementation
+(commit \texttt{92d63d4}) with six Transformer layers,
+model width 384, six attention heads (head dimension 64),
+and a 512-token context window.
+
+This smaller configuration reduces training cost while
+retaining sufficient depth to evaluate architectural changes.
+Six layers allow three adjacent-layer sharing pairs for
+CLA2, while width 384 and six heads give a conventional
+64-dimensional attention head. The shorter context reduces
+attention computation and memory usage, particularly for
+our dense FoX implementation.
+
+Each configuration is trained with seeds 42 and 43 to check
+whether the observed effects are consistent across different
+initializations. Each run uses 500 optimizer steps with
+32,768 tokens per step (16.384M tokens total), keeping the
+training budget, data order, and optimizer settings identical
+across variants. These settings prioritize controlled,
+affordable comparisons rather than maximum model performance.
+
+
+
+\subsection{Implemented Adaptations}
+
+\paragraph{Forgetting Transformer (FoX).}
+We add a learned forget gate for each attention head. For
+normalized input $u_t$, the gate is
+$f_{t,h}=\sigma(w_h^\top u_t+b_h)$, with cumulative log-gates
+$c_{t,h}=\sum_{r=1}^{t}\log f_{r,h}$. The modified attention
+logits are
+\begin{equation}
+s_{ij,h} =
+\frac{\widehat q_{i,h}^{\mathsf T}\widehat k_{j,h}}{\sqrt{d_h}}
++c_{i,h}-c_{j,h}, \qquad j\leq i.
+\end{equation}
+This down-weights older keys according to the intervening
+forget gates while preserving causal masking. We remove RoPE,
+retain nanochat's Q/K normalization and value embeddings, and
+use dense reference attention rather than the paper's optimized
+kernel~\cite{fox}. Gate weights are initialized to zero with
+bias 3, adding 13,860 parameters across six layers.
+
+\paragraph{Cross-Layer Attention (CLA2).}
+We share projected keys and values between adjacent layer
+pairs $(1,2)$, $(3,4)$, and $(5,6)$. The second layer of each
+pair reuses the first layer's K/V projections while retaining
+its own queries, output projection, MLP, and value-embedding
+contribution. Sharing occurs before RoPE and the
+recipient-specific value embeddings, removing 884,736
+projection parameters~\cite{cla}.
+
+
+\subsection{Results}
+Table~\ref{tab:selected-ablations} reports validation BPB
+for both seeds under matched training-token budgets.
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\hline
+Configuration & Seed 42 BPB & Seed 43 BPB & Mean BPB & Difference\\
+\hline
+Baseline & 1.36560 & 1.35770 & 1.36165 & $0.00000$\\
+Baseline + FoX & 1.35234 & 1.34357 & 1.34795 & $-0.01370$\\
+Baseline + CLA2 & 1.39346 & 1.38805 & 1.39075 & $+0.02910$\\
+\hline
+\end{tabular}
+\caption{Selected individual ablations performance}
+\label{tab:selected-ablations}
+\end{table}
+
+FoX achieved the lowest validation BPB across both seeds,
+reducing the mean from 1.36165 (baseline) to 1.34795,
+an improvement of 0.01370 BPB (1.01\%). This suggests
+that the FoX adaptation improves predictive performance
+under our fixed training-token budget. However, because
+our implementation both introduces forgetting gates and
+removes RoPE, the improvement cannot be attributed solely
+to the forgetting mechanism.
+
+In contrast, CLA2 increased mean BPB to 1.39075, a
+degradation of 0.02910 BPB (2.14\%). This may reflect
+reduced representational flexibility from sharing
+keys and values across layers. Although CLA2 reduces
+parameter count, its intended inference KV-cache
+savings were not measured. Both trends were consistent
+across seeds 42 and 43, but the short training duration
+and limited number of seeds prevent broader conclusions.
+
+
+
+\begin{figure}[htbp]
+\centering
+\begin{minipage}{0.49\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+width=\linewidth,height=6cm,
+title={Seed 42},
+xlabel={Training tokens (millions)},
+ylabel={Training loss (nats/token)},
+xmin=0,xmax=16.384,ymin=4.1,ymax=8.1,
+xtick={0,4,8,12,16},ytick={4.5,5,6,7,8},
+tick label style={font=\scriptsize},
+label style={font=\small},title style={font=\small},
+grid=major,
+legend style={font=\scriptsize,at={(0.98,0.98)},anchor=north east},
+legend cell align=left]
+% Source: https://forge.coreweave.com/wandb/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/un4p0zdd
+\addplot[black,dashed,thick,no marks] coordinates {
+(0.32768,7.847368)
+(0.65536,6.951091)
+(0.98304,6.610069)
+(1.31072,6.541722)
+(1.63840,6.399338)
+(1.96608,6.212165)
+(2.29376,6.185744)
+(2.62144,6.074671)
+(2.94912,6.025666)
+(3.27680,5.806829)
+(3.60448,5.822124)
+(3.93216,5.635135)
+(4.25984,5.730894)
+(4.58752,5.623106)
+(4.91520,5.541435)
+(5.24288,5.372548)
+(5.57056,5.375168)
+(5.89824,5.307565)
+(6.22592,5.188486)
+(6.55360,5.234467)
+(6.88128,5.216069)
+(7.20896,5.153461)
+(7.53664,5.097663)
+(7.86432,5.064810)
+(8.19200,5.022509)
+(8.51968,4.968246)
+(8.84736,4.849144)
+(9.17504,4.962448)
+(9.50272,4.878549)
+(9.83040,4.873767)
+(10.15808,4.765270)
+(10.48576,4.788781)
+(10.81344,4.688424)
+(11.14112,4.680343)
+(11.46880,4.693472)
+(11.79648,4.713286)
+(12.12416,4.668766)
+(12.45184,4.587511)
+(12.77952,4.671426)
+(13.10720,4.652715)
+(13.43488,4.632094)
+(13.76256,4.411915)
+(14.09024,4.431824)
+(14.41792,4.416014)
+(14.74560,4.366816)
+(15.07328,4.459870)
+(15.40096,4.435699)
+(15.72864,4.347292)
+(16.05632,4.319283)
+(16.38400,4.363578)
+};
+\addlegendentry{Baseline}
+% Source: https://forge.coreweave.com/wandb/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/fp0w9ft9
+\addplot[blue!75!black,solid,thick,no marks] coordinates {
+(0.32768,7.759871)
+(0.65536,6.922662)
+(0.98304,6.574714)
+(1.31072,6.471995)
+(1.63840,6.309155)
+(1.96608,6.111247)
+(2.29376,6.068531)
+(2.62144,5.943207)
+(2.94912,5.901909)
+(3.27680,5.678447)
+(3.60448,5.715459)
+(3.93216,5.542672)
+(4.25984,5.642952)
+(4.58752,5.539823)
+(4.91520,5.465976)
+(5.24288,5.304523)
+(5.57056,5.306578)
+(5.89824,5.242035)
+(6.22592,5.136189)
+(6.55360,5.175840)
+(6.88128,5.155771)
+(7.20896,5.097799)
+(7.53664,5.041337)
+(7.86432,5.014498)
+(8.19200,4.974000)
+(8.51968,4.912686)
+(8.84736,4.789704)
+(9.17504,4.915602)
+(9.50272,4.826413)
+(9.83040,4.826153)
+(10.15808,4.712742)
+(10.48576,4.738873)
+(10.81344,4.641552)
+(11.14112,4.631709)
+(11.46880,4.643768)
+(11.79648,4.674807)
+(12.12416,4.622357)
+(12.45184,4.535224)
+(12.77952,4.626834)
+(13.10720,4.613010)
+(13.43488,4.596029)
+(13.76256,4.368385)
+(14.09024,4.388998)
+(14.41792,4.373258)
+(14.74560,4.312997)
+(15.07328,4.421261)
+(15.40096,4.408929)
+(15.72864,4.314985)
+(16.05632,4.284616)
+(16.38400,4.329559)
+};
+\addlegendentry{FoX (no RoPE)}
+% Source: https://forge.coreweave.com/wandb/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/n45utr68
+\addplot[orange!85!black,dashdotted,thick,no marks] coordinates {
+(0.32768,7.844236)
+(0.65536,6.950055)
+(0.98304,6.623356)
+(1.31072,6.550850)
+(1.63840,6.415628)
+(1.96608,6.232500)
+(2.29376,6.210021)
+(2.62144,6.098970)
+(2.94912,6.057153)
+(3.27680,5.839979)
+(3.60448,5.865992)
+(3.93216,5.681722)
+(4.25984,5.784358)
+(4.58752,5.668424)
+(4.91520,5.601174)
+(5.24288,5.426868)
+(5.57056,5.420852)
+(5.89824,5.350464)
+(6.22592,5.231064)
+(6.55360,5.269839)
+(6.88128,5.247512)
+(7.20896,5.186252)
+(7.53664,5.130477)
+(7.86432,5.106630)
+(8.19200,5.063492)
+(8.51968,4.991480)
+(8.84736,4.884933)
+(9.17504,4.992024)
+(9.50272,4.920917)
+(9.83040,4.909573)
+(10.15808,4.798791)
+(10.48576,4.832250)
+(10.81344,4.733232)
+(11.14112,4.729002)
+(11.46880,4.737093)
+(11.79648,4.781767)
+(12.12416,4.723995)
+(12.45184,4.641570)
+(12.77952,4.747191)
+(13.10720,4.713170)
+(13.43488,4.708653)
+(13.76256,4.472743)
+(14.09024,4.512206)
+(14.41792,4.494259)
+(14.74560,4.458840)
+(15.07328,4.557912)
+(15.40096,4.514986)
+(15.72864,4.429441)
+(16.05632,4.388398)
+(16.38400,4.472673)
+};
+\addlegendentry{CLA2}
+\end{axis}
+\end{tikzpicture}
+\end{minipage}
+\hfill
+\begin{minipage}{0.49\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+width=\linewidth,height=6cm,
+title={Seed 43},
+xlabel={Training tokens (millions)},
+ylabel={Training loss (nats/token)},
+xmin=0,xmax=16.384,ymin=4.1,ymax=8.1,
+xtick={0,4,8,12,16},ytick={4.5,5,6,7,8},
+tick label style={font=\scriptsize},
+label style={font=\small},title style={font=\small},
+grid=major,
+legend style={font=\scriptsize,at={(0.98,0.98)},anchor=north east},
+legend cell align=left]
+% Source: https://forge.coreweave.com/wandb/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/rffq0o0i
+\addplot[black,dashed,thick,no marks] coordinates {
+(0.32768,7.783415)
+(0.65536,6.915532)
+(0.98304,6.571776)
+(1.31072,6.505836)
+(1.63840,6.393981)
+(1.96608,6.196859)
+(2.29376,6.165635)
+(2.62144,6.060591)
+(2.94912,6.013999)
+(3.27680,5.800402)
+(3.60448,5.813226)
+(3.93216,5.630686)
+(4.25984,5.727801)
+(4.58752,5.620201)
+(4.91520,5.551540)
+(5.24288,5.377078)
+(5.57056,5.373336)
+(5.89824,5.306390)
+(6.22592,5.191024)
+(6.55360,5.222221)
+(6.88128,5.199676)
+(7.20896,5.152778)
+(7.53664,5.079165)
+(7.86432,5.046894)
+(8.19200,5.020430)
+(8.51968,4.951309)
+(8.84736,4.830318)
+(9.17504,4.949440)
+(9.50272,4.864786)
+(9.83040,4.858013)
+(10.15808,4.742464)
+(10.48576,4.769531)
+(10.81344,4.664518)
+(11.14112,4.661319)
+(11.46880,4.668951)
+(11.79648,4.693862)
+(12.12416,4.645176)
+(12.45184,4.564528)
+(12.77952,4.649324)
+(13.10720,4.629697)
+(13.43488,4.607935)
+(13.76256,4.393948)
+(14.09024,4.414723)
+(14.41792,4.394398)
+(14.74560,4.332987)
+(15.07328,4.437740)
+(15.40096,4.413879)
+(15.72864,4.325953)
+(16.05632,4.304288)
+(16.38400,4.345204)
+};
+\addlegendentry{Baseline}
+% Source: https://forge.coreweave.com/wandb/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/oai19y3t
+\addplot[blue!75!black,solid,thick,no marks] coordinates {
+(0.32768,7.738605)
+(0.65536,6.904187)
+(0.98304,6.550601)
+(1.31072,6.453812)
+(1.63840,6.316377)
+(1.96608,6.107516)
+(2.29376,6.064879)
+(2.62144,5.955566)
+(2.94912,5.913594)
+(3.27680,5.704386)
+(3.60448,5.731940)
+(3.93216,5.551382)
+(4.25984,5.652325)
+(4.58752,5.551281)
+(4.91520,5.494210)
+(5.24288,5.318613)
+(5.57056,5.320835)
+(5.89824,5.256320)
+(6.22592,5.143576)
+(6.55360,5.166668)
+(6.88128,5.152263)
+(7.20896,5.098103)
+(7.53664,5.026570)
+(7.86432,5.005660)
+(8.19200,4.956437)
+(8.51968,4.899768)
+(8.84736,4.765452)
+(9.17504,4.899328)
+(9.50272,4.800442)
+(9.83040,4.793787)
+(10.15808,4.680648)
+(10.48576,4.711443)
+(10.81344,4.595844)
+(11.14112,4.592880)
+(11.46880,4.617253)
+(11.79648,4.620855)
+(12.12416,4.591547)
+(12.45184,4.507250)
+(12.77952,4.579441)
+(13.10720,4.587166)
+(13.43488,4.564741)
+(13.76256,4.344977)
+(14.09024,4.372934)
+(14.41792,4.348551)
+(14.74560,4.278849)
+(15.07328,4.389224)
+(15.40096,4.381830)
+(15.72864,4.290817)
+(16.05632,4.261766)
+(16.38400,4.300159)
+};
+\addlegendentry{FoX (no RoPE)}
+% Source: https://forge.coreweave.com/wandb/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/d7gorc15
+\addplot[orange!85!black,dashdotted,thick,no marks] coordinates {
+(0.32768,7.793271)
+(0.65536,6.935992)
+(0.98304,6.587347)
+(1.31072,6.516215)
+(1.63840,6.399683)
+(1.96608,6.215022)
+(2.29376,6.184428)
+(2.62144,6.090816)
+(2.94912,6.043081)
+(3.27680,5.822916)
+(3.60448,5.849008)
+(3.93216,5.653624)
+(4.25984,5.759040)
+(4.58752,5.647188)
+(4.91520,5.587707)
+(5.24288,5.405021)
+(5.57056,5.402807)
+(5.89824,5.331265)
+(6.22592,5.217133)
+(6.55360,5.248403)
+(6.88128,5.225915)
+(7.20896,5.172262)
+(7.53664,5.112272)
+(7.86432,5.072956)
+(8.19200,5.040514)
+(8.51968,4.973822)
+(8.84736,4.856841)
+(9.17504,4.977571)
+(9.50272,4.903774)
+(9.83040,4.891013)
+(10.15808,4.782461)
+(10.48576,4.814015)
+(10.81344,4.712111)
+(11.14112,4.703539)
+(11.46880,4.725078)
+(11.79648,4.762064)
+(12.12416,4.712965)
+(12.45184,4.628036)
+(12.77952,4.736155)
+(13.10720,4.705440)
+(13.43488,4.685666)
+(13.76256,4.462677)
+(14.09024,4.499594)
+(14.41792,4.472526)
+(14.74560,4.447110)
+(15.07328,4.532365)
+(15.40096,4.505987)
+(15.72864,4.411825)
+(16.05632,4.377956)
+(16.38400,4.450434)
+};
+\addlegendentry{CLA2}
+\end{axis}
+\end{tikzpicture}
+\end{minipage}
+\caption{Original Part Two training-loss curves for both seeds}
+\label{fig:part2-training-loss}
+\end{figure}
+Figure~\ref{fig:part2-training-loss} compares training
+cross-entropy across the three configurations for both
+seeds, plotted against training tokens.
+
+All configurations show decreasing training loss,
+with FoX achieving the lowest final loss and CLA2
+the highest for both seeds, consistent with the
+validation BPB results.
+
+\newpage
+
+\subsection{Training efficiency}
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\hline
+Variant & Parameters & Tokens/s & Throughput change & Peak GiB\\
+\hline
+Baseline & 73,531,646 & 233,814 & --- & 3.16\\
+CLA2 & 72,646,910 & 238,817 & $+2.1\%$ & 3.15\\
+FoX & 73,545,506 & 209,240 & $-10.5\%$ & 3.64\\
+\hline
+\end{tabular}
+\caption{Mean steady training throughput across seeds and maximum peak
+allocated GPU memory across seeds}
+\end{table}
+FoX improves predictive quality but reduces training
+throughput from 233,814 to 209,240 tokens/s (10.5\%)
+and increases peak allocated GPU memory from 3.16
+to 3.64 GiB. The additional forgetting computation
+and dense reference attention likely contribute to
+this overhead. In contrast, CLA2 slightly increases
+throughput to 238,817 tokens/s (2.1\%) while reducing
+parameters by approximately 1.2\%.
+
+These results highlight a quality--efficiency trade-off:
+FoX performs better at equal training tokens but is not
+necessarily better under equal GPU-time budgets. Based
+on observed throughput, the baseline could process
+approximately 11.7\% more tokens in the time required
+by FoX. Furthermore, CLA2's intended inference KV-cache
+savings remain unmeasured, so training efficiency alone
+cannot establish its overall efficiency benefit.
+
+
+
+\subsection{Implications for Larger Models}
+Table~\ref{tab:scaling-hypotheses} summarizes how FoX
+and CLA2 might behave at larger model scales.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}p{1.2cm}XX@{}}
+\hline
+Change & Larger-run hypothesis & Important uncertainty\\
+\hline
+FoX & The lower BPB observed at equal tokens may persist at larger model
+sizes if learned forgetting remains useful.
+& Added attention work and our dense implementation could become expensive,
+especially at longer contexts. The quality benefit may not survive an
+equal-time comparison; optimized kernels could change the trade-off.\\
+CLA2 & Shared-cache memory savings may matter more during long-context,
+large-batch inference, potentially permitting a larger serving workload.
+& The quality penalty may persist or change with model size. Our
+recipient-specific value embeddings require a suitable cache design, and
+the current implementation has not demonstrated inference savings.\\
+\hline
+\end{tabularx}
+\caption{Larger-run expectations for the two selected interventions.}
+\label{tab:scaling-hypotheses}
+\end{table}
+
+\subsection{Execution, Cost, and Reproducibility}
+
+CPU and GPU smoke tests verified forward/backward passes,
+gradient computation, causal masking, checkpoint loading,
+and agreement with the upstream baseline.
+
+The six primary ablation runs required 563.0 seconds of
+GPU time, costing approximately \$0.62 at the Modal H100
+rate. The broader exploratory campaign cost approximately
+\$1.99 in successful-run GPU time, including additional
+experiments. These estimates exclude startup, failed runs,
+and CPU/RAM charges, so they do not represent the total bill.
+
+Results and configurations are recorded in
+\texttt{a3/pilot\_results/}, with training metrics
+available on the
+\href{https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot}
+{W\&B dashboard}.
+
+\clearpage
+\section{Part Three: Hardware Efficiency}
+\subsection{Hardware choices and controlled workload}
+We compare a single NVIDIA A10, A100 80GB, and H100 per run on Modal.
+These represent different generations,
+computational capabilities, and hourly costs, allowing
+us to investigate whether higher theoretical performance
+translates into faster and more cost-efficient training
+for a relatively small picochat model.
+
+The A10G provides a lower-cost option for examining whether
+limited compute capacity is sufficient for small-scale
+training. The A100 offers an intermediate comparison
+between price and computational performance, while the
+H100 provides the highest theoretical throughput and
+serves as the reference hardware from Part Two.
+This selection tests
+whether greater peak compute reduces time and cost for a small model,
+rather than assuming that the most expensive GPU is the best value.
+Published GPU-only rates are approximately \$1.10, \$2.50, and \$3.95
+per hour, respectively; CPU/RAM are charged separately~\cite{modal-pricing}.
+
+Both the baseline and FoX are trained with seeds 42 and 43
+on each GPU type. All runs
+use the same six-layer, width-384 model, context 512, BF16, microbatch 8,
+eight accumulation steps, 500 optimizer steps, tokenizer, data order,
+learning-rate schedule, and held-out evaluation protocol.
+
+\subsection{Timing, cost, and MFU definitions}
+
+Training time is measured using CUDA-synchronized optimizer
+steps, excluding validation. Steady-state throughput excludes
+the first five warm-up steps. GPU cost is estimated from
+elapsed run time and Modal's hourly GPU rates, excluding
+additional CPU/RAM charges.
+
+
+We report estimated model FLOPs utilization (MFU), not the utilization
+percentage from a GPU monitoring dashboard:
+\begin{equation}
+\widehat{\mathrm{MFU}}=100\,
+\frac{\text{steady tokens/s}\;\widehat F_{\mathrm{token}}}
+{F_{\mathrm{peak,BF16}}}.
+\end{equation}
+Following the pinned nanochat estimator, with $N_{\mathrm{linear}}$ the
+number of linear-projection weights, $h$ heads, head dimension $d_h$,
+context $T$, and layer window $w_\ell$,
+\begin{equation}
+\widehat F_{\mathrm{token}} = 6N_{\mathrm{linear}}
+ + 12h d_h\sum_{\ell}\min(T,w_\ell).
+\end{equation}
+We use dense BF16 peak throughputs of 70, 312, and
+989 TFLOP/s for the A10G, A100, and H100, respectively
+~\cite{nvidia-a10g,nvidia-a100,nvidia-peaks}.
+MFU is approximate because the estimator excludes
+some operations and does not fully account for
+differences in attention kernels. Thus, the BF16-normalized estimate is a useful-model comparison
+convention, not a measurement of actual executed FLOPs or its attainable
+mixed-precision utilization. Backend differences also prevent attributing
+all timing differences to hardware alone.
+
+\subsection{Measured results}
+All twelve runs completed 500 steps and 16.384M training tokens. Table~\ref{tab:hardware}
+reports means across the two seeds; A10 denotes the Modal request, whose
+actual device was an NVIDIA A10G. The other devices were an A100-SXM4-80GB
+and an H100 80GB HBM3.
+\begin{table}[htbp]
+\centering
+\small
+\resizebox{0.95\linewidth}{!}{%
+\begin{tabular}{llrrrrrr}
+\hline
+GPU & Model & Train s & Elapsed s & Tokens/s & MFU (\%) & GPU \$/run & BPB\\
+\hline
+A10G & Baseline & 225.3 & 238.8 & 76,761 & 16.04 & 0.073 & 1.34259\\
+A10G & FoX & 308.6 & 325.2 & 53,412 & 11.17 & 0.100 & 1.33859\\
+A100 & Baseline & 112.5 & 122.3 & 161,776 & 7.58 & 0.085 & 1.33881\\
+A100 & FoX & 122.4 & 132.0 & 135,887 & 6.37 & 0.092 & 1.33014\\
+H100 & Baseline & 74.3 & 82.2 & 245,947 & 3.64 & 0.090 & 1.36067\\
+H100 & FoX & 72.9 & 79.2 & 228,508 & 3.38 & 0.087 & 1.34926\\
+\hline
+\end{tabular}%
+}
+\caption{Part Three results}
+\label{tab:hardware}
+\end{table}
+
+
+\paragraph{Speed and cost.}
+The H100 achieves the highest training throughput for
+both architectures. However, the A10G has the lowest
+estimated GPU cost for baseline training, while the H100
+is slightly cheaper for FoX. This demonstrates that lower
+hourly pricing does not necessarily translate into lower
+cost per completed run.
+
+FoX reduces steady-state throughput by 30.4\%, 16.0\%,
+and 7.1\% on the A10G, A100, and H100, respectively.
+These differences suggest that the computational overhead
+of our dense forgetting-attention implementation varies
+across hardware. Warm-up and compilation overhead also
+affect total run time, particularly for short experiments.
+
+
+\paragraph{MFU Analysis}
+
+The A10G achieves the highest estimated MFU despite
+having the lowest absolute throughput, while the H100
+has the lowest MFU but trains fastest. This occurs because
+MFU measures utilization relative to each GPU's theoretical
+peak rather than absolute performance. The small picochat
+workload may underutilize the H100's available compute.
+Moreover, the baseline uses optimized FlashAttention
+backends, whereas FoX uses dense reference attention,
+so the results reflect both hardware and implementation
+differences rather than hardware alone.
+
+
+
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+width=0.95\linewidth,height=6cm,
+xlabel={Cumulative training-step GPU cost (USD)},
+ylabel={Validation BPB},xmin=0.01,xmax=0.10,ymin=1.30,ymax=1.86,
+grid=major,legend style={font=\scriptsize,at={(0.5,-0.24)},anchor=north},
+legend columns=3]
+\addplot[blue,dashed,mark=o] coordinates {
+(0.016676,1.80339) (0.029772,1.61299) (0.042817,1.48690)
+(0.055846,1.39284) (0.068933,1.34259)};
+\addlegendentry{A10G baseline}
+\addplot[blue,mark=*] coordinates {
+(0.019342,1.77034) (0.038103,1.60149) (0.056863,1.47555)
+(0.075645,1.38798) (0.094443,1.33859)};
+\addlegendentry{A10G FoX}
+\addplot[red,dashed,mark=square] coordinates {
+(0.021801,1.79956) (0.035942,1.60824) (0.050010,1.47843)
+(0.063998,1.38735) (0.078070,1.33881)};
+\addlegendentry{A100 baseline}
+\addplot[red,mark=square*] coordinates {
+(0.018045,1.76359) (0.034712,1.59134) (0.051412,1.46120)
+(0.068066,1.37696) (0.084961,1.33014)};
+\addlegendentry{A100 FoX}
+\addplot[black,dashed,mark=triangle] coordinates {
+(0.022682,1.82011) (0.037605,1.63237) (0.051885,1.51383)
+(0.066647,1.41557) (0.081497,1.36067)};
+\addlegendentry{H100 baseline}
+\addplot[black,mark=triangle*] coordinates {
+(0.017100,1.78535) (0.032660,1.61506) (0.048192,1.49617)
+(0.064391,1.40103) (0.079936,1.34926)};
+\addlegendentry{H100 FoX}
+\end{axis}
+\end{tikzpicture}
+\caption{Validation BPB versus cumulative training-step
+GPU cost for baseline and FoX plot}
+\end{figure}
+
+\paragraph{Quality sanity check.}
+FoX achieves lower mean validation BPB than baseline
+on all three GPUs, although the improvement is not
+consistent across both seeds on A10G. Absolute BPB
+also varies across hardware despite matched configurations.
+These differences may reflect numerical or backend
+variability and should not be interpreted as evidence
+that one GPU inherently produces a better model.
+
+
+% BEGIN PART FOUR ADDITION
+\clearpage
+% Include with \input{part4}; requires graphicx, amsmath and hyperref.
+% Upload part4_figures/ alongside this file.
+\section{Part Four: Extending the Context Window}
+\label{sec:p4-context}
+
+\paragraph{Question and motivation.}
+We continue a 512-token picochat checkpoint at 2048 tokens and test whether
+longer context improves held-out text prediction. Shortformer's staged
+short-to-long training motivates this schedule\cite{p4-shortformer}.
+The fourfold reduction to 512 preserves the Part 2 baseline configuration;
+our short training budget matches its screening scale rather than a
+literature-derived optimum.
+Staged short-to-long training is motivated by Shortformer
+and the context-extension strategy discussed for
+ModernBERT in Lecture 6. Training initially at shorter
+sequences reduces attention computation, while subsequent
+long-context training adapts the model to longer inputs.
+\paragraph{Model, data and training.}
+We retain the Part 2 baseline recipe: six layers, width 384, six attention
+heads, RoPE, SSSL attention windows, BF16, seed 42 and one H100 80GB.
+The model has 73,531,646 parameters. We use the same pinned nanochat revision
+\cite{p4-nanochat}, four ClimbMix training shards (00000--00003), a separate
+validation shard (06542), and native tokenizer training with a 100M-character
+limit and vocabulary of 32,768. Both checkpoints share one saved tokenizer;
+its byte-identical equivalence to Part 2's original artifact is unverified.
+The four shards form the available pool; each stage consumes 16.384M token
+positions, so this is a short training experiment, not a converged model.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{lrr}
+\hline
+Setting & Stage 1 / checkpoint 1 & Stage 2 / checkpoint 2 \\
+\hline
+Context length & 512 & 2048 \\
+Updates in stage & 500 & 500 \\
+Microbatch (sequences) & 8 & 2 \\
+Gradient accumulation & 8 & 8 \\
+Tokens per update & 32,768 & 32,768 \\
+Cumulative training tokens & 16.384M & 32.768M \\
+Timed training steps (s) & 88.70 & 68.38 \\
+Stage elapsed time (s) & 190.90 & 176.47 \\
+Peak allocated GPU memory (GiB) & 3.16 & 6.84 \\
+\hline
+\end{tabular}
+\caption{Training configuration and measured resources. Stage elapsed time includes
+setup, validation and persistence, but excludes later checkpoint comparisons;
+step time includes loading and optimizer updates.}
+\label{tab:p4-training}
+\end{table}
+
+Stage 2 restores checkpoint 1's weights and optimizer state, increasing context
+length while reducing the microbatch to keep 32,768 tokens per update.
+Part 2's optimizer settings are retained. Each 500-update stage has a
+20-update warmup and linear warmdown beginning at 35\%, so the learning-rate
+schedule restarts at the transition. The loader resumes from its saved
+row-group boundary rather than an exact token cursor.
+
+\paragraph{New evaluation: matched-target continuation.}
+The task is to predict the same passage ending with short or long preceding
+context, adapting Shortformer's sliding-window evaluation\cite{p4-shortformer}.
+We take the first 256 distinct held-out documents with at least 2048 tokens
+and retain their first 2048. Both checkpoints score the final 128 tokens
+using 384 or 1920 preceding text tokens plus BOS (shifted input lengths
+512 or 2048). Earlier targets are masked in nanochat's native
+\texttt{evaluate\_bpb}; all four conditions score the same 32,768 target
+positions, aggregated by byte count. This builds a controlled evaluation
+protocol around the existing BPB metric.
+
+Following Lecture 7's guidance on task-appropriate metrics and uncertainty
+\cite{p4-lecture7}, we measure text prediction and use 2,000 paired
+document-bootstrap resamples for differences\cite{p4-statistical}.
+Intervals reflect document variation, not training-seed variation. The
+length-filtered sample uses validation text previously seen during monitoring,
+so it is not an independent test corpus.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{lrr}
+\hline
+Checkpoint & Window 512 & Window 2048 \\
+\hline
+1: trained at 512 & 1.35955 & 1.43645 \\
+2: continued at 2048 & 1.26039 & 1.22042 \\
+\hline
+\end{tabular}
+\caption{Matched-target continuation BPB: identical passage endings are scored
+in all four conditions; lower is better.}
+\label{tab:p4-continuation}
+\end{table}
+
+Checkpoint 2 improves over checkpoint 1 by 0.09916 BPB at window 512 and
+0.21603 at window 2048. For checkpoint 1, the longer window worsens BPB by
+0.07690. For checkpoint 2, it reduces BPB by 0.03997 (3.17\%), with a paired
+95\% interval of [0.03367, 0.04645] for the reduction. Thus the continued
+checkpoint benefits from the longer context setting on these fixed targets.
+
+\paragraph{Supporting standard validation.}
+Native best-fit validation uses Part 2's budget of 262,144 nominal target
+positions per cell: batch eight with 64 batches at 512 or 16 at 2048.
+Checkpoint 2 improves at both lengths (Table~\ref{tab:p4-bpb}). Compare rows
+within a column: the stream is fixed within each length, but packing changes
+the scored text across lengths. These scores are separate from the new
+matched-target task.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{lrr}
+\hline
+Checkpoint & Eval. length 512 & Eval. length 2048 \\
+\hline
+1: trained at 512 & 1.36507 & 1.39031 \\
+2: continued at 2048 & 1.27866 & 1.21147 \\
+\hline
+\end{tabular}
+\caption{Native nanochat validation BPB. Compare rows within
+each column for a matched evaluation stream.}
+\label{tab:p4-bpb}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\linewidth]{part4_figures/bpb_comparison.png}
+\caption{Standard validation BPB (restricted vertical axis). Markers show
+measured scores; connecting lines do not imply intermediate measurements.
+Uncertainty was not estimated for these scores.}
+\label{fig:p4-bpb}
+\end{figure}
+
+\paragraph{Why checkpoint 1 gets worse at 2048.}
+The increase persists on identical targets, ruling out different scored text
+as its explanation in the new evaluation. Checkpoint 1 trained only at 512;
+unfamiliar attention distances and changed SSSL window sizes are plausible,
+unconfirmed causes. More context need not improve an unadapted checkpoint.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{part4_figures/training_curves.png}
+\caption{Unsmoothed training loss (cross-entropy in nats) every ten updates
+and validation BPB every 100. The dashed line marks context extension and
+the learning-rate restart. Validation curves are separate because stage
+lengths and packing differ.}
+\label{fig:p4-curves}
+\end{figure}
+
+\paragraph{Conclusion and limitations.}
+Checkpoint 2 improves BPB at both lengths and benefits from longer context
+on identical endings, supporting 2048 for this prediction task at a memory
+cost of 6.84 versus 3.16 GiB. However, it also receives 16.384M additional
+training tokens and a restarted learning-rate schedule. The result supports
+the continuation procedure as a whole; an equal-token continuation at 512
+would be needed to isolate the training-context effect. BPB does not establish
+retrieval or reasoning ability, and the sequential timings do not establish
+that longer contexts generally train faster.
+
+\paragraph{Tracking and reproducibility.}
+Figures use persisted \texttt{training.jsonl} and \texttt{bpb.json}; the
+\href{https://wandb.ai/jerry-zeng-university-of-toronto/a3-part4-baseline/runs/i2er0zqi}{W\&B run}
+records training and resource metrics. Code is in \texttt{a3/A3part4/}.
+Artifacts remain in Modal volume \texttt{a3-part4-baseline}, under
+\path{runs/baseline-context-seed42-v1/}. They include tokenizer, configurations,
+hashes, checkpoints and scores. Selected passages and per-document scores
+are in its \path{matched-continuation-v1/} subfolder.
+
+\clearpage
+
+% Include with \input{part5}; requires graphicx, amsmath, longtable, array, hyperref.
+% Upload part5_figures/ alongside this file.
+\section{Part Five: Training the Final Nanochat}
+\label{sec:p5}
+
+\paragraph{Configuration and motivation.}
+We scale the Part 2 FoX adaptation without RoPE\cite{p5-fox} to nanochat's
+24-layer speedrun capacity\cite{p5-nanochat}. Part 2 motivates FoX; Part 4's
+improved prediction after baseline context extension motivates 2048 tokens,
+without establishing a FoX-specific context gain. Eight H100s distribute the
+larger workload. Native FP8 linear conversion and activation checkpointing
+reduce memory demands; dense FoX attention does not inherit the official
+FlashAttention speedrun's runtime.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabular}{lrr}
+\hline
+Setting & Pico reference & Final nano \\
+\hline
+Architecture & FoX adaptation & FoX adaptation \\
+Layers / width & 6 / 384 & 24 / 1536 \\
+Query heads / KV heads & 6 / 6 & 12 / 12 \\
+Total parameters & 73,545,506 & 1,384,564,778 \\
+Transformer-block parameters & 10,630,908 & 679,921,632 \\
+Vocabulary size & 32,768 & 32,768 \\
+Training context & 512 & 2048 \\
+Training GPUs & $1\times$H100 & $8\times$H100 \\
+Updates & 500 & 5,571 \\
+Tokens per update & 32,768 & 1,048,576 \\
+Training tokens & 16,384,000 & 5,841,616,896 \\
+Seed & 42 & 42 \\
+\hline
+\end{tabular}
+\caption{Actual configurations. Both models share the Part 5 tokenizer. Total
+parameters include token, value and output embeddings. The short pico
+reference is distinct from the calibration models used in the scaling study.}
+\label{tab:p5-config}
+\end{table}
+
+\paragraph{Data and training procedure.}
+ClimbMix retains nanochat's native data pipeline and a common domain for pico
+and nano. On Modal, we prepare the full 170 training shards and validation shard 06542.
+The native 32,768-token tokenizer uses its default two-billion-character
+budget over the initial eight shards. Training follows the recipe's token
+horizon rather than exhausting the pool: transformer matrices plus the output
+head give $N=730{,}253{,}280$ scaling parameters; $D\approx8N$, rounded down
+to global batches, gives 5,571 updates and 5.842B token positions. This completes
+the configured pretraining schedule, not a pass over all 170 shards.
+
+The native trainer supplies the optimizer, learning-rate schedule, distributed
+synchronization, tokenizer, loader and checkpoints. Each GPU uses microbatch
+two with 32 accumulation steps; eligible linear layers use FP8, with BF16
+attention/embeddings and FP32 attention scores. Model and eight optimizer
+states are saved every 500 updates and at completion. Recorded training took 380.45 minutes (6.34 hours) on eight H100 GPUs,
+corresponding to an estimated GPU cost of US\$200.33 at Modal's published
+rate\cite{modal-pricing}. This excludes setup, validation, checkpoint-saving
+overhead, and CPU/RAM charges.
+
+\paragraph{Reference and evaluation protocol.}
+We reproduce the 500-update Part 2 pico recipe with the saved Part 5 tokenizer,
+so both models share tokenizer and validation inputs. This is a new reference,
+not the original Part 2 checkpoint. Native best-fit validation scores
+41,943,040 nominal positions per model/context, the pinned training validator's
+default budget ($80\times524{,}288$). Batch eight gives 10,240 batches at 512
+or 2,560 at 2048. Input streams match between models within each context;
+packing changes across contexts. Pico's 2048 evaluation extrapolates beyond
+its 512-token training length. Both are base models without instruction tuning.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabular}{lrrr}
+\hline
+Evaluation context & Pico BPB & Nano BPB & Relative decrease \\
+\hline
+512 & 1.323709 & 0.767753 & 42.00\% \\
+2048 & 1.295144 & 0.723692 & 44.12\% \\
+\hline
+\end{tabular}
+\caption{Final checkpoint comparison under the matched evaluation protocol.
+Relative decrease is $(\mathrm{BPB}_{p}-\mathrm{BPB}_{n})/\mathrm{BPB}_{p}$.}
+\label{tab:p5-bpb}
+\end{table}
+
+\paragraph{CORE result.}
+The final model achieved a DCLM CORE score of 0.2617, exceeding the reference GPT-2 score of 0.2565. This demonstrates competitive performance on the benchmark, although it does not isolate the benefit of FoX or establish superiority across other tasks.
+
+
+\paragraph{Scaling prediction and actual result.}
+We fit a power law to three pico-scale FoX models (depths 4/6/8), each trained
+with seeds 42 and 43, context 2048 and the shared tokenizer. The native recipe
+sets $D\approx8N$, where $N$ counts transformer matrices plus the output head.
+Joint model/data scaling is motivated by Hoffmann et al.\cite{p5-hoffmann};
+we do not claim their compute-optimal ratio or transfer a published exponent.
+Small-model extrapolation and repeated runs follow the empirical approach
+examined by Ivgi et al.\cite{p5-ivgi}.
+
+We split distinct held-out ClimbMix documents by text-hash parity into sets A
+and B. Each supplies 1,048,576 fixed target positions, packed by the native
+loader at context 2048 and scored with native BPB. All models receive identical
+batches within each set. Set A fits the curve; B checks transfer to different
+documents and never enters the fit. These subsets may overlap earlier standard
+validation; their scores do not replace Table~\ref{tab:p5-bpb}.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabular}{rrrrr}
+\hline
+Depth & Scaling $N$ (M) & Training tokens (M) & Set A BPB & Set B BPB \\
+\hline
+4 & 11.536 & 92.275 & 1.18850 & 1.17554 \\
+6 & 23.207 & 185.598 & 1.04985 & 1.03555 \\
+8 & 41.960 & 335.544 & 0.96938 & 0.95440 \\
+24 & 730.253 & 5,841.617 & 0.71742 & 0.69920 \\
+\hline
+\end{tabular}
+\caption{Measured scaling-study BPB. Small-model scores are means over seeds
+42 and 43; nano uses its existing seed-42 checkpoint. $N$ is the native
+scaling count, not total parameters. The regression uses all six individual
+small-model observations.}
+\label{tab:p5-scaling}
+\end{table}
+
+Least squares in log space on set A gives
+\[
+\widehat{\mathrm{BPB}}(N)=\exp(2.74437)N^{-0.15841}.
+\]
+For nano, predicted BPB is 0.61351 versus measured 0.71742: actual minus
+predicted is $+0.10391$, or 16.94\% of the prediction. The same curve gives
+0.61351 on set B versus measured 0.69920 (13.97\% higher). Separate seed fits
+predict 0.60750 and 0.61957; this is sensitivity analysis, not a confidence
+interval. The curve captures improvement with scale but overestimates its
+magnitude at nano size. The simple power law has no irreducible-loss floor,
+which may contribute to overly optimistic extrapolation.
+With only three distinct calibration sizes, a more
+flexible scaling model would be poorly constrained.
+
+
+Nano is excluded from fitting, and the prediction was frozen before its
+matched evaluation. The study is retrospective because nano was already
+trained and its earlier performance was known. Extrapolating 17.4 times beyond
+the largest fitted $N$, with only three sizes, no intermediate holdout and no
+fitted loss floor, limits reliability. Model size and training tokens grow
+together, so this does not isolate capacity's causal effect.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\linewidth]{part5_figures/bpb_comparison.png}
+\caption{Set-A scaling fit from six small-model runs and its extrapolation
+to nano. Nano's measured score is excluded from the fit.}
+\label{fig:p5-bpb}
+\end{figure}
+
+\paragraph{Training behavior and impact of the changes.}
+Training loss falls while throughput is broadly stable after startup
+(Figure~\ref{fig:p5-curves}); these are training metrics, separate from final
+held-out validation.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{part5_figures/training_curves.png}
+\caption{Saved native training loss and global token throughput, logged every
+100 updates. Throughput includes the slow startup observation; the figure
+is not a validation curve or a measurement of end-to-end pipeline time.}
+\label{fig:p5-curves}
+\end{figure}
+
+
+Nano improves standard-validation BPB by 42.00\% at 512 and 44.12\% at 2048.
+Its lower score at 2048 is consistent with useful context, subject to the
+packing caveat. FoX is held fixed, so this comparison cannot isolate its
+advantage over baseline attention. Without hardware or precision ablations,
+eight-GPU execution, FP8 and checkpointing are implementation choices, not
+measured independent speedup or quality gains.
+
+\paragraph{Ten questions answered by nano but not pico.}
+Both models receive identical \texttt{Question: ... Answer:} prompts with
+greedy decoding, context 512 and a 48-new-token limit, without a KV cache.
+Twenty questions were prepared before main training; ten simpler factual
+questions were added after inspecting those outputs. Expected answers were
+specified before each pool ran. Manual grading accepts equivalent answers,
+marks correct answers with false additions as mixed, and rejects missing or
+contradictory answers. Repetition alone is not a failure. Across 30 questions,
+pico has no clear passes; nano has 12 passes, six mixed responses and 12 failures.
+The adaptive pool supports examples, not a population accuracy estimate.
+
+Table~\ref{tab:p5-questions} selects ten nano-pass/pico-fail cases, graded on
+full responses. Excerpts preserve original wording; ellipses mark omissions.
+
+\begingroup
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.16}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{\dimexpr0.31\linewidth-2\tabcolsep-2\arrayrulewidth\relax}|>{\raggedright\arraybackslash}p{\dimexpr0.345\linewidth-2\tabcolsep-\arrayrulewidth\relax}|>{\raggedright\arraybackslash}p{\dimexpr0.345\linewidth-2\tabcolsep-\arrayrulewidth\relax}|}
+\caption{Ten selected nano-correct/pico-incorrect examples. IDs refer to the full 30-question pool.}\label{tab:p5-questions}\\
+\hline
+\textbf{Question} & \textbf{Pico response excerpt} & \textbf{Nano response excerpt} \\
+\hline
+\endfirsthead
+\hline \textbf{Question} & \textbf{Pico response excerpt} & \textbf{Nano response excerpt} \\\hline
+\endhead
+\hline
+\endfoot
+2. What is the chemical symbol for gold? & The chemical symbol for gold is the symbol for gold and gold.\ldots & The chemical symbol for gold is Au.\ldots \\ \hline
+18. If all birds have feathers and a robin is a bird, does a robin have feathers? & If the bird is a bird, it is a bird, and it is a bird\ldots & Yes, a robin has feathers.\ldots \\ \hline
+10. What is the largest ocean on Earth? & The largest ocean on Earth, Earth, and Earth.\ldots & The Pacific Ocean is the largest ocean on Earth.\ldots \\ \hline
+11. Why does ice float on liquid water? & The ice is the water that is the water that is the water that is the water that is the water\ldots & The reason why ice floats on liquid water is because the density of ice is less than that of liquid water.\ldots \\ \hline
+14. Which organ pumps blood around the human body? & The main purpose of the organ pumps blood around the human body is to help the body heal and\ldots & The heart is the organ that pumps blood around the human body.\ldots \\ \hline
+19. What force keeps planets in orbit around the Sun? & The Sun is a light source of light.\ldots & The force that keeps planets in orbit around the Sun is gravity.\ldots \\ \hline
+21. What is the chemical formula for water? & The chemical formula for water is 1.2.2.2\ldots & The chemical formula for water is H2O.\ldots \\ \hline
+25. What is the chemical symbol for oxygen? & The chemical symbol for oxygen is the chemical symbol for oxygen.\ldots & The chemical symbol for oxygen is O.\ldots \\ \hline
+28. Which animal is known as the king of the jungle? & The king of the animal kingdom is a species of animal.\ldots & The lion is known as the king of the jungle.\ldots \\ \hline
+30. Which organ do humans primarily use to breathe? & The main purpose of the organ is to breathe, breathe, breathe, breathe, breathe, breathe,\ldots & The lungs are the primary organs used to breathe.\ldots \\ \hline
+\end{longtable}
+\endgroup
+
+The complete original 30 questions and all 60 pico/nano responses are
+available in the \href{https://github.com/UofT-CSC490-F2026/ALIGN/blob/9ea470644a286f2774ef9333292f607deb666229/a3/A3part5/original_question_responses.json}{GitHub response JSON}.
+Table~\ref{tab:p5-questions} shows excerpts; grading uses the complete responses.
+
+\paragraph{Observed abilities and limitations.}
+Nano shows factual recall, simple categorical inference (robin/feathers),
+and a density-based explanation of buoyancy where pico gives repetitive,
+nonresponsive text. It still fails arithmetic, sorting and time calculations,
+and sometimes adds false claims after a correct answer. Lower BPB therefore
+does not imply reliable question answering.
+
+These are ``emergent abilities'' in the assignment's descriptive sense,
+not evidence of a sharp capability threshold. Unequal training budgets and
+adaptive question selection prevent that inference; apparent emergence can
+also depend on the metric\cite{p5-emergence}. The ten examples demonstrate
+observed capability differences alongside these limitations.
+
+
+
+\clearpage
+\begin{thebibliography}{99}
+\bibitem{nanochat-readme}
+Andrej Karpathy. \emph{Nanochat: The best ChatGPT that \$100 can buy}.
+Repository README, original October 13, 2025 snapshot.
+\url{https://github.com/karpathy/nanochat/blob/3a5e0bc50b123f37220f1ace6813f080455d19f3/README.md}.
+
+\bibitem{nanochat-code}
+Andrej Karpathy. \emph{Nanochat model implementation: nanochat/gpt.py}.
+Commit \texttt{3a5e0bc50b123f37220f1ace6813f080455d19f3}, October 13, 2025.
+\url{https://github.com/karpathy/nanochat/blob/3a5e0bc50b123f37220f1ace6813f080455d19f3/nanochat/gpt.py}.
+
+\bibitem{nanochat-july}
+Andrej Karpathy. \emph{Nanochat model implementation: nanochat/gpt.py}.
+Commit \texttt{92d63d4e8bb4df75c3b71618f31ddde2378b2bcd}, July 3, 2026.
+\url{https://github.com/karpathy/nanochat/blob/92d63d4e8bb4df75c3b71618f31ddde2378b2bcd/nanochat/gpt.py}.
+
+\bibitem{fox}
+Zhixuan Lin, Evgenii Nikishin, Xu Owen He, and Aaron Courville.
+\emph{Forgetting Transformer: Softmax Attention with a Forget Gate}.
+International Conference on Learning Representations (ICLR), 2025.
+\url{https://openreview.net/forum?id=q2Lnyegkr8}.
+
+\bibitem{cla}
+William Brandon, Mayank Mishra, Aniruddha Nrusimha, Rameswar Panda,
+and Jonathan Ragan-Kelley.
+\emph{Reducing Transformer Key-Value Cache Size with Cross-Layer Attention}.
+Advances in Neural Information Processing Systems (NeurIPS), 2024.
+\url{https://arxiv.org/abs/2405.12981}.
+
+\bibitem{fope}
+Ermo Hua, Che Jiang, Xingtai Lv, Kaiyan Zhang, Youbang Sun, Yuchen Fan,
+Xuekai Zhu, Biqing Qi, Ning Ding, and Bowen Zhou.
+\emph{Fourier Position Embedding: Enhancing Attention's Periodic Extension
+for Length Generalization}.
+Proceedings of the 42nd International Conference on Machine Learning,
+PMLR 267:24932--24949, 2025.
+\url{https://proceedings.mlr.press/v267/hua25b.html}.
+\bibitem{modal-pricing}
+Modal. \emph{Pricing: GPU, CPU, and memory rates}. Accessed November 3, 2026.
+\url{https://modal.com/pricing}.
+
+\bibitem{nvidia-a10}
+NVIDIA. \emph{NVIDIA A10 Tensor Core GPU: Specifications}.
+\url{https://www.nvidia.com/en-sg/data-center/products/a10-gpu/}.
+
+\bibitem{nvidia-a10g}
+NVIDIA and AWS. \emph{NVIDIA A10G Tensor Core GPU Datasheet}. February 2022.
+\url{https://d1.awsstatic.com/product-marketing/ec2/NVIDIA_AWS_A10G_DataSheet_FINAL_02_17_2022.pdf}.
+
+\bibitem{nvidia-a100}
+NVIDIA. \emph{NVIDIA A100 Tensor Core GPU: Specifications}.
+\url{https://www.nvidia.com/en-gb/data-center/a100/}.
+
+\bibitem{nvidia-peaks}
+NVIDIA. \emph{Exemplar Performance: Data Type and Hardware Peak Throughputs}.
+\url{https://github.com/NVIDIA/exemplar-performance}.
+
+% Insert inside the main document's existing thebibliography environment:
+% \input{part4_references}
+% Keys are prefixed p4- to avoid conflicts with references for other parts.
+
+\bibitem{p4-shortformer}
+Ofir Press, Noah A. Smith, and Mike Lewis.
+\emph{Shortformer: Better Language Modeling using Shorter Inputs}.
+ACL-IJCNLP, pp.~5493--5505, 2021.
+\url{https://aclanthology.org/2021.acl-long.427/}.
+Supports staged context training and sliding-window language-model evaluation.
+
+\bibitem{p4-nanochat}
+Andrej Karpathy. \emph{nanochat: model, data loader, tokenizer and BPB evaluation}.
+Source revision \texttt{92d63d4e8bb4df75c3b71618f31ddde2378b2bcd}.
+\url{https://github.com/karpathy/nanochat/tree/92d63d4e8bb4df75c3b71618f31ddde2378b2bcd}.
+The BPB implementation is \texttt{nanochat/loss\_eval.py}; validation packing
+is in \texttt{nanochat/dataloader.py}.
+
+\bibitem{p4-lecture7}
+Denys Linkov. \emph{CSC490 Lecture 7: Feature Stores and Evaluation Metrics}.
+University of Toronto, October 21, 2026, slides 24 and 29.
+Course lecture slides.
+
+\bibitem{p4-statistical}
+Anthropic. \emph{A Statistical Approach to Model Evaluations}.
+November 19, 2024.
+\url{https://www.anthropic.com/research/statistical-approach-to-model-evals}.
+
+% Insert inside the main document's existing thebibliography environment.
+% Citation keys use p5- to avoid conflicts with other sections.
+\bibitem{p5-nanochat}
+Andrej Karpathy. \emph{nanochat}.
+Source revision \href{https://github.com/karpathy/nanochat/tree/92d63d4e8bb4df75c3b71618f31ddde2378b2bcd}{\texttt{92d63d4e8bb4}} (linked source).
+See \texttt{runs/speedrun.sh}, \texttt{scripts/base\_train.py},
+\texttt{nanochat/dataloader.py}, and \texttt{nanochat/loss\_eval.py}.
+
+\bibitem{p5-fox}
+Zhixuan Lin, Evgenii Nikishin, Xu Owen He, and Aaron Courville.
+\emph{Forgetting Transformer: Softmax Attention with a Forget Gate}.
+ICLR, 2025. \url{https://arxiv.org/abs/2503.02130}.
+
+\bibitem{p5-hoffmann}
+Jordan Hoffmann et al. \emph{Training Compute-Optimal Large Language Models}.
+NeurIPS, 2022. \url{https://arxiv.org/abs/2203.15556}.
+
+\bibitem{p5-ivgi}
+Maor Ivgi, Yair Carmon, and Jonathan Berant.
+\emph{Scaling Laws Under the Microscope: Predicting Transformer Performance
+from Small Scale Experiments}.
+Findings of EMNLP, 2022. \url{https://arxiv.org/abs/2202.06387}.
+
+\bibitem{p5-emergence}
+Rylan Schaeffer, Brando Miranda, and Sanmi Koyejo.
+\emph{Are Emergent Abilities of Large Language Models a Mirage?}
+NeurIPS, 2023. \url{https://arxiv.org/abs/2304.15004}.
+
+\end{thebibliography}
+\end{document}

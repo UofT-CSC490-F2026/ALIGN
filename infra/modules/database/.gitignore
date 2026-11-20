@@ -1,0 +1,10 @@
+# No real credentials, dumps, or Docker volumes in Git
+.env
+.env.*
+!.env.example
+*.dump
+*.backup
+*.sql.gz
+*.log
+__pycache__/
+.DS_Store

@@ -1,0 +1,854 @@
+[
+  {
+    "variant": "baseline",
+    "seed": 42,
+    "steps": 500,
+    "tokens_per_step": 32768,
+    "model": {
+      "sequence_len": 512,
+      "vocab_size": 32768,
+      "n_layer": 6,
+      "n_head": 6,
+      "n_kv_head": 6,
+      "n_embd": 384,
+      "window_pattern": "SSSL"
+    },
+    "precision": "bf16",
+    "compiled_model": false,
+    "parameter_matching": false,
+    "purpose": "short fixed-token screening",
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "torch_version": "2.9.1+cu128",
+    "upstream_commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+    "variant_source_sha256": "a5e9f85e3d63972b1bf0e1015208f048b557fb97f48bc71b0f8f38cadefe4b70",
+    "status": "complete",
+    "completed_steps": 500,
+    "tokens_seen": 16384000,
+    "val_bpb": 1.3656002067355215,
+    "train_loss": 4.363577842712402,
+    "parameters": 73531646,
+    "train_seconds": 87.59318391699995,
+    "elapsed_seconds": 102.979978283,
+    "steady_tokens_per_second": 231881.1395138386,
+    "peak_allocated_gib": 3.1577296257019043,
+    "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/un4p0zdd",
+    "history": [
+      {
+        "step": 100,
+        "tokens": 3276800,
+        "train/loss": 5.806829452514648,
+        "train/tokens_per_second": 225498.47391458493,
+        "val/bpb": 1.8215166645194572
+      },
+      {
+        "step": 200,
+        "tokens": 6553600,
+        "train/loss": 5.234467029571533,
+        "train/tokens_per_second": 261010.71860492483,
+        "val/bpb": 1.6334850608624203
+      },
+      {
+        "step": 300,
+        "tokens": 9830400,
+        "train/loss": 4.873767375946045,
+        "train/tokens_per_second": 225624.20608413074,
+        "val/bpb": 1.51731840708572
+      },
+      {
+        "step": 400,
+        "tokens": 13107200,
+        "train/loss": 4.652714729309082,
+        "train/tokens_per_second": 233840.117514369,
+        "val/bpb": 1.4209579661186533
+      },
+      {
+        "step": 500,
+        "tokens": 16384000,
+        "train/loss": 4.363577842712402,
+        "train/tokens_per_second": 262773.06610716233,
+        "val/bpb": 1.3656002067355215
+      }
+    ]
+  },
+  {
+    "variant": "baseline",
+    "seed": 43,
+    "steps": 500,
+    "tokens_per_step": 32768,
+    "model": {
+      "sequence_len": 512,
+      "vocab_size": 32768,
+      "n_layer": 6,
+      "n_head": 6,
+      "n_kv_head": 6,
+      "n_embd": 384,
+      "window_pattern": "SSSL"
+    },
+    "precision": "bf16",
+    "compiled_model": false,
+    "parameter_matching": false,
+    "purpose": "short fixed-token screening",
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "torch_version": "2.9.1+cu128",
+    "upstream_commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+    "variant_source_sha256": "a5e9f85e3d63972b1bf0e1015208f048b557fb97f48bc71b0f8f38cadefe4b70",
+    "status": "complete",
+    "completed_steps": 500,
+    "tokens_seen": 16384000,
+    "val_bpb": 1.35770367659164,
+    "train_loss": 4.345203876495361,
+    "parameters": 73531646,
+    "train_seconds": 69.69636520400044,
+    "elapsed_seconds": 76.36049487199999,
+    "steady_tokens_per_second": 235745.99718715958,
+    "peak_allocated_gib": 3.1611475944519043,
+    "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/rffq0o0i",
+    "history": [
+      {
+        "step": 100,
+        "tokens": 3276800,
+        "train/loss": 5.8004021644592285,
+        "train/tokens_per_second": 227070.4888387918,
+        "val/bpb": 1.8190066028922118
+      },
+      {
+        "step": 200,
+        "tokens": 6553600,
+        "train/loss": 5.222221374511719,
+        "train/tokens_per_second": 263935.28443432506,
+        "val/bpb": 1.631543593007544
+      },
+      {
+        "step": 300,
+        "tokens": 9830400,
+        "train/loss": 4.858013153076172,
+        "train/tokens_per_second": 231261.51654015115,
+        "val/bpb": 1.5115349540570282
+      },
+      {
+        "step": 400,
+        "tokens": 13107200,
+        "train/loss": 4.629697322845459,
+        "train/tokens_per_second": 237614.8670969659,
+        "val/bpb": 1.4125373280364066
+      },
+      {
+        "step": 500,
+        "tokens": 16384000,
+        "train/loss": 4.345203876495361,
+        "train/tokens_per_second": 263296.8991856303,
+        "val/bpb": 1.35770367659164
+      }
+    ]
+  },
+  {
+    "variant": "cla2",
+    "seed": 42,
+    "steps": 500,
+    "tokens_per_step": 32768,
+    "model": {
+      "sequence_len": 512,
+      "vocab_size": 32768,
+      "n_layer": 6,
+      "n_head": 6,
+      "n_kv_head": 6,
+      "n_embd": 384,
+      "window_pattern": "SSSL"
+    },
+    "precision": "bf16",
+    "compiled_model": false,
+    "parameter_matching": false,
+    "purpose": "short fixed-token screening",
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "torch_version": "2.9.1+cu128",
+    "upstream_commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+    "variant_source_sha256": "a5e9f85e3d63972b1bf0e1015208f048b557fb97f48bc71b0f8f38cadefe4b70",
+    "status": "complete",
+    "completed_steps": 500,
+    "tokens_seen": 16384000,
+    "val_bpb": 1.393458060891706,
+    "train_loss": 4.472673416137695,
+    "parameters": 72646910,
+    "train_seconds": 85.84208750799995,
+    "elapsed_seconds": 93.343688762,
+    "steady_tokens_per_second": 236891.26263737946,
+    "peak_allocated_gib": 3.1489930152893066,
+    "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/n45utr68",
+    "history": [
+      {
+        "step": 100,
+        "tokens": 3276800,
+        "train/loss": 5.83997917175293,
+        "train/tokens_per_second": 230934.76951155227,
+        "val/bpb": 1.8332791904031893
+      },
+      {
+        "step": 200,
+        "tokens": 6553600,
+        "train/loss": 5.269839286804199,
+        "train/tokens_per_second": 249482.82639495452,
+        "val/bpb": 1.6456740320754293
+      },
+      {
+        "step": 300,
+        "tokens": 9830400,
+        "train/loss": 4.909573078155518,
+        "train/tokens_per_second": 223696.75087364414,
+        "val/bpb": 1.5284283758680028
+      },
+      {
+        "step": 400,
+        "tokens": 13107200,
+        "train/loss": 4.713169574737549,
+        "train/tokens_per_second": 243252.75914792423,
+        "val/bpb": 1.444206970028755
+      },
+      {
+        "step": 500,
+        "tokens": 16384000,
+        "train/loss": 4.472673416137695,
+        "train/tokens_per_second": 263809.80060492683,
+        "val/bpb": 1.393458060891706
+      }
+    ]
+  },
+  {
+    "variant": "cla2",
+    "seed": 43,
+    "steps": 500,
+    "tokens_per_step": 32768,
+    "model": {
+      "sequence_len": 512,
+      "vocab_size": 32768,
+      "n_layer": 6,
+      "n_head": 6,
+      "n_kv_head": 6,
+      "n_embd": 384,
+      "window_pattern": "SSSL"
+    },
+    "precision": "bf16",
+    "compiled_model": false,
+    "parameter_matching": false,
+    "purpose": "short fixed-token screening",
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "torch_version": "2.9.1+cu128",
+    "upstream_commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+    "variant_source_sha256": "a5e9f85e3d63972b1bf0e1015208f048b557fb97f48bc71b0f8f38cadefe4b70",
+    "status": "complete",
+    "completed_steps": 500,
+    "tokens_seen": 16384000,
+    "val_bpb": 1.388051117107101,
+    "train_loss": 4.45043420791626,
+    "parameters": 72646910,
+    "train_seconds": 68.1945237439999,
+    "elapsed_seconds": 74.74351564300001,
+    "steady_tokens_per_second": 240742.6381232476,
+    "peak_allocated_gib": 3.1504578590393066,
+    "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/d7gorc15",
+    "history": [
+      {
+        "step": 100,
+        "tokens": 3276800,
+        "train/loss": 5.822916030883789,
+        "train/tokens_per_second": 234323.2537339992,
+        "val/bpb": 1.8257990889107292
+      },
+      {
+        "step": 200,
+        "tokens": 6553600,
+        "train/loss": 5.248403072357178,
+        "train/tokens_per_second": 241917.31461382404,
+        "val/bpb": 1.6394221520529206
+      },
+      {
+        "step": 300,
+        "tokens": 9830400,
+        "train/loss": 4.891012668609619,
+        "train/tokens_per_second": 232813.64030451383,
+        "val/bpb": 1.5229009373409632
+      },
+      {
+        "step": 400,
+        "tokens": 13107200,
+        "train/loss": 4.705439567565918,
+        "train/tokens_per_second": 236984.8914465241,
+        "val/bpb": 1.4388396510433126
+      },
+      {
+        "step": 500,
+        "tokens": 16384000,
+        "train/loss": 4.45043420791626,
+        "train/tokens_per_second": 270968.84618218127,
+        "val/bpb": 1.388051117107101
+      }
+    ]
+  },
+  {
+    "variant": "dcmha",
+    "seed": 42,
+    "steps": 500,
+    "tokens_per_step": 32768,
+    "model": {
+      "sequence_len": 512,
+      "vocab_size": 32768,
+      "n_layer": 6,
+      "n_head": 6,
+      "n_kv_head": 6,
+      "n_embd": 384,
+      "window_pattern": "SSSL"
+    },
+    "precision": "bf16",
+    "compiled_model": false,
+    "parameter_matching": false,
+    "purpose": "short fixed-token screening",
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "torch_version": "2.9.1+cu128",
+    "upstream_commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+    "variant_source_sha256": "a5e9f85e3d63972b1bf0e1015208f048b557fb97f48bc71b0f8f38cadefe4b70",
+    "status": "complete",
+    "completed_steps": 500,
+    "tokens_seen": 16384000,
+    "val_bpb": 1.377798752714127,
+    "train_loss": 4.407986640930176,
+    "parameters": 73821950,
+    "train_seconds": 296.0462491230003,
+    "elapsed_seconds": 310.21168075699995,
+    "steady_tokens_per_second": 62622.57613162011,
+    "peak_allocated_gib": 5.4358367919921875,
+    "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/hj1xf29j",
+    "history": [
+      {
+        "step": 100,
+        "tokens": 3276800,
+        "train/loss": 5.858240127563477,
+        "train/tokens_per_second": 61853.62415349049,
+        "val/bpb": 1.8334001270578824
+      },
+      {
+        "step": 200,
+        "tokens": 6553600,
+        "train/loss": 5.304171562194824,
+        "train/tokens_per_second": 66732.7652588558,
+        "val/bpb": 1.65425375857067
+      },
+      {
+        "step": 300,
+        "tokens": 9830400,
+        "train/loss": 4.971497058868408,
+        "train/tokens_per_second": 60589.21006127646,
+        "val/bpb": 1.5445269448303496
+      },
+      {
+        "step": 400,
+        "tokens": 13107200,
+        "train/loss": 4.7154951095581055,
+        "train/tokens_per_second": 64758.3269652218,
+        "val/bpb": 1.4417383008497053
+      },
+      {
+        "step": 500,
+        "tokens": 16384000,
+        "train/loss": 4.407986640930176,
+        "train/tokens_per_second": 65137.56899321516,
+        "val/bpb": 1.377798752714127
+      }
+    ]
+  },
+  {
+    "variant": "dcmha",
+    "seed": 43,
+    "steps": 500,
+    "tokens_per_step": 32768,
+    "model": {
+      "sequence_len": 512,
+      "vocab_size": 32768,
+      "n_layer": 6,
+      "n_head": 6,
+      "n_kv_head": 6,
+      "n_embd": 384,
+      "window_pattern": "SSSL"
+    },
+    "precision": "bf16",
+    "compiled_model": false,
+    "parameter_matching": false,
+    "purpose": "short fixed-token screening",
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "torch_version": "2.9.1+cu128",
+    "upstream_commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+    "variant_source_sha256": "a5e9f85e3d63972b1bf0e1015208f048b557fb97f48bc71b0f8f38cadefe4b70",
+    "status": "complete",
+    "completed_steps": 500,
+    "tokens_seen": 16384000,
+    "val_bpb": 1.3395372528685379,
+    "train_loss": 4.268345355987549,
+    "parameters": 73821950,
+    "train_seconds": 262.5798497680005,
+    "elapsed_seconds": 275.30208335300006,
+    "steady_tokens_per_second": 62446.25674567094,
+    "peak_allocated_gib": 5.4325408935546875,
+    "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/1khk9dh5",
+    "history": [
+      {
+        "step": 100,
+        "tokens": 3276800,
+        "train/loss": 5.783863544464111,
+        "train/tokens_per_second": 61983.41733620125,
+        "val/bpb": 1.81621798923814
+      },
+      {
+        "step": 200,
+        "tokens": 6553600,
+        "train/loss": 5.224783420562744,
+        "train/tokens_per_second": 64863.11279214852,
+        "val/bpb": 1.6299833481275097
+      },
+      {
+        "step": 300,
+        "tokens": 9830400,
+        "train/loss": 4.7186598777771,
+        "train/tokens_per_second": 63247.98040124504,
+        "val/bpb": 1.4629206284317406
+      },
+      {
+        "step": 400,
+        "tokens": 13107200,
+        "train/loss": 4.570380210876465,
+        "train/tokens_per_second": 56747.23065877926,
+        "val/bpb": 1.3847634372093025
+      },
+      {
+        "step": 500,
+        "tokens": 16384000,
+        "train/loss": 4.268345355987549,
+        "train/tokens_per_second": 58110.42088335674,
+        "val/bpb": 1.3395372528685379
+      }
+    ]
+  },
+  {
+    "variant": "diff_v2",
+    "seed": 42,
+    "steps": 500,
+    "tokens_per_step": 32768,
+    "model": {
+      "sequence_len": 512,
+      "vocab_size": 32768,
+      "n_layer": 6,
+      "n_head": 6,
+      "n_kv_head": 6,
+      "n_embd": 384,
+      "window_pattern": "SSSL"
+    },
+    "precision": "bf16",
+    "compiled_model": false,
+    "parameter_matching": false,
+    "purpose": "short fixed-token screening",
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "torch_version": "2.9.1+cu128",
+    "upstream_commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+    "variant_source_sha256": "a5e9f85e3d63972b1bf0e1015208f048b557fb97f48bc71b0f8f38cadefe4b70",
+    "status": "complete",
+    "completed_steps": 500,
+    "tokens_seen": 16384000,
+    "val_bpb": 1.3641818156904073,
+    "train_loss": 4.362367153167725,
+    "parameters": 74430206,
+    "train_seconds": 111.07592386799983,
+    "elapsed_seconds": 119.958476535,
+    "steady_tokens_per_second": 179029.08328959162,
+    "peak_allocated_gib": 3.245365619659424,
+    "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/ia22f30n",
+    "history": [
+      {
+        "step": 100,
+        "tokens": 3276800,
+        "train/loss": 5.777927398681641,
+        "train/tokens_per_second": 175037.00332889752,
+        "val/bpb": 1.810526895871437
+      },
+      {
+        "step": 200,
+        "tokens": 6553600,
+        "train/loss": 5.215472221374512,
+        "train/tokens_per_second": 195835.07655317476,
+        "val/bpb": 1.6283398764388257
+      },
+      {
+        "step": 300,
+        "tokens": 9830400,
+        "train/loss": 4.859290599822998,
+        "train/tokens_per_second": 176953.09494461762,
+        "val/bpb": 1.5126115996223766
+      },
+      {
+        "step": 400,
+        "tokens": 13107200,
+        "train/loss": 4.6517205238342285,
+        "train/tokens_per_second": 182979.0649122117,
+        "val/bpb": 1.418602573781819
+      },
+      {
+        "step": 500,
+        "tokens": 16384000,
+        "train/loss": 4.362367153167725,
+        "train/tokens_per_second": 196058.3981191458,
+        "val/bpb": 1.3641818156904073
+      }
+    ]
+  },
+  {
+    "variant": "diff_v2",
+    "seed": 43,
+    "steps": 500,
+    "tokens_per_step": 32768,
+    "model": {
+      "sequence_len": 512,
+      "vocab_size": 32768,
+      "n_layer": 6,
+      "n_head": 6,
+      "n_kv_head": 6,
+      "n_embd": 384,
+      "window_pattern": "SSSL"
+    },
+    "precision": "bf16",
+    "compiled_model": false,
+    "parameter_matching": false,
+    "purpose": "short fixed-token screening",
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "torch_version": "2.9.1+cu128",
+    "upstream_commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+    "variant_source_sha256": "a5e9f85e3d63972b1bf0e1015208f048b557fb97f48bc71b0f8f38cadefe4b70",
+    "status": "complete",
+    "completed_steps": 500,
+    "tokens_seen": 16384000,
+    "val_bpb": 1.3801628359920415,
+    "train_loss": 4.425684452056885,
+    "parameters": 74430206,
+    "train_seconds": 110.19203993400014,
+    "elapsed_seconds": 118.57271372999999,
+    "steady_tokens_per_second": 180078.38463245102,
+    "peak_allocated_gib": 3.245365619659424,
+    "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/b6e8w9b7",
+    "history": [
+      {
+        "step": 100,
+        "tokens": 3276800,
+        "train/loss": 5.795326232910156,
+        "train/tokens_per_second": 137223.96324381174,
+        "val/bpb": 1.8177717527383856
+      },
+      {
+        "step": 200,
+        "tokens": 6553600,
+        "train/loss": 5.23714542388916,
+        "train/tokens_per_second": 191012.9079677382,
+        "val/bpb": 1.6357407283329608
+      },
+      {
+        "step": 300,
+        "tokens": 9830400,
+        "train/loss": 4.900445461273193,
+        "train/tokens_per_second": 174966.57037490376,
+        "val/bpb": 1.5265010492053925
+      },
+      {
+        "step": 400,
+        "tokens": 13107200,
+        "train/loss": 4.6973652839660645,
+        "train/tokens_per_second": 177313.32211515124,
+        "val/bpb": 1.437630431800469
+      },
+      {
+        "step": 500,
+        "tokens": 16384000,
+        "train/loss": 4.425684452056885,
+        "train/tokens_per_second": 181330.1908669578,
+        "val/bpb": 1.3801628359920415
+      }
+    ]
+  },
+  {
+    "variant": "fope",
+    "seed": 42,
+    "steps": 500,
+    "tokens_per_step": 32768,
+    "model": {
+      "sequence_len": 512,
+      "vocab_size": 32768,
+      "n_layer": 6,
+      "n_head": 6,
+      "n_kv_head": 6,
+      "n_embd": 384,
+      "window_pattern": "SSSL"
+    },
+    "precision": "bf16",
+    "compiled_model": false,
+    "parameter_matching": false,
+    "purpose": "short fixed-token screening",
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "torch_version": "2.9.1+cu128",
+    "upstream_commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+    "variant_source_sha256": "a5e9f85e3d63972b1bf0e1015208f048b557fb97f48bc71b0f8f38cadefe4b70",
+    "status": "complete",
+    "completed_steps": 500,
+    "tokens_seen": 16384000,
+    "val_bpb": 1.3759995806064291,
+    "train_loss": 4.396341323852539,
+    "parameters": 73531646,
+    "train_seconds": 94.78796166399995,
+    "elapsed_seconds": 102.790094719,
+    "steady_tokens_per_second": 213406.67364722892,
+    "peak_allocated_gib": 3.1577296257019043,
+    "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/hm5t5sc4",
+    "history": [
+      {
+        "step": 100,
+        "tokens": 3276800,
+        "train/loss": 5.806262016296387,
+        "train/tokens_per_second": 209001.32370907,
+        "val/bpb": 1.8229827820884696
+      },
+      {
+        "step": 200,
+        "tokens": 6553600,
+        "train/loss": 5.2523345947265625,
+        "train/tokens_per_second": 232444.3410790934,
+        "val/bpb": 1.6406614213293298
+      },
+      {
+        "step": 300,
+        "tokens": 9830400,
+        "train/loss": 4.90494441986084,
+        "train/tokens_per_second": 203966.32207781184,
+        "val/bpb": 1.5257901596858452
+      },
+      {
+        "step": 400,
+        "tokens": 13107200,
+        "train/loss": 4.686131477355957,
+        "train/tokens_per_second": 218629.01340583208,
+        "val/bpb": 1.4322975819711752
+      },
+      {
+        "step": 500,
+        "tokens": 16384000,
+        "train/loss": 4.396341323852539,
+        "train/tokens_per_second": 241799.5078293843,
+        "val/bpb": 1.3759995806064291
+      }
+    ]
+  },
+  {
+    "variant": "fope",
+    "seed": 43,
+    "steps": 500,
+    "tokens_per_step": 32768,
+    "model": {
+      "sequence_len": 512,
+      "vocab_size": 32768,
+      "n_layer": 6,
+      "n_head": 6,
+      "n_kv_head": 6,
+      "n_embd": 384,
+      "window_pattern": "SSSL"
+    },
+    "precision": "bf16",
+    "compiled_model": false,
+    "parameter_matching": false,
+    "purpose": "short fixed-token screening",
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "torch_version": "2.9.1+cu128",
+    "upstream_commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+    "variant_source_sha256": "a5e9f85e3d63972b1bf0e1015208f048b557fb97f48bc71b0f8f38cadefe4b70",
+    "status": "complete",
+    "completed_steps": 500,
+    "tokens_seen": 16384000,
+    "val_bpb": 1.3621599198045171,
+    "train_loss": 4.356020927429199,
+    "parameters": 73531646,
+    "train_seconds": 97.3126932770001,
+    "elapsed_seconds": 106.84183133900001,
+    "steady_tokens_per_second": 208715.87316223732,
+    "peak_allocated_gib": 3.1577296257019043,
+    "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/aglxfghb",
+    "history": [
+      {
+        "step": 100,
+        "tokens": 3276800,
+        "train/loss": 5.808067798614502,
+        "train/tokens_per_second": 181395.98303001715,
+        "val/bpb": 1.8219423733283033
+      },
+      {
+        "step": 200,
+        "tokens": 6553600,
+        "train/loss": 5.240320205688477,
+        "train/tokens_per_second": 185880.75367316414,
+        "val/bpb": 1.6366968791558745
+      },
+      {
+        "step": 300,
+        "tokens": 9830400,
+        "train/loss": 4.876887321472168,
+        "train/tokens_per_second": 200191.94795948392,
+        "val/bpb": 1.5165826231756208
+      },
+      {
+        "step": 400,
+        "tokens": 13107200,
+        "train/loss": 4.643630027770996,
+        "train/tokens_per_second": 221710.92305737213,
+        "val/bpb": 1.4172755112700905
+      },
+      {
+        "step": 500,
+        "tokens": 16384000,
+        "train/loss": 4.356020927429199,
+        "train/tokens_per_second": 223852.89651186918,
+        "val/bpb": 1.3621599198045171
+      }
+    ]
+  },
+  {
+    "variant": "fox",
+    "seed": 42,
+    "steps": 500,
+    "tokens_per_step": 32768,
+    "model": {
+      "sequence_len": 512,
+      "vocab_size": 32768,
+      "n_layer": 6,
+      "n_head": 6,
+      "n_kv_head": 6,
+      "n_embd": 384,
+      "window_pattern": "SSSL"
+    },
+    "precision": "bf16",
+    "compiled_model": false,
+    "parameter_matching": false,
+    "purpose": "short fixed-token screening",
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "torch_version": "2.9.1+cu128",
+    "upstream_commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+    "variant_source_sha256": "a5e9f85e3d63972b1bf0e1015208f048b557fb97f48bc71b0f8f38cadefe4b70",
+    "status": "complete",
+    "completed_steps": 500,
+    "tokens_seen": 16384000,
+    "val_bpb": 1.3523422497696418,
+    "train_loss": 4.329559326171875,
+    "parameters": 73545506,
+    "train_seconds": 97.66972637400009,
+    "elapsed_seconds": 105.822415728,
+    "steady_tokens_per_second": 209935.93220144307,
+    "peak_allocated_gib": 3.6375651359558105,
+    "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/fp0w9ft9",
+    "history": [
+      {
+        "step": 100,
+        "tokens": 3276800,
+        "train/loss": 5.678447246551514,
+        "train/tokens_per_second": 200842.2970935669,
+        "val/bpb": 1.78430367515877
+      },
+      {
+        "step": 200,
+        "tokens": 6553600,
+        "train/loss": 5.175840377807617,
+        "train/tokens_per_second": 233885.61949687178,
+        "val/bpb": 1.6137966913216715
+      },
+      {
+        "step": 300,
+        "tokens": 9830400,
+        "train/loss": 4.82615327835083,
+        "train/tokens_per_second": 200737.23149665384,
+        "val/bpb": 1.5002843098725143
+      },
+      {
+        "step": 400,
+        "tokens": 13107200,
+        "train/loss": 4.613010406494141,
+        "train/tokens_per_second": 209937.7555184694,
+        "val/bpb": 1.405193924735853
+      },
+      {
+        "step": 500,
+        "tokens": 16384000,
+        "train/loss": 4.329559326171875,
+        "train/tokens_per_second": 226416.72189753043,
+        "val/bpb": 1.3523422497696418
+      }
+    ]
+  },
+  {
+    "variant": "fox",
+    "seed": 43,
+    "steps": 500,
+    "tokens_per_step": 32768,
+    "model": {
+      "sequence_len": 512,
+      "vocab_size": 32768,
+      "n_layer": 6,
+      "n_head": 6,
+      "n_kv_head": 6,
+      "n_embd": 384,
+      "window_pattern": "SSSL"
+    },
+    "precision": "bf16",
+    "compiled_model": false,
+    "parameter_matching": false,
+    "purpose": "short fixed-token screening",
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "torch_version": "2.9.1+cu128",
+    "upstream_commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+    "variant_source_sha256": "a5e9f85e3d63972b1bf0e1015208f048b557fb97f48bc71b0f8f38cadefe4b70",
+    "status": "complete",
+    "completed_steps": 500,
+    "tokens_seen": 16384000,
+    "val_bpb": 1.3435651357990188,
+    "train_loss": 4.300159454345703,
+    "parameters": 73545506,
+    "train_seconds": 99.45057148900017,
+    "elapsed_seconds": 109.745146363,
+    "steady_tokens_per_second": 208543.19906080185,
+    "peak_allocated_gib": 3.6375651359558105,
+    "wandb_url": "https://wandb.ai/jinhaozhang123-university-of-toronto/a3-picochat-pilot/runs/oai19y3t",
+    "history": [
+      {
+        "step": 100,
+        "tokens": 3276800,
+        "train/loss": 5.704386234283447,
+        "train/tokens_per_second": 203346.91724416765,
+        "val/bpb": 1.7865787867686762
+      },
+      {
+        "step": 200,
+        "tokens": 6553600,
+        "train/loss": 5.166667938232422,
+        "train/tokens_per_second": 221622.3976919234,
+        "val/bpb": 1.6146984869368122
+      },
+      {
+        "step": 300,
+        "tokens": 9830400,
+        "train/loss": 4.793787002563477,
+        "train/tokens_per_second": 189567.44536416553,
+        "val/bpb": 1.490174535834891
+      },
+      {
+        "step": 400,
+        "tokens": 13107200,
+        "train/loss": 4.587165832519531,
+        "train/tokens_per_second": 209488.4229165157,
+        "val/bpb": 1.3944224607434417
+      },
+      {
+        "step": 500,
+        "tokens": 16384000,
+        "train/loss": 4.300159454345703,
+        "train/tokens_per_second": 235436.09712305004,
+        "val/bpb": 1.3435651357990188
+      }
+    ]
+  }
+]

@@ -1,0 +1,406 @@
+{
+  "source": {
+    "service": "Modal",
+    "volume": "a3-part5-fox",
+    "run_directory": "runs/fox-d24-seed42-v1/",
+    "files": [
+      "answers.json",
+      "pico/answers.json",
+      "questions-extra-v1/nano/answers.json",
+      "questions-extra-v1/pico/answers.json"
+    ]
+  },
+  "note": "Original saved completions, including whitespace, repetition and truncated endings. Grades retain the original saved values; null means no grade was stored in these artifacts. Questions 21–30 were added after reviewing questions 1–20.",
+  "questions": [
+    {
+      "id": 1,
+      "prompt": "Question: What is the capital of France?\nAnswer:",
+      "criterion": "Paris",
+      "nano": {
+        "completion": " Paris\nThe capital of France is Paris, which is located in the south of the country. It is the largest city in France and the second largest city in Europe. Paris is home to the world's largest museum, the Louvre",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The capital of France is the capital of France. The capital of France is the capital of France. The capital of France is the capital of France. The capital of France is the capital of France. The capital of France is the capital of",
+        "grade": null
+      }
+    },
+    {
+      "id": 2,
+      "prompt": "Question: What is the chemical symbol for gold?\nAnswer:",
+      "criterion": "Au",
+      "nano": {
+        "completion": " The chemical symbol for gold is Au. It is a soft, malleable, and ductile metal that is used in a variety of applications, including jewelry, electronics, and medical devices.\nQuestion: What is the chemical symbol for silver?\n",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The chemical symbol for gold is the symbol for gold and gold. The symbol for gold is the symbol for gold and gold. The symbol for gold is the symbol for gold and gold. The symbol for gold is the symbol for gold and gold",
+        "grade": null
+      }
+    },
+    {
+      "id": 3,
+      "prompt": "Question: If yesterday was Friday, what day is tomorrow?\nAnswer:",
+      "criterion": "Sunday",
+      "nano": {
+        "completion": " If yesterday was Friday, what day is tomorrow?\nQuestion: If yesterday was Friday, what day is tomorrow?\nAnswer: If yesterday was Friday, what day is tomorrow?\nQuestion: If yesterday was Friday, what day is tomorrow?\nAnswer:",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The average day is 1.5 hours per day. The average day is 1.5 hours per day. The average day is 1.5 hours per day. The average day is 1.5 hours per day.",
+        "grade": null
+      }
+    },
+    {
+      "id": 4,
+      "prompt": "Question: Solve 5*x + 3 = 13. What is x?\nAnswer:",
+      "criterion": "x = 2",
+      "nano": {
+        "completion": " x = 5\nQuestion: Solve 5*x + 3 = 13. What is x?\nAnswer: x = 5\nQuestion: Solve 5*x + 3 = 13. What is",
+        "grade": null
+      },
+      "pico": {
+        "completion": " x 3 = 13. What is x?\n x 3 = 13. What is x?\n x 3 = 13. What is x?\n x 13. What is x?\n x 13. What is x",
+        "grade": null
+      }
+    },
+    {
+      "id": 5,
+      "prompt": "Question: Which planet is closest to the Sun?\nAnswer:",
+      "criterion": "Mercury",
+      "nano": {
+        "completion": " Mercury is the closest planet to the Sun. It is the smallest planet in the solar system and is the only planet that has a natural satellite.\nQuestion: What is the largest planet in the solar system?\nAnswer: Jupiter is the largest planet",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The Sun is a small, small, small, small, small, small, small, small, small, small, small, small, small, small, small, small, small, small, small, small, small, small,",
+        "grade": null
+      }
+    },
+    {
+      "id": 6,
+      "prompt": "Question: What gas do plants absorb from the atmosphere during photosynthesis?\nAnswer:",
+      "criterion": "Carbon dioxide",
+      "nano": {
+        "completion": " Carbon dioxide\nQuestion: What gas do plants absorb from the atmosphere during photosynthesis?\nAnswer: Oxygen\nQuestion: What gas do plants absorb from the atmosphere during photosynthesis?\nAnswer: Carbon dioxide\nQuestion: What gas do plants absorb from the atmosphere",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The text mentions that the plants are not in the air. The text mentions that the plants are not in the air. The text mentions that the plants are not in the air. The text mentions that the plants are not in the air.",
+        "grade": null
+      }
+    },
+    {
+      "id": 7,
+      "prompt": "Question: How many centimeters are in two meters?\nAnswer:",
+      "criterion": "200 centimeters",
+      "nano": {
+        "completion": " There are 2.54 centimeters in 1 meter.\nQuestion: How many centimeters are in a meter?\nAnswer: There are 2.54 centimeters in 1 meter.\nQuestion: How many centimeters are in a meter?\nAnswer:",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The two meters are in two meters. The two meters are in two meters. The two meters are in two meters. The two meters are in two meters. The two meters are in two meters. The two meters are in two meters.",
+        "grade": null
+      }
+    },
+    {
+      "id": 8,
+      "prompt": "Question: All roses are flowers. Are roses plants or animals?\nAnswer:",
+      "criterion": "Plants",
+      "nano": {
+        "completion": " Roses are plants. They are a type of flowering plant. They are a member of the rose family, which also includes apples, pears, and plums. Roses are native to Asia, but they have been cultivated in Europe and North America",
+        "grade": null
+      },
+      "pico": {
+        "completion": " Yes, roses are flowers. They are flowers that are flowers that are flowers that are flowers that are flowers that are flowers that are flowers that are flowers that are flowers that are flowers that are flowers that are flowers that are flowers that are flowers",
+        "grade": null
+      }
+    },
+    {
+      "id": 9,
+      "prompt": "Question: A box has three red balls and two blue balls. How many balls are in the box?\nAnswer:",
+      "criterion": "Five",
+      "nano": {
+        "completion": " The number of balls in the box is 3.\nQuestion: A box has three red balls and two blue balls. How many balls are in the box?\nAnswer: The number of balls in the box is 3.\nQuestion: A",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The two green balls are green balls. The two green balls are green balls. The green balls are green balls. The green balls are green balls. The green balls are green balls. The green balls are green balls. The green balls are",
+        "grade": null
+      }
+    },
+    {
+      "id": 10,
+      "prompt": "Question: What is the largest ocean on Earth?\nAnswer:",
+      "criterion": "Pacific Ocean",
+      "nano": {
+        "completion": " The Pacific Ocean is the largest ocean on Earth. It is the largest ocean in the world and the largest ocean in the world by area. It is also the largest ocean in the world by volume.\nQuestion: What is the largest ocean in",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The largest ocean on Earth, Earth, and Earth. The ocean is the largest ocean in the world. The ocean is the largest ocean in the world, and is the largest ocean in the world. The ocean is the largest ocean in the",
+        "grade": null
+      }
+    },
+    {
+      "id": 11,
+      "prompt": "Question: Why does ice float on liquid water?\nAnswer:",
+      "criterion": "Ice is less dense than liquid water",
+      "nano": {
+        "completion": " The reason why ice floats on liquid water is because the density of ice is less than that of liquid water. This means that ice floats on liquid water because it is less dense than liquid water.\nQuestion: Why does ice float on water?\n",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The ice is the water that is the water that is the water that is the water that is the water that is the water that is the water that is the water that is the water that is the water that is the water that is the",
+        "grade": null
+      }
+    },
+    {
+      "id": 12,
+      "prompt": "Question: What language is primarily spoken in Brazil?\nAnswer:",
+      "criterion": "Portuguese",
+      "nano": {
+        "completion": " Portuguese is the official language of Brazil. It is the most widely spoken language in the country, with over 50% of the population speaking it.\nQuestion: What is the capital city of Brazil?\nAnswer: São Paulo is the",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The text is written in the text, written in the text, and written in the text. The text is written in the text, written in the text, and written in the text. The text is written in the text, written in",
+        "grade": null
+      }
+    },
+    {
+      "id": 13,
+      "prompt": "Question: What is the square root of 81?\nAnswer:",
+      "criterion": "9",
+      "nano": {
+        "completion": " The square root of 81 is 1.81.\nQuestion: What is the square root of 100?\nAnswer: The square root of 100 is 1.\nQuestion: What is the square root of 1000",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The square root of 81.5 cm (2.5 cm) (2.5 cm) (2.5 cm) (2.5 cm) (2.5 cm) (2.5 cm) (2.",
+        "grade": null
+      }
+    },
+    {
+      "id": 14,
+      "prompt": "Question: Which organ pumps blood around the human body?\nAnswer:",
+      "criterion": "Heart",
+      "nano": {
+        "completion": " The heart is the organ that pumps blood around the human body. The heart is a muscular organ that is located in the chest cavity. It is responsible for pumping blood throughout the body.\nThe heart is a muscular organ that is located in the",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The main purpose of the organ pumps blood around the human body is to help the body heal and help the body heal and help the body heal and help the body heal and help the body heal and help the body heal and help the body heal",
+        "grade": null
+      }
+    },
+    {
+      "id": 15,
+      "prompt": "Question: A train leaves at 14:00 and arrives at 16:30. How long was the journey?\nAnswer:",
+      "criterion": "Two hours and thirty minutes",
+      "nano": {
+        "completion": " The journey was 14 hours and 30 minutes.\nQuestion: A train leaves at 14:00 and arrives at 16:30. How long was the journey?\nAnswer: The journey was 14 hours and 30 minutes.\n",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The first time the first time the first time the first time the first time the first time the first time the first time the first time the first time the first time the first time the first time the first time the first time the first time",
+        "grade": null
+      }
+    },
+    {
+      "id": 16,
+      "prompt": "Question: Translate the English word 'hello' into French.\nAnswer:",
+      "criterion": "Bonjour or salut",
+      "nano": {
+        "completion": " Hello, I'm sorry to hear that you're having trouble with your French homework. I'm sorry to hear that you're having trouble with your French homework. I'm sorry to hear that you're having trouble with your French homework. I",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The English word 'hello' is 'hello' into French.\nAnswer: The English word 'hello' is 'hello' into French.\nAnswer: The English word 'hello' is 'hello' into French",
+        "grade": null
+      }
+    },
+    {
+      "id": 17,
+      "prompt": "Question: What does the Python expression len([10, 20, 30]) return?\nAnswer:",
+      "criterion": "3",
+      "nano": {
+        "completion": " The Python expression len([10, 20, 30]) returns the length of the list of numbers in the list.\nQuestion: What is the difference between the Python list and the list of numbers?\nAnswer: The Python list",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The Python expression len([10, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20,",
+        "grade": null
+      }
+    },
+    {
+      "id": 18,
+      "prompt": "Question: If all birds have feathers and a robin is a bird, does a robin have feathers?\nAnswer:",
+      "criterion": "Yes",
+      "nano": {
+        "completion": " Yes, a robin has feathers. A robin is a bird. A robin is a bird. A robin is a bird. A robin is a bird. A robin is a bird. A robin is a",
+        "grade": null
+      },
+      "pico": {
+        "completion": " If the bird is a bird, it is a bird, and it is a bird, and it is a bird, and it is a bird, and it is a bird, and it is a bird, and it is a bird,",
+        "grade": null
+      }
+    },
+    {
+      "id": 19,
+      "prompt": "Question: What force keeps planets in orbit around the Sun?\nAnswer:",
+      "criterion": "Gravity",
+      "nano": {
+        "completion": " The force that keeps planets in orbit around the Sun is gravity. The Sun is the center of the solar system and the planets orbit around it. The planets are held in orbit by the gravitational force of the Sun.\nQuestion: What is the",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The Sun is a light source of light. It is a light source of light, light, and light. It is a light source of light, light, and light. It is a light source of light, light, and light.",
+        "grade": null
+      }
+    },
+    {
+      "id": 20,
+      "prompt": "Question: Put these numbers in ascending order: 7, 2, 5.\nAnswer:",
+      "criterion": "2, 5, 7",
+      "nano": {
+        "completion": " 7, 2, 5\nQuestion: Put these numbers in descending order: 7, 2, 5.\nAnswer: 7, 2, 5\nQuestion: Put these numbers in ascending order:",
+        "grade": null
+      },
+      "pico": {
+        "completion": " 7, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,",
+        "grade": null
+      }
+    },
+    {
+      "id": 21,
+      "prompt": "Question: What is the chemical formula for water?\nAnswer:",
+      "criterion": "H2O",
+      "nano": {
+        "completion": " The chemical formula for water is H2O. Water is a compound made up of two hydrogen atoms and one oxygen atom. The chemical formula for water is H2O.\nQuestion: What is the chemical formula for water?\nAnswer: The",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The chemical formula for water is 1.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2",
+        "grade": null
+      }
+    },
+    {
+      "id": 22,
+      "prompt": "Question: What is the capital of Japan?\nAnswer:",
+      "criterion": "Tokyo",
+      "nano": {
+        "completion": " Tokyo is the capital of Japan. It is the largest city in Japan and the second largest city in the world. It is also the largest city in the world by population.\nQuestion: What is the capital of the United States?\nAnswer:",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The capital of Japan is the capital of Japan. The capital of Japan is the capital of Japan. The capital of Japan is the capital of Japan. The capital of Japan is the capital of Japan. The capital of Japan is the capital of",
+        "grade": null
+      }
+    },
+    {
+      "id": 23,
+      "prompt": "Question: Which star is at the center of our solar system?\nAnswer:",
+      "criterion": "The Sun",
+      "nano": {
+        "completion": " The Sun is the center of our solar system. The Sun is the only star in the solar system that is visible to the naked eye. The Sun is the only star in the solar system that is visible to the naked eye.\nQuestion:",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The center of the solar system is at the center of the solar system. The solar system is at the center of the solar system. The solar system is at the center of the solar system. The solar system is at the center of the",
+        "grade": null
+      }
+    },
+    {
+      "id": 24,
+      "prompt": "Question: What is the largest planet in our solar system?\nAnswer:",
+      "criterion": "Jupiter",
+      "nano": {
+        "completion": " Jupiter is the largest planet in our solar system. It is the second largest planet in the solar system, after Saturn. Jupiter is the largest planet in our solar system. It is the second largest planet in the solar system, after Saturn.",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The largest planet in the world, is the largest planet in the world. The largest planet in the world is the largest planet in the world. The largest planet in the world is the largest planet in the world. The largest planet in the",
+        "grade": null
+      }
+    },
+    {
+      "id": 25,
+      "prompt": "Question: What is the chemical symbol for oxygen?\nAnswer:",
+      "criterion": "O",
+      "nano": {
+        "completion": " The chemical symbol for oxygen is O.\nQuestion: What is the chemical symbol for oxygen?\nAnswer: The chemical symbol for oxygen is O.\nQuestion: What is the chemical symbol for oxygen?\nAnswer: The chemical symbol for oxygen is O.\n",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The chemical symbol for oxygen is the chemical symbol for oxygen. The chemical symbol for oxygen is the symbol for oxygen and oxygen. The symbol for oxygen is the symbol for oxygen and oxygen. The symbol for oxygen is the symbol for oxygen and oxygen",
+        "grade": null
+      }
+    },
+    {
+      "id": 26,
+      "prompt": "Question: On which continent is Egypt located?\nAnswer:",
+      "criterion": "Africa",
+      "nano": {
+        "completion": " Egypt is located in the Middle East.\nQuestion: What is the capital of Egypt?\nAnswer: The capital of Egypt is Cairo.\nQuestion: What is the largest city in Egypt?\nAnswer: The largest city in Egypt is Cai",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The main purpose of the text is to be to be to be to be a general purpose. The text is to be a general purpose. The text is to be a general purpose. The text is to be a general purpose. The text",
+        "grade": null
+      }
+    },
+    {
+      "id": 27,
+      "prompt": "Question: What is the opposite of hot?\nAnswer:",
+      "criterion": "Cold",
+      "nano": {
+        "completion": " cold\nExplanation: The opposite of hot is cold. Hot is the temperature of a substance that is above the freezing point of water. Cold is the temperature of a substance that is below the freezing point of water.\nQuestion: What is the",
+        "grade": null
+      },
+      "pico": {
+        "completion": " hot water is a hot water. It is a hot water that is hot water. It is a hot water that is hot water. It is a hot water that is hot water. It is a hot water that is hot water. It",
+        "grade": null
+      }
+    },
+    {
+      "id": 28,
+      "prompt": "Question: Which animal is known as the king of the jungle?\nAnswer:",
+      "criterion": "Lion",
+      "nano": {
+        "completion": " The lion is known as the king of the jungle.\nQuestion: Which animal is known as the king of the jungle?\nAnswer: The lion is known as the king of the jungle.\nQuestion: Which animal is known as the king of the",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The king of the animal kingdom is a species of animal. The king of the animal kingdom is a species of animal. The king of the animal kingdom is a species of animal. The king of the animal kingdom is a species of animal.",
+        "grade": null
+      }
+    },
+    {
+      "id": 29,
+      "prompt": "Question: What is the name of the natural satellite of Earth?\nAnswer:",
+      "criterion": "The Moon",
+      "nano": {
+        "completion": " The natural satellite of Earth is called the Moon.\nQuestion: What is the name of the natural satellite of Mars?\nAnswer: The natural satellite of Mars is the planet Mercury.\nQuestion: What is the name of the natural satellite of Venus?\n",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The name of the natural satellite of Earth is the natural satellite of Earth. The natural satellite of Earth is the natural satellite of Earth. The natural satellite of Earth is the natural satellite of Earth. The natural satellite of Earth is the natural satellite",
+        "grade": null
+      }
+    },
+    {
+      "id": 30,
+      "prompt": "Question: Which organ do humans primarily use to breathe?\nAnswer:",
+      "criterion": "Lungs",
+      "nano": {
+        "completion": " The lungs are the primary organs used to breathe. The lungs are the organs that are responsible for the exchange of oxygen and carbon dioxide between the blood and the air.\nQuestion: What is the primary function of the heart?\nAnswer: The primary",
+        "grade": null
+      },
+      "pico": {
+        "completion": " The main purpose of the organ is to breathe, breathe, breathe, breathe, breathe, breathe, breathe, breathe, breathe, breathe, breathe, breathe, breathe, breathe, breathe, breathe, breathe, breathe, breathe, breathe,",
+        "grade": null
+      }
+    }
+  ]
+}
