@@ -1,10 +1,10 @@
-"""Unit tests for the checkpoint helpers in modal_launch.py (run with the modal tool's python: they need `import modal`)."""
+"""Unit tests for the checkpoint helpers in modal_launch.py (run with the modal tool's python: no Modal import or remote calls)."""
 import sys
 import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-import modal_launch as launch
+import launcher_config as launch
 
 
 def make(root, folder, steps):
@@ -74,3 +74,32 @@ def test_mark_run_tells_finished_from_unfinished():
         assert (folder / "INCOMPLETE").exists() and not (folder / "COMPLETE").exists()
         launch.mark_run(folder, "run", completed=True)  # a resumed job that finishes replaces the earlier marker
         assert (folder / "COMPLETE").exists() and not (folder / "INCOMPLETE").exists()
+
+
+def test_verify_resume_source_accepts_incomplete_and_preserves_files():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        folder = root / "old"
+        folder.mkdir()
+        (folder / "model_000180.pt").write_text("weights")
+        (folder / "meta_000180.json").write_text('{"model_config":{"n_layer":24}}')
+        (folder / "INCOMPLETE").write_text("old")
+        assert launch.verify_resume_source(root, "old", 180, "new") == folder
+        assert (folder / "INCOMPLETE").exists()
+
+
+def test_verify_resume_source_rejects_bad_checkpoint_or_target_collision():
+    import pytest
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        folder = root / "old"
+        folder.mkdir()
+        with pytest.raises(FileNotFoundError):
+            launch.verify_resume_source(root, "old", 180, "new")
+        (folder / "model_000180.pt").write_text("weights")
+        (folder / "meta_000180.json").write_text('{"model_config":{"n_layer":24}}')
+        with pytest.raises(ValueError):
+            launch.verify_resume_source(root, "old", 180, "old")
+        (folder / "meta_000180.json").write_text('{bad')
+        with pytest.raises(ValueError):
+            launch.verify_resume_source(root, "old", 180, "new")

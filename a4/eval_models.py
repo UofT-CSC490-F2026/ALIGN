@@ -2,7 +2,7 @@
 
     torchrun --standalone --nproc_per_node=8 a4/run_script.py eval_models --models base:fox-d24,sft:a4-sft-default
 
-Each model is source:tag, with source base, sft or mid (the folder under the nanochat base directory). The scores are
+Each model is source:tag, with source base, sft, mid or rl (the folder under the nanochat base directory). The scores are
 printed and saved to <base dir>/eval_results/<--run>.json.
 """
 import argparse
@@ -17,7 +17,7 @@ from nanochat.common import autodetect_device_type, compute_cleanup, compute_ini
 from nanochat.engine import Engine
 from scripts.chat_eval import run_chat_eval
 
-FOLDERS = {"base": "base_checkpoints", "sft": "chatsft_checkpoints", "mid": "mid_checkpoints"}
+FOLDERS = {"base": "base_checkpoints", "sft": "chatsft_checkpoints", "mid": "mid_checkpoints", "rl": "chatrl_checkpoints"}
 CHANCE = {"ARC-Easy": 0.25, "ARC-Challenge": 0.25, "MMLU": 0.25, "GSM8K": 0.0}
 
 parser = argparse.ArgumentParser()
