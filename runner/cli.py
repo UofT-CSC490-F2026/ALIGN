@@ -113,8 +113,8 @@ def run(args, *, arbiter_factory=None):
         manifest=writer.write_bundle(folder/"events.jsonl",folder/"bundle")
         status=events[-1]["payload"].get("status")
         failures+=status!="completed"
-        print(json.dumps({"task_key":task["task_key"],"run_key":writer.run_key,"status":status,
-                          "bundle":str(folder/"bundle"),"event_count":manifest["event_count"]}))
+        print(json.dumps(writer.sanitize({"task_key":task["task_key"],"run_key":writer.run_key,"status":status,
+                          "bundle":str(folder/"bundle"),"event_count":manifest["event_count"]})))
     return int(failures>0)
 
 def main(argv=None):

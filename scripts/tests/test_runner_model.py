@@ -3,13 +3,16 @@ import json
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import threading
 import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 from urllib.error import HTTPError
-from runner.cli import main
+from runner.arbiter_prompt import prompt_hash
+from runner.arbitration import ConstantArbiter
+from runner.cli import main, run
 from runner.environment import MockEnvironment
 from runner.model_adapter import ChatClient, ChatAgent, ChatArbiter
 from scripts.run_artifacts import load_events
@@ -103,6 +106,50 @@ class ModelTests(unittest.TestCase):
     def test_endpoint_validation(self):
         for url in ('https://user:key@example.com/v1','https://example.com/v1?key=secret','http://example.com/v1'):
             with self.assertRaises(ValueError): ChatClient(url,'model',key_env='KEY')
+
+    def test_callable_arbiter_records_checkpoint_and_unknown_usage(self):
+        actors = set()
+
+        def respond(request):
+            actor = json.loads(request['messages'][1]['content'])['context']['actor_id']
+            if actor in actors:
+                reply = {'done':True}
+            else:
+                actors.add(actor)
+                reply = {'action':{'tool':'bash','command':'echo test'},'files_touched':[]}
+            return {'choices':[{'finish_reason':'stop','message':{'content':json.dumps(reply)}}],
+                    'usage':{'prompt_tokens':9,'completion_tokens':4}}
+
+        self.response=respond
+        called=[]
+
+        class CallableArbiter(ConstantArbiter):
+            def decide(self,obs):
+                called.append(obs)
+                return super().decide(obs)
+
+        with TemporaryDirectory() as tmp:
+            images=Path(tmp)/'images.json'
+            images.write_text('{"fixture_task:task0":"preloaded"}',encoding='utf-8')
+            args=SimpleNamespace(tasks='fixture',task_key=None,limit=1,max_steps=4,live=True,
+                                 protocol='concurrent',agent_endpoint=self.client.endpoint,
+                                 agent_model='agent',images=str(images),dataset_dir=tmp,condition='llm',
+                                 arbiter_model='qwen',arbiter_endpoint=None,trial_timeout=20,
+                                 output_dir=tmp,training='sft',checkpoint='draft-adapter',seed=42,
+                                 model_timeout=5,tool_timeout=5)
+            with patch('runner.cli.load_tasks',return_value=[task()]), \
+                 patch('runner.cli.installed_revision',return_value='a'*40), \
+                 patch('runner.cli.cooperbench_identity',return_value=('fixture_task',0,[1,2])), \
+                 patch('runner.cli.prepare_environment',return_value=MockEnvironment()), \
+                 patch('runner.cli.evaluate_patches',return_value={}):
+                self.assertEqual(run(args,arbiter_factory=lambda cfg:CallableArbiter('query')),0)
+            events,header=load_events(next(Path(tmp).glob('*/bundle/events.jsonl')).read_bytes())
+        self.assertEqual(header['arbiter_config']['checkpoint'],'draft-adapter')
+        self.assertEqual(header['arbiter_config']['prompt_sha256'],prompt_hash())
+        self.assertEqual(header['arbiter_config']['backend'],'callable')
+        self.assertEqual(called,[e['payload'] for e in events if e['event_type']=='arbiter_observation'])
+        self.assertTrue(events[-1]['payload']['usage_incomplete'])
+        self.assertNotIn('input_tokens',events[-1]['payload'])
 
     def test_cli_endpoints_checkpoint_and_recorded_observation(self):
         step={}

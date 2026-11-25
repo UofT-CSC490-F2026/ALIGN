@@ -75,7 +75,7 @@ def evaluation_evidence(task,result):
             goals[f"feature{f}"]="passed" if passed else "failed"
     both,merge=result.get("both_passed"),result.get("merge",{}).get("status")
     missing_tests=merge in {"clean","identical"} and "not_evaluated" in goals.values()
-    evaluation_error=bool(result.get("error")) or missing_tests
+    evaluation_error=bool(result.get("error")) or missing_tests or merge=="missing_input"
     shared=None
     if not evaluation_error:
         if merge=="conflicts":
@@ -96,39 +96,38 @@ def evaluate_patches(task,patches,dataset_dir,*,timeout=600,deadline=None,expect
     from cooperbench.eval import sandbox as upstream
     repo,number,features=cooperbench_identity(task)
     deadline=deadline or TrialDeadline(timeout)
-    image=upstream.get_image_name(repo,number)
+    image=expected_image or upstream.get_image_name(repo,number)
     resolved=image_id(image,deadline)
     if expected_image is not None and resolved!=expected_image:
         raise ValueError("Agent and evaluator image IDs differ")
     if patches.get("_merge_status")=="conflicts":
         return evaluation_evidence(task,{"merge":{"status":"conflicts"},"error":None})
     backend=SecureBackend(resolved,task["base_commit"],deadline)
+    result={}
     try:
         if patches.get("_merge_status")=="clean":
             # Already merged using real commit ancestry, so test the final tree
             # directly rather than trying to merge two duplicated textual diffs.
             root=Path(dataset_dir)/repo/f"task{number}"
-            sb=backend.create_sandbox(image,timeout)
             results={}
             evaluation_error=None
             timed_out=False
             try:
                 final_patch=upstream._filter_test_files(patches["agent1"])
-                sb.write_patch("merged.patch",final_patch)
                 for i,feature in enumerate(features,1):
                     name=f"tests{i}.patch"
                     tests=(root/f"feature{feature}"/"tests.patch").read_text(encoding="utf-8")
-                    sb.write_patch(name,tests)
-                    result=upstream._run_tests(sb,name,"merged.patch",task["base_commit"])
-                    results[f"feature{i}"]={"feature_id":feature,**result}
+                    sb=backend.create_sandbox(image,timeout)
+                    try:
+                        sb.write_patch("merged.patch",final_patch)
+                        sb.write_patch(name,tests)
+                        result=upstream._run_tests(sb,name,"merged.patch",task["base_commit"])
+                        results[f"feature{i}"]={"feature_id":feature,**result}
+                    finally:
+                        sb.terminate()
             except Exception as exc:
                 evaluation_error=type(exc).__name__
                 timed_out=isinstance(exc,TimeoutError)
-            finally:
-                try:
-                    sb.terminate()
-                except Exception as exc:
-                    evaluation_error="Evaluator cleanup failed: "+type(exc).__name__
             result={"merge":{"status":"clean"},**results,
                     "both_passed":len(results)==2 and all(x["passed"] for x in results.values()),
                     "error":evaluation_error,"partial_evidence":True,"timeout":timed_out}
@@ -138,6 +137,7 @@ def evaluate_patches(task,patches,dataset_dir,*,timeout=600,deadline=None,expect
             original=upstream.test_merged
             globals_copy={**original.__globals__,
                           "get_backend":lambda name:backend,
+                          "get_image_name":lambda *_:resolved,
                           "_write_patch":lambda sb,name,content:sb.write_patch(name,content)}
             test_merged=FunctionType(original.__code__,globals_copy,original.__name__,
                                      original.__defaults__,original.__closure__)
@@ -152,6 +152,10 @@ def evaluate_patches(task,patches,dataset_dir,*,timeout=600,deadline=None,expect
             deadline.remaining()
         except TimeoutError:
             result={**result,"error":"Trial deadline exceeded","partial_evidence":True,"timeout":True}
-        return evaluation_evidence(task,result)
     finally:
-        backend.close()
+        try:
+            backend.close()
+        except Exception:
+            # Keep any feature results that completed before cleanup failed.
+            result={**result,"error":"Evaluator cleanup failed","partial_evidence":True}
+    return evaluation_evidence(task,result)

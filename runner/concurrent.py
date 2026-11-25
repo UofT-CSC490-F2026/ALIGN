@@ -59,6 +59,11 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                     trigger_sequence=seq)
         return {"output":reason,"exit_code":1}
 
+    def stale(seq, observed_version):
+        writer.emit("system","authorization_stale",{"observed_version":observed_version,
+                    "current_version":version},trigger_sequence=seq)
+        return cancelled(seq,"Shared branch changed since authorization; inspect and repropose.")
+
     def worker(actor, view):
         nonlocal version, escalated, failure
         agent = agents[actor]
@@ -93,13 +98,15 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                     # Never dispatch a command containing a configured secret.
                     if writer.sanitize(p) != p:
                         raise ValueError("Proposal contains configured secret")
-                    pending[actor] = {"proposed_action":deepcopy(p),"phase":"queued"}
-                    writer.emit("agent","proposal_queued",p,actor_id=actor)
+                    queued = writer.emit("agent","proposal_queued",p,actor_id=actor)
+                    pending[actor] = {"proposed_action":deepcopy(p),"phase":"queued","queue_sequence":queued}
                 # Only arbitration is serialized. Waiting workers expose pending proposals.
                 with arbiter_lock:
                     with lock:
                         check()
                         p = pending.pop(actor)["proposed_action"]
+                        a = p["action"]
+                        git_tool = a["tool"] in {"git_publish","git_fetch"}
                         seq = writer.emit("agent","proposed_action",p,actor_id=actor)
                         snap = state()
                         observed_version = version
@@ -122,13 +129,11 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                             if action=="escalate":
                                 escalated=True
                                 stop.set()
+                                deadline.cancel()
                                 return
-                        elif gate.condition in {"llm","rule_based"} and (version!=observed_version or shared()!=snap["shared_git"]):
-                            # A completion/publication during reasoning invalidates this
-                            # approval. Do not silently dispatch against stale state.
-                            writer.emit("system","authorization_stale",{"observed_version":observed_version,
-                                        "current_version":version},trigger_sequence=seq)
-                            result=cancelled(seq,"Coordination changed during arbitration; inspect and repropose.")
+                        elif (git_tool and shared().get("published",{})
+                              != snap["shared_git"].get("published",{})):
+                            result=stale(seq,observed_version)
                         else:
                             inflight[actor]={"proposal_sequence":seq,"proposed_action":p,"started":False}
                             result=None
@@ -140,7 +145,6 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                             check()
                             inflight[actor]["started"]=True
                             writer.emit("system","action_started",{"actor_id":actor},trigger_sequence=seq)
-                        a=p["action"]
                         if a["tool"]=="message":
                             with lock:
                                 check()
@@ -150,11 +154,10 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                                 else:
                                     mail[peer].append({"output":f"Message from {actor}: {a['content']}","exit_code":0})
                                     result={"output":"Message delivered","exit_code":0}
-                        elif a["tool"] in {"git_publish","git_fetch"}:
+                        elif git_tool:
                             result=env.execute(actor,a,expected_refs=snap["shared_git"].get("published",{}))
                         else:
                             result=env.execute(actor,a)
-                        after=state_for(actor)
                     except Exception as exc:
                         with lock:
                             if not stop.is_set() and actor in inflight:
@@ -167,9 +170,15 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                         check()
                         inflight.pop(actor)
                         version+=1
-                        workspaces[actor]=writer.sanitize(after)
                         result=writer.sanitize(result)
-                        writer.emit("system","action_result",{"outcome":"dispatched",**result},trigger_sequence=seq)
+                        if result.get("stale") is True and git_tool:
+                            result=stale(seq,observed_version)
+                        else:
+                            writer.emit("system","action_result",{**result,"outcome":"dispatched"},trigger_sequence=seq)
+                    after=state_for(actor)
+                    with lock:
+                        check()
+                        workspaces[actor]=writer.sanitize(after)
                 phase="agent_error"
                 check()
                 agent.receive(result)
@@ -180,10 +189,9 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                     failure={"failure_category":"timeout" if isinstance(exc,TimeoutError) else phase,
                              "failure_reason":type(exc).__name__}
                     stop.set()
-        else:
-            done.put((actor,None,None))
+                    deadline.cancel()
         finally:
-            done.put((actor,"finished_worker",None))
+            done.put(actor)
 
     try:
         view=agent_view(task)
@@ -196,14 +204,10 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
         exits=set()
         while len(exits)<len(threads) and not stop.is_set():
             try:
-                actor,kind,reason=done.get(timeout=min(.1,deadline.remaining()))
+                actor=done.get(timeout=min(.1,deadline.remaining()))
             except Empty:
                 continue
-            if kind=="finished_worker":
-                exits.add(actor)
-            elif kind:
-                failure={"failure_category":kind,"failure_reason":reason}
-                stop.set()
+            exits.add(actor)
         with lock:
             if escalated:
                 metrics["termination_reason"]="escalated"
@@ -231,8 +235,13 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                 failure={"failure_category":"timeout","failure_reason":"Trial deadline exceeded after evaluation"}
     except Exception as exc:
         status="failed"
-        failure={"failure_category":"timeout" if isinstance(exc,TimeoutError) else "infrastructure_error",
-                 "failure_reason":type(exc).__name__}
+        with lock:
+            if escalated and isinstance(exc,TimeoutError):
+                status="completed"
+                metrics["termination_reason"]="escalated"
+            elif failure is None:
+                failure={"failure_category":"timeout" if isinstance(exc,TimeoutError) else "infrastructure_error",
+                         "failure_reason":type(exc).__name__}
     finally:
         # Stop all authorization and prevent late writes before removing resources.
         with lock:
@@ -255,10 +264,13 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                 writer.emit("system","action_result",{"outcome":"unknown" if item["started"] else "cancelled",
                                                        "output":"Trial stopped during execution" if item["started"] else "Trial stopped before execution"},
                             trigger_sequence=item["proposal_sequence"])
-            for item in pending.values():
+            for actor,item in pending.items():
                 if "proposal_sequence" in item:
                     writer.emit("system","action_result",{"outcome":"cancelled","output":"Trial stopped before authorization"},
                                 trigger_sequence=item["proposal_sequence"])
+                else:
+                    writer.emit("system","proposal_cancelled",{"actor_id":actor,"reason":"Trial stopped while queued"},
+                                trigger_sequence=item["queue_sequence"])
             if usage is not None:
                 try:
                     if all(not t.is_alive() for t in threads):

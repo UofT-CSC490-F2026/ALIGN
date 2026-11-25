@@ -1,8 +1,7 @@
 # Runner handoff
 
-Run these PowerShell commands from the repository root. The mock workflow and the
-loopback model contract tests are ready for handoff. Live CooperBench evaluation
-still needs the container checks below.
+Run these PowerShell commands from the repository root. The concurrent mock
+workflow, loopback model contract, and local PostgreSQL replay are verified.
 
 ```powershell
 py -m unittest discover -s scripts/tests -p 'test_runner*.py' -v
@@ -10,7 +9,7 @@ py -m unittest discover -s scripts/tests -p 'test_*.py' -v
 py scripts/normalize_tasks.py custom --scenarios-dir scripts/examples --revision v1 --output-dir normalized/fixture
 py scripts/load_tasks.py --input-dir normalized/fixture
 $runs = foreach ($condition in 'none','monitor','rule_based','llm') {
-    py -m runner.cli --tasks normalized/fixture/tasks.jsonl --output-dir local-runs --condition $condition --mock-action block | ConvertFrom-Json
+    py -m runner.cli --tasks normalized/fixture/tasks.jsonl --output-dir local-runs --protocol concurrent --condition $condition --mock-action block | ConvertFrom-Json
 }
 $runs | ForEach-Object { py scripts/run_artifacts.py verify --run-dir $_.bundle }
 ```
@@ -43,9 +42,9 @@ training so alternate conditions for the same task cannot cross splits.
 
 Set `ALIGN_DATABASE_URL` to your disposable local database after applying the
 migrations in [the A2 setup](../scripts/README.md#load-normalized-tasks-into-postgresql-pr-3).
-The four-condition fixture was verified on PostgreSQL 16 with both migrations
-applied by Flyway through the repository's Compose recipe. It was also verified
-on PostgreSQL 17 with the same SQL applied directly using `psql`.
+The concurrent four-condition fixture was verified on disposable PostgreSQL 16
+with both migrations applied by Flyway. Set `ALIGN_TEST_DATABASE_URL` to the same
+disposable service to enable the three PostgreSQL regression tests.
 
 ```powershell
 py scripts/load_tasks.py --input-dir normalized/fixture --apply
@@ -56,10 +55,10 @@ foreach ($run in $runs) {
 }
 ```
 
-An identical import reports `inserted: false` on replay. The fixture expects an
-escalation. Use `--condition llm --mock-action escalate` to see the positive
-escalation case. It ends without goal test evidence. `arbiter_advice` in monitor
-mode remains in raw events and contributes no enforcement decision rows.
+An identical import reports `inserted: false` on replay. These mock runs have
+zero evaluated goals. Use `--protocol concurrent --condition llm --mock-action
+escalate` to exercise early termination without goal test evidence.
+`arbiter_advice` in monitor mode contributes no enforcement decision rows.
 
 ## Live configuration and remaining validation
 
@@ -71,28 +70,37 @@ before creating containers or calling models. Mock runs require no installation
 and record a null upstream revision.
 Prepare the pinned A2 dataset locally. Preload a trusted compatible task image on
 a disposable Docker host, with clean /workspace/repo at the normalized base SHA.
-Create an image map such as
-`{"pallets_click_task:task2956":"akhatua/cooperbench-pallets-click:task2956"}`.
-Do not mount the dataset, host directory, Docker socket or credentials into agent
-containers. Verify image contents and upstream evaluator isolation before running;
-the upstream evaluator is separate and runs generated code, so use a disposable
-host without secrets. The pinned upstream evaluator resolves its own image name
-as `akhatua/cooperbench-<repo-without-_task-and-with-hyphens>:taskN`; confirm the
-agent and evaluator tags resolve to the same image ID and base commit. The new ALIGN evaluator backend is intended to enforce isolation and deadlines;
-Phase 6 must verify this before running generated code or using live scores.
+Use a dedicated Docker build context for offline dependencies. The following
+local setup was verified for pinned dataset revision `b612b1a35af722751454813d9e5a7888f065fc9e`,
+Click task 2956 at base `5c1239b0116b66492cdd0848144ab3c78a04495a`.
 
-The scripted smoke verified the pinned dataset's Click task 2956 (features 1
-and 8) against the official Linux image at
-`sha256:497bb01824e4f2bc5a53db80446a61f3edaca5b5e4e5bf3100d423b11e11eb9a`.
-The image was clean at `5c1239b0116b66492cdd0848144ab3c78a04495a`. The agent
-containers extracted committed and uncommitted edits and a new file, then
-cleaned up. The pinned upstream evaluator applied both patches and handled
-both clean merges and conflicts. It ran both trusted suites on the clean merge.
-The scripted edits intentionally made no feature implementations, so both
-goals failed. To run offline, the smoke overrode the evaluator's container
-settings to disable networking and supplied a local `flit_core` wheel. These
-overrides were specific to the smoke. Full subset coverage, per-image build
-dependencies and the default evaluator's isolation remain unverified.
+```powershell
+$base = 'akhatua/cooperbench-pallets-click@sha256:497bb01824e4f2bc5a53db80446a61f3edaca5b5e4e5bf3100d423b11e11eb9a'
+docker pull $base
+$ctx = New-Item -ItemType Directory -Force click-wheelhouse
+py -m pip download --no-deps --dest $ctx.FullName flit_core==3.12.0
+@("FROM $base", 'COPY flit_core-3.12.0-py3-none-any.whl /opt/align-wheels/',
+  'ENV PIP_NO_INDEX=1 PIP_FIND_LINKS=/opt/align-wheels') |
+    Set-Content -Encoding ascii (Join-Path $ctx.FullName Dockerfile)
+docker build --network=none --pull=false -t align-click2956:offline $ctx.FullName
+'{"pallets_click_task:task2956":"align-click2956:offline"}' | Set-Content -Encoding ascii images.json
+```
+
+The runner resolves that image once and uses the same immutable ID for agents,
+broker and evaluator. Keep the dataset, gold patches and hidden tests out of the
+build context and agent workspaces. Use a disposable Docker host. Phase 6
+checked the real Docker isolation settings and cleanup on Click task 2956.
+Other images may require different trusted offline dependencies.
+
+Evaluator-only positive controls for Click 2956 used the pinned feature 1 and
+8 reference patches. Feature 1 alone passed its suite and failed feature 8's.
+The combined solutions passed both. When the second suite was missing or timed
+out, the first pass was retained and feature 8 remained `not_evaluated`.
+These controls verify the test pipeline and are separate from agent scores.
+In a separate scripted run, one agent published a commit and its peer fetched,
+merged, and extended it. The broker emitted each change once. Applying the
+known solutions to that merged result in the trusted evaluator passed both
+suites.
 
 ```powershell
 $common = @('--live', '--tasks', 'normalized/heldout/tasks.jsonl',
@@ -146,10 +154,11 @@ The adapter sends `model`, `messages`, `temperature` and `max_tokens`. It expect
 `finish_reason: stop` and a JSON object in `choices[0].message.content`. Loopback
 tests cover the wire contract and bearer auth. Confirm the GPT-OSS and Qwen
 endpoints support these fields, and that reasoning content is separate from the
-final JSON. HTTP timeout limits individual socket waits. A trial deadline and configured-secret redaction are now implemented for the
-concurrent path but await Phase 6 verification; real endpoint validation remains outstanding.
+final JSON. HTTP timeout limits individual socket waits. The trial deadline
+stops local authorization even if an external request returns late. Real endpoint
+validation remains outstanding.
 
-## Concurrent implementation — pending Phase 6 verification
+## Concurrent protocol
 
 The live commands above now select `align-concurrent-shared-git-v1` for every
 condition. Use `--protocol concurrent` to exercise the concurrent scheduler
@@ -163,7 +172,6 @@ and evaluator. The new evaluator enforces network isolation and resource limits
 and streams patches into the container; no upstream default Docker sandbox is
 used. Ensure all test build dependencies are already in the trusted image
 (the earlier Click smoke needed flit_core). No network install is permitted.
-The new evaluator path and successful feature results must be verified locally.
 The Git broker supports structured `git_publish` and `git_fetch` tools;
 agents can inspect or merge `refs/remotes/align/agent1` and
 `refs/remotes/align/agent2` locally. It merges actual final commit ancestry
@@ -183,6 +191,5 @@ ALIGN_DATABASE_URL and env names listed in ALIGN_TRACE_SECRET_ENV (comma-separat
 are redacted before event persistence. Extra credentials must be configured
 explicitly; this is not a general credential scanner.
 
-The previous verification results above describe the earlier turn-based runner.
-Do not treat them as verification of this concurrent branch. Phase 6 should
-repeat all tests and scripted Docker/PostgreSQL integration against this code.
+The endpoint commands are configuration templates. No paid inference, live
+Modal workload, or held-out experiment was run during this verification.

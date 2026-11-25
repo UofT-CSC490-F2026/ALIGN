@@ -1,8 +1,7 @@
 # ALIGN runner architecture
 
 See [architecture decision](ARCHITECTURE.md) and [quickstart](QUICKSTART.md).
-The concurrent implementation is pending Phase 6 local verification; earlier
-turn-based and PostgreSQL verification does not establish concurrent correctness.
+See the quickstart for the tested concurrent protocol and local evaluator setup.
 
 ## Ownership and interfaces
 
@@ -27,8 +26,8 @@ pass through the arbiter; publication/fetch are explicit structured tools
 mediated by a separate network-disabled Git container. Approved local actions
 may run concurrently. Authorization is serialized; no global state lock is held
 during model calls or tools. In-flight actions are visible to subsequent decisions.
-A changed coordination version can cancel a stale enforced approval; report
-authorization_stale separately from model-selected blocks. Monitor is advisory
+A change in published refs can cancel a stale Git authorization. Report
+`authorization_stale` separately from model-selected blocks. Monitor is advisory
 only, but synchronous inference can change timing. Compare all conditions on
 the same concurrent protocol and do not equate monitor timing with no arbiter.
 
@@ -61,6 +60,4 @@ security boundary. The event recorder remains in-memory and validates prefixes;
 process crashes are not guaranteed to preserve evidence. Normal deadline
 termination preserves recorded events and marks incomplete actions honestly.
 
-No hosted infrastructure is needed for scripted verification. Phase 6 must
-exercise concurrency, shared Git, evaluator isolation, successful tests,
-deadlines, redaction, callable inference mocks and disposable PostgreSQL.
+No hosted infrastructure is needed for scripted verification.

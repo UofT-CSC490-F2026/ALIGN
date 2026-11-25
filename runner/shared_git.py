@@ -8,7 +8,6 @@ from copy import deepcopy
 import re
 import subprocess
 from threading import Lock
-from tempfile import TemporaryFile
 from uuid import uuid4
 
 from .environment import DockerEnvironment
@@ -31,9 +30,12 @@ def isolated_run_args(name, image, *, workdir=None):
 def image_id(image, deadline):
     if not isinstance(image,str) or not image or image.startswith("-"):
         raise ValueError("Invalid image reference")
-    result = subprocess.run(["docker", "image", "inspect", "--format", "{{.Id}}", image],
-                            capture_output=True, text=True, check=True,
-                            timeout=deadline.remaining(30))
+    try:
+        result = subprocess.run(["docker", "image", "inspect", "--format", "{{.Id}}", image],
+                                capture_output=True, text=True, check=True,
+                                timeout=deadline.remaining(30))
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError("Docker image inspection timed out") from exc
     value = result.stdout.strip()
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", value):
         raise ValueError("Expected preloaded immutable Docker image ID")
@@ -80,18 +82,20 @@ class SharedDockerEnvironment(DockerEnvironment):
                             timeout=self.timeout, check=check)
 
     def _binary(self, container, command, data=None):
+        if data is not None and len(data)>MAX_BUNDLE:
+            raise ValueError("Git transfer exceeded bundle limit")
+        # Bound producer output before it crosses into the host process.
+        command = f"set -o pipefail; ( {command} ) | head -c {MAX_BUNDLE+1}"
         args = ["docker", "exec", "-i", container, "bash", "-lc", command]
         try:
-            with TemporaryFile() as output:
-                subprocess.run(args, input=data, stdout=output, stderr=subprocess.DEVNULL,
-                               timeout=self.deadline.remaining(self.timeout), check=True)
-                output.seek(0)
-                result=output.read(MAX_BUNDLE+1)
+            result = subprocess.run(args, input=data, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                    timeout=self.deadline.remaining(self.timeout))
         except subprocess.TimeoutExpired as exc:
             raise TimeoutError("Git transfer timed out") from exc
-        if len(result)>MAX_BUNDLE:
+        if len(result.stdout)>MAX_BUNDLE:
             raise ValueError("Git transfer exceeded bundle limit")
-        return result
+        result.check_returncode()
+        return result.stdout
 
     def _export(self, actor):
         # Explicit base ancestry check; a submitted branch must derive from the task base.
@@ -148,7 +152,7 @@ class SharedDockerEnvironment(DockerEnvironment):
             if target not in ACTORS or (tool == "git_fetch" and target == actor):
                 raise ValueError("Invalid Git target")
             old = self._published[target]
-            if expected_refs is None or expected_refs.get(target) != old:
+            if expected_refs != self._published:
                 return {"output": "Shared branch changed since authorization; inspect and repropose.",
                         "exit_code": 1, "stale": True, "published": self.shared_state()["published"]}
             if tool == "git_publish":

@@ -1,4 +1,4 @@
-# Concurrent ALIGN architecture (implementation pending Phase 6 validation)
+# Concurrent ALIGN architecture
 
 The pinned CooperBench Mini-SWE-Agent v2 coop runner creates threads, configures
 GitConnector/MessagingConnector, and intercepts messaging in DefaultAgent
@@ -31,11 +31,11 @@ Docker is not an absolute security boundary; use disposable hosts without secret
 
 - Live CLI uses concurrent execution across all arbitration conditions; mock
   alternating is retained as a deterministic reference.
-- Arbiter calls are serialized separately from coordination snapshots. A stale
-  enforced approval is cancelled and identified by authorization_stale. Shared
-  Git operations additionally compare expected published refs under the broker
-  lock. This conservative policy may affect throughput; report cancellations
-  and do not attribute them to the model's selected intervention.
+- Arbiter calls are serialized separately from coordination snapshots. Shared
+  Git operations compare the published refs at authorization and again under
+  the broker lock. A changed ref cancels the attempt with `authorization_stale`.
+  Isolated local work can continue when a peer finishes an unrelated action.
+  Report stale cancellations separately from the selected intervention.
 - Evaluator sandbox uses docker CLI subprocess timeouts, explicit resource limits,
   no network, and identical image ID/base commit checks. Shared final commits
   are merged in the broker and the pinned upstream per-feature test routine is
@@ -49,6 +49,7 @@ Docker is not an absolute security boundary; use disposable hosts without secret
   assignment; agree on the experimental action space with Person 2.
 - Trial expiry prevents new authorization and removes known containers. External
   calls already issued may continue remotely; their usage is not fabricated.
-  Cleanup is bounded separately and reports failure. Phase 6 must verify actual
-  cancellation and partial evidence handling. Process-crash journaling is out
-  of scope.
+  Cleanup is bounded separately and reports failure. A queued proposal stopped
+  before arbitration receives `proposal_cancelled`; a canonical proposal has
+  one terminal `action_result`. Completed tool results are preserved even if
+  the following workspace refresh fails. Process-crash journaling is out of scope.
