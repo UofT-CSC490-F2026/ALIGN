@@ -25,3 +25,14 @@ class RunnerIntegrationTests(unittest.TestCase):
         d=SafetyRuleArbiter().decide({"actor_id":"agent1","constraints":{},
            "proposed_action":{"action":{"command":"git push --force"},"files_touched":[]}})
         self.assertEqual(d["action"],"block")
+
+    def test_empty_constraints_vacuous(self):
+        from runner.cooperbench_adapter import evaluation_evidence
+        task={"dataset_source":"cooperbench","constraints":{},
+              "metadata":{"cooperbench_repo_directory":"repo_task","cooperbench_task_id":1,"feature_ids":[1,2]},
+              "goals":[{"goal_key":f"feature{i}","owner_agent_id":f"agent{i}"} for i in (1,2)]}
+        result={"feature1":{"passed":True},"feature2":{"passed":True},
+                "both_passed":True,"merge":{"status":"clean"}}
+        self.assertTrue(evaluation_evidence(task,result)["critical_constraints_passed"])
+        task["constraints"]={"protected_paths":["tests/"]}
+        self.assertIsNone(evaluation_evidence(task,result)["critical_constraints_passed"])

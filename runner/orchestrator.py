@@ -39,7 +39,7 @@ def passthrough(writer,obs,execute):
     writer.emit("system","action_result",{"outcome":"dispatched",**result},trigger_sequence=obs["proposal_sequence"])
     return result,False
 
-def run_task(task,agents,env,writer,*,max_steps=20,gate=passthrough,evaluator=None):
+def run_task(task,agents,env,writer,*,max_steps=20,gate=passthrough,evaluator=None,usage=None):
     """Own environment lifecycle; evaluator receives patches outside agent sandboxes."""
     try:
         view=agent_view(task)
@@ -84,6 +84,8 @@ def run_task(task,agents,env,writer,*,max_steps=20,gate=passthrough,evaluator=No
             if evidence.get("evaluation_error"):
                 writer.finish("failed",failure_category="infrastructure_error",failure_reason="Evaluator failed",**metrics)
                 return writer.snapshot()
+        if usage is not None:
+            metrics.update(usage())
         if escalated or len(finished)==len(agents):
             writer.finish("completed",**metrics)
         else:

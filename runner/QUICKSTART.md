@@ -1,6 +1,6 @@
 # Runner handoff
 
-All runner branches are draft/unmerged. Hosted CI intentionally skipped using commit
+The runner PR stack is initially draft/unmerged. Hosted CI intentionally skipped using commit
 messages containing [skip ci]; run the tests locally from the repository root.
 
 ```bash
@@ -46,7 +46,10 @@ not enforced and produce a failed trial rather than silently executing.
 Monitor mode logs arbiter_advice (not arbiter_decision) to avoid treating advisory
 blocks as enforced in A2. Person 3 must score advisory events separately.
 Model paths are hints, not verified command effects. No complete constraint audit,
-conflict gold labels, cost accounting, or inference server is implemented.
+conflict gold labels, dollar-cost accounting, or inference server is implemented.
+Token counts are recorded when all live endpoints return usage. For tasks with no
+declared constraints, constraint satisfaction is vacuous when the evaluator succeeds;
+nonempty constraints still need an independent audit.
 Unknown evidence stays unknown. Person 3 must supply independent conflict/constraint
 evidence and metrics; Person 2 must serve the actual trained checkpoint.
 The OpenAI-compatible adapter expects strict JSON content; test GPT-OSS/Qwen

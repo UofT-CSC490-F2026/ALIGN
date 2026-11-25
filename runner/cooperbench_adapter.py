@@ -19,7 +19,8 @@ def evaluation_evidence(task,result):
     both,merge=result.get("both_passed"),result.get("merge",{}).get("status")
     shared=both and merge in {"clean","identical"} if not result.get("error") and type(both) is bool and merge else None
     return {"goal_results":goals,"shared_goal_satisfied":shared,
-            "critical_constraints_passed":None,"merge_status":merge,
+            "critical_constraints_passed":True if not task["constraints"] and not result.get("error") else None,
+            "merge_status":merge,
             "evaluation_error":bool(result.get("error"))}
 
 def evaluate_patches(task,patches,dataset_dir,*,timeout=600):

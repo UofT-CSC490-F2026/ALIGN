@@ -54,8 +54,18 @@ def run(args):
                                                timeout=args.model_timeout))
             else:
                 arbiter=ConstantArbiter(args.mock_action)
+            def usage():
+                if not args.live:
+                    return {}
+                clients=[a.client for a in agents.values()]
+                if isinstance(arbiter,ChatArbiter):
+                    clients.append(arbiter.client)
+                if not all(c.usage_known for c in clients):
+                    return {}
+                return {"input_tokens":sum(c.input_tokens for c in clients),
+                        "output_tokens":sum(c.output_tokens for c in clients)}
             events=run_task(task,agents,env,writer,max_steps=args.max_steps,
-                            gate=ArbitrationGate(args.condition,arbiter),evaluator=evaluator)
+                            gate=ArbitrationGate(args.condition,arbiter),evaluator=evaluator,usage=usage)
         except Exception as exc:
             if env is not None:
                 env.close()
