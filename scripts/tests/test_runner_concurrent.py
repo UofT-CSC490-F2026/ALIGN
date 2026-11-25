@@ -2,11 +2,13 @@ import threading
 import unittest
 from copy import deepcopy
 from pathlib import Path
+from queue import Queue
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from runner.arbitration import ArbitrationGate, ConstantArbiter
 from runner.concurrent import run_concurrent
+from runner.contracts import ArbiterObservation, ProposedAction
 from runner.deadline import TrialDeadline
 from runner.environment import MockEnvironment
 from runner.event_writer import EventWriter
@@ -53,6 +55,175 @@ class ConcurrentTests(unittest.TestCase):
         self.assertTrue(env.closed)
         return events
 
+    def test_tool_exception_emits_unknown_and_marks_cleanup_failure(self):
+        class BrokenEnvironment(MockEnvironment):
+            def execute(self, actor, action):
+                raise RuntimeError("private tool failure")
+
+            def close(self):
+                super().close()
+                raise OSError("private cleanup failure")
+
+        def usage():
+            raise ValueError("private usage failure")
+
+        events = self.run_case({"agent1":Agent(proposal("inspect")), "agent2":Agent()},
+                               BrokenEnvironment(), usage=usage)
+        outcome = next(e["payload"] for e in events if e["event_type"]=="action_result")
+        self.assertEqual(outcome, {"outcome":"unknown", "error_type":"RuntimeError"})
+        end = events[-1]["payload"]
+        self.assertTrue(end["cleanup_failed"])
+        self.assertTrue(end["usage_error"])
+        self.assertEqual(end["failure_category"], "infrastructure_error")
+        self.assertNotIn("private", str(events))
+
+    def test_evaluator_preserves_partial_goal_and_output_limit_diagnostics(self):
+        fixture = task()
+        result = {"goal_results":{fixture["goals"][0]["goal_key"]:"passed"},
+                  "evaluation_error":True, "evaluation_output_truncated":True, "evaluation_exit_code":1}
+        events = self.run_case({actor:Agent() for actor in ("agent1", "agent2")}, MockEnvironment(),
+                               evaluator=lambda task, patches:result)
+        self.assertEqual([e["payload"]["result"] for e in events if e["event_type"]=="test_result"],
+                         ["passed", "not_evaluated"])
+        end = events[-1]["payload"]
+        self.assertEqual(end["failure_category"], "infrastructure_error")
+        self.assertTrue(end["evaluation_output_truncated"])
+        self.assertEqual(end["evaluation_exit_code"], 1)
+
+    def test_step_budget_bounds_repeated_queries(self):
+        env = MockEnvironment()
+        sender = Agent(proposal("first"), proposal("second"), proposal("not attempted"))
+        events = self.run_case({"agent1":sender, "agent2":Agent()}, env,
+                               "llm", ConstantArbiter("query"), max_steps=2)
+        self.assertEqual(events[-1]["payload"]["failure_category"], "timeout")
+        self.assertEqual([e["payload"]["outcome"] for e in events if e["event_type"]=="action_result"],
+                         ["cancelled", "cancelled"])
+        self.assertFalse(env.executed)
+        self.assertEqual(len(sender.feedback), 2)
+
+    def test_invalid_proposals_cannot_reach_arbitration(self):
+        secret="configured-secret-sample"
+        message={"action":{"tool":"message","recipient":"agent1","content":"self"},"files_touched":[]}
+        for candidate in (message,proposal(secret)):
+            with self.subTest(candidate=candidate):
+                writer=EventWriter(task_key=task()["task_key"],arbiter_condition="none",agent_config={},
+                                   arbiter_config={},redactor=Redactor([secret]))
+                events=self.run_case({"agent1":Agent(candidate),"agent2":Agent()},MockEnvironment(),writer=writer)
+                self.assertEqual(events[-1]["payload"]["failure_category"],"agent_error")
+                self.assertFalse(any(e["event_type"]=="proposal_queued" for e in events))
+                self.assertNotIn(secret,str(events))
+
+    def test_shared_ref_change_during_decision_cancels_before_dispatch(self):
+        class Environment(MockEnvironment):
+            tip="old"
+
+            def shared_state(self):
+                return {"published":{"agent1":self.tip}}
+
+        env=Environment()
+
+        def decide(obs):
+            self.assertEqual(obs["repository_state"]["shared_git"]["published"]["agent1"],"old")
+            env.tip="new"
+            return ConstantArbiter().decide(obs)
+
+        fetch={"action":{"tool":"git_fetch","peer":"agent1"},"files_touched":[]}
+        events=self.run_case({"agent1":Agent(),"agent2":Agent(fetch)},env,"llm",Arbiter(decide))
+        types={e["event_type"] for e in events}
+        self.assertIn("authorization_stale",types)
+        self.assertNotIn("action_started",types)
+        self.assertFalse(env.executed)
+
+    def test_already_submitted_peer_receives_no_message(self):
+        submitted=threading.Event()
+
+        class Writer(EventWriter):
+            def emit(self,actor_type,event_type,payload,**fields):
+                sequence=super().emit(actor_type,event_type,payload,**fields)
+                if event_type=="agent_submitted" and fields["actor_id"]=="agent2":
+                    submitted.set()
+                return sequence
+
+        def message(_):
+            wait(submitted)
+            return {"action":{"tool":"message","recipient":"agent2","content":"coordination"},"files_touched":[]}
+
+        sender,peer=Agent(message),Agent()
+        writer=Writer(task_key=task()["task_key"],arbiter_condition="none",agent_config={},arbiter_config={})
+        self.run_case({"agent1":sender,"agent2":peer},MockEnvironment(),writer=writer)
+        self.assertEqual(peer.feedback,[])
+        self.assertIn("has submitted",sender.feedback[0]["output"])
+
+    def test_invalid_evaluation_and_agent_config_fail_closed(self):
+        events=self.run_case({"agent1":Agent()},MockEnvironment())
+        self.assertEqual(events[-1]["payload"]["failure_category"],"infrastructure_error")
+        first=task()["goals"][0]["goal_key"]
+        events=self.run_case({"agent1":Agent(),"agent2":Agent()},MockEnvironment(),
+                             evaluator=lambda *_:{"goal_results":{first:"invented"}})
+        self.assertEqual(events[-1]["payload"]["failure_category"],"infrastructure_error")
+        self.assertFalse(any(e["event_type"]=="test_result" for e in events))
+
+    def test_eval_finishing_after_trial_deadline_preserves_evidence(self):
+        deadline=TrialDeadline(10)
+        first=task()["goals"][0]["goal_key"]
+
+        def evaluate(*_):
+            deadline.end=0
+            return {"goal_results":{first:"passed"}}
+
+        agents={actor:Agent() for actor in ("agent1","agent2")}
+        events=self.run_case(agents,MockEnvironment(),evaluator=evaluate,deadline=deadline)
+        self.assertEqual(events[-1]["payload"]["failure_category"],"timeout")
+        self.assertTrue(any(e["event_type"]=="test_result" and e["payload"]["result"]=="passed" for e in events))
+
+    def test_cleanup_failure_after_submission_marks_trial_failed(self):
+        class BrokenEnvironment(MockEnvironment):
+            def close(self):
+                super().close()
+                raise OSError("cleanup fixture")
+
+        events=self.run_case({actor:Agent() for actor in ("agent1","agent2")},BrokenEnvironment())
+        end=events[-1]["payload"]
+        self.assertEqual(end["failure_category"],"infrastructure_error")
+        self.assertIn("Environment cleanup failed",end["failure_reason"])
+
+    def test_supervisor_cancellation_preserves_original_stop_reason(self):
+        for arbiter_fails in (False,True):
+            waiting=threading.Event()
+            deadline=TrialDeadline(10)
+
+            class DeadlineQueue(Queue):
+                def get(self, *args, **kwargs):
+                    waiting.set()
+                    wait(deadline.cancelled)
+                    deadline.remaining()
+
+            def decide(obs):
+                wait(waiting)
+                if arbiter_fails:
+                    raise ValueError("arbiter failure fixture")
+                return ConstantArbiter("escalate").decide(obs)
+
+            with self.subTest(arbiter_fails=arbiter_fails), patch("runner.concurrent.Queue",DeadlineQueue):
+                events=self.run_case({"agent1":Agent(proposal("hold")),"agent2":Agent()},MockEnvironment(),
+                                     "llm",Arbiter(decide),deadline=deadline)
+                end=events[-1]["payload"]
+                if arbiter_fails:
+                    self.assertEqual(end["failure_category"],"agent_error")
+                    self.assertEqual(end["failure_reason"],"ValueError")
+                else:
+                    self.assertEqual(end["termination_reason"],"escalated")
+                    self.assertEqual(end["status"],"completed")
+
+    def test_worker_exit_without_submission_has_a_terminal_failure(self):
+        def exits(_):
+            raise SystemExit(8)
+
+        with patch("threading.excepthook") as error:
+            events=self.run_case({"agent1":Agent(exits),"agent2":Agent()},MockEnvironment())
+        error.assert_called_once()
+        self.assertEqual(events[-1]["payload"]["failure_reason"],"Trial stopped before submission")
+
     def test_independent_reasoning_and_tools_with_serial_decisions(self):
         for condition in ("none", "monitor", "rule_based", "llm"):
             with self.subTest(condition=condition):
@@ -88,6 +259,8 @@ class ConcurrentTests(unittest.TestCase):
                     self.assertEqual(observations, called)
                 self.assertTrue(observations[1]["repository_state"]["in_flight_actions"])
                 for obs in observations:
+                    self.assertEqual(set(obs),ArbiterObservation.__required_keys__)
+                    self.assertEqual(set(obs["proposed_action"]),ProposedAction.__required_keys__)
                     seq = obs["proposal_sequence"]
                     self.assertEqual(events[seq-1]["actor_id"], obs["actor_id"])
                     self.assertTrue(all(e["sequence_number"]<seq for e in obs["recent_events"]))
@@ -155,7 +328,7 @@ class ConcurrentTests(unittest.TestCase):
             def execute(self, actor, action):
                 running.set()
                 wait(cleanup)
-                return {"output":"late response", "exit_code":0}
+                raise OSError("container removed after escalation")
 
             def close(self):
                 cleanup.set()
@@ -280,9 +453,11 @@ class ConcurrentTests(unittest.TestCase):
                              arbiter_config={},redactor=Redactor([secret]))
         self.addCleanup(release.set)
         events = self.run_case({"agent1":Agent(reasoning),"agent2":Agent(other)},env,
-                               writer=writer,deadline=deadline)
+                               writer=writer,deadline=deadline,usage=lambda:{"input_tokens":0})
         self.assertFalse(env.executed)
         self.assertNotIn(secret,str(events))
+        self.assertTrue(events[-1]["payload"]["usage_incomplete"])
+        self.assertNotIn("input_tokens",events[-1]["payload"])
         release.set()
         wait(returned)
         self.assertEqual(writer.snapshot(),events)

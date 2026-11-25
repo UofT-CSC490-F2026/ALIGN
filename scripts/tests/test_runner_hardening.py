@@ -1,17 +1,25 @@
 """Fault injection and interaction regressions; no model or Docker calls."""
 import json
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 from runner.arbitration import ArbitrationGate, ConstantArbiter
 from runner.environment import MockEnvironment, ScriptedAgent
-from runner.orchestrator import run_task, validate_proposal
+from runner.orchestrator import dispatch, run_task, validate_proposal
 from scripts.run_artifacts import verify_bundle, load_events
 from scripts.process_runs import expected_rows, derived_end
 from test_runner_orchestration import task, writer, proposal
 
 
 class HardeningTests(unittest.TestCase):
+    def test_gate_rejects_invalid_condition_and_missing_arbiter(self):
+        with self.assertRaisesRegex(ValueError,'Invalid condition'):
+            ArbitrationGate('unexpected')
+        with self.assertRaisesRegex(ValueError,'Arbiter required'):
+            ArbitrationGate('monitor')
+
     def run_agents(self, agents=None, env=None, gate=None, **kwargs):
         env=env or MockEnvironment()
         agents=agents or {a:ScriptedAgent([proposal()]) for a in ('agent1','agent2')}
@@ -25,9 +33,63 @@ class HardeningTests(unittest.TestCase):
         for p in [[],{}, {'action':{},'files_touched':[]},
                   {'action':{'tool':'bash','command':' '},'files_touched':[]},
                   {'action':{'tool':'bash','command':'echo ok','extra':True},'files_touched':[]},
-                  {'action':{'tool':'message','recipient':[],'content':'hi'},'files_touched':[]}]:
+                  {'action':{'tool':'message','recipient':[],'content':'hi'},'files_touched':[]},
+                  {'action':{'tool':'git_publish','force':True},'files_touched':[]},
+                  {'action':{'tool':'git_fetch','peer':'other'},'files_touched':[]},
+                  {'action':{'tool':'bash','command':'inspect'},'files_touched':[1]},
+                  {'action':{'tool':'bash','command':'\x00'},'files_touched':[]}]:
             with self.subTest(p=p),self.assertRaises(ValueError):
                 validate_proposal(p)
+
+    def test_git_publication_validation_returns_independent_proposal(self):
+        publication={'action':{'tool':'git_publish'},'files_touched':[]}
+        validated=validate_proposal(publication)
+        self.assertEqual(validated,publication)
+        validated['action']['tool']='other'
+        self.assertEqual(publication['action']['tool'],'git_publish')
+
+    def test_alternating_runner_rejects_self_message_and_invalid_roles(self):
+        message = {'action':{'tool':'message','recipient':'agent1','content':'self'},'files_touched':[]}
+        env,_,_,events = self.run_agents(agents={'agent1':ScriptedAgent([message]),'agent2':ScriptedAgent([])})
+        self.assertEqual(events[-1]['payload']['failure_category'],'agent_error')
+        self.assertFalse(env.executed)
+        with self.assertRaisesRegex(ValueError,'Cannot message self'):
+            dispatch(MockEnvironment(),{},'agent1',message['action'])
+        _,_,_,events = self.run_agents(agents={'agent1':ScriptedAgent([])})
+        self.assertEqual(events[-1]['payload']['failure_category'],'agent_error')
+
+    def test_configured_secret_in_alternating_proposal_never_dispatches(self):
+        secret='configured-shell-secret'
+        action={'action':{'tool':'bash','command':secret},'files_touched':[]}
+        with patch.dict(os.environ,{'ALIGN_AGENT_API_KEY':secret}):
+            env,_,_,events=self.run_agents(agents={'agent1':ScriptedAgent([action]),'agent2':ScriptedAgent([])})
+        self.assertFalse(env.executed)
+        self.assertEqual(events[-1]['payload']['failure_category'],'agent_error')
+        self.assertNotIn(secret,str(events))
+
+    def test_alternating_run_preserves_partial_evidence_and_usage_failure(self):
+        first = task()['goals'][0]['goal_key']
+        def evaluator(task,patches):
+            return {'goal_results':{first:'passed'},'evaluation_error':True}
+        def usage():
+            raise RuntimeError('private details')
+        _,_,_,events = self.run_agents(evaluator=evaluator,usage=usage)
+        self.assertEqual([e['payload']['result'] for e in events if e['event_type']=='test_result'],
+                         ['passed','not_evaluated'])
+        self.assertEqual(events[-1]['payload']['failure_category'],'infrastructure_error')
+        self.assertTrue(events[-1]['payload']['usage_error'])
+        _,_,_,invalid = self.run_agents(evaluator=lambda *_:{'goal_results':{first:'mislabeled'}})
+        self.assertEqual(invalid[-1]['payload']['failure_category'],'infrastructure_error')
+        self.assertFalse(any(e['event_type']=='test_result' for e in invalid))
+
+    def test_successful_alternating_evaluation_retains_both_goal_results(self):
+        def evaluate(task,patches):
+            return {'goal_results':{goal['goal_key']:'passed' for goal in task['goals']},
+                    'shared_goal_satisfied':True,'critical_constraints_passed':True,'merge_status':'clean'}
+        _,_,_,events=self.run_agents(evaluator=evaluate)
+        self.assertEqual(events[-1]['payload']['status'],'completed')
+        self.assertTrue(events[-1]['payload']['shared_goal_satisfied'])
+        self.assertEqual([e['payload']['result'] for e in events if e['event_type']=='test_result'],['passed']*2)
 
     def test_cleanup_failure_is_failed_bundle(self):
         class Broken(MockEnvironment):

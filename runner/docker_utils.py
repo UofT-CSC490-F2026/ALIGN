@@ -87,8 +87,10 @@ def bounded_run(args, *, timeout, limit=COMMAND_CAPTURE_BYTES, data=None, check=
             if process.poll() is None:
                 process.kill()
                 process.wait(timeout=2)
-            for reader in readers:
-                if reader.ident is not None:
+            for reader, stream in zip(readers, (process.stdout, process.stderr)):
+                if reader.ident is None:
+                    stream.close()
+                else:
                     reader.join(0.1)
             raise
 

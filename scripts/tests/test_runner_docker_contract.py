@@ -7,11 +7,56 @@ import shlex
 import subprocess
 from tempfile import TemporaryDirectory
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from runner.environment import DockerEnvironment
 
 
 class DockerContractTests(unittest.TestCase):
+    def test_legacy_workspace_state_and_action_timeout(self):
+        env=DockerEnvironment.__new__(DockerEnvironment)
+        env.containers={'agent1':'sandbox'}
+        env.base_commit='a'*40
+        for action in ({'tool':'message'}, {'tool':'bash','command':None}):
+            with self.assertRaisesRegex(ValueError,'Expected bash action'):
+                env.execute('agent1',action)
+        with patch.object(env,'_exec',side_effect=[Mock(stdout=' M file'),Mock(stdout='tracked diff')]):
+            self.assertEqual(env.state(),{'agent1':{'git_status':' M file','diff':'tracked diff'}})
+        completed=subprocess.CompletedProcess([],17,'out','err')
+        with patch.object(env,'_exec',return_value=completed):
+            self.assertEqual(env.execute('agent1',{'tool':'bash','command':'inspect'}),
+                             {'output':'outerr','exit_code':17,'output_truncated':False})
+        with patch.object(env,'_exec',side_effect=subprocess.TimeoutExpired('docker',1)), \
+             patch.object(env,'close') as close:
+            with self.assertRaisesRegex(TimeoutError,'trial aborted'):
+                env.execute('agent1',{'tool':'bash','command':'inspect'})
+            close.assert_called_once()
+
+    def test_legacy_rejects_bad_configuration_and_dirty_image(self):
+        base='a'*40
+        for image,commit,timeout,reason in (('',base,1,'Trusted image'),
+                                            ('--help',base,1,'Trusted image'),
+                                            ('image','no base',1,'Trusted image'),
+                                            ('image',base,0,'Positive timeout')):
+            with self.subTest(image=image,commit=commit,timeout=timeout), self.assertRaisesRegex(ValueError,reason):
+                DockerEnvironment(image,commit,timeout=timeout)
+        with patch.object(DockerEnvironment,'_exec',side_effect=[Mock(stdout=base),Mock(stdout=' M file')]), \
+             patch.object(DockerEnvironment,'_docker',return_value=Mock(returncode=0)) as docker:
+            with self.assertRaisesRegex(ValueError,'workspace must be clean'):
+                DockerEnvironment('image',base)
+            self.assertEqual(docker.call_args.args[0][:2],['rm','-f'])
+
+    def test_cleanup_is_retryable_after_a_docker_timeout(self):
+        env=DockerEnvironment.__new__(DockerEnvironment)
+        env.containers={'agent1':'first','agent2':'second'}
+        removed=Mock(returncode=1,stderr='No such container: second')
+        error=subprocess.TimeoutExpired('docker',1)
+        with patch.object(env,'_docker',side_effect=[error,removed,Mock(returncode=0)]):
+            with self.assertRaisesRegex(RuntimeError,'Could not remove'):
+                env.close()
+            self.assertEqual(env.containers,{'agent1':'first'})
+            env.close()
+            self.assertEqual(env.containers,{})
+
     def test_initialization_failure_removes_started_containers(self):
         calls=[]
         def docker(args,**kwargs):

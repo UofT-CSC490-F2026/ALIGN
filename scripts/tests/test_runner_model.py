@@ -14,7 +14,7 @@ from runner.arbiter_prompt import prompt_hash
 from runner.arbitration import ConstantArbiter
 from runner.cli import main, run
 from runner.environment import MockEnvironment
-from runner.model_adapter import ChatClient, ChatAgent, ChatArbiter
+from runner.model_adapter import ChatClient, ChatAgent, ChatArbiter, strict_json
 from scripts.run_artifacts import load_events
 from test_runner_orchestration import task
 
@@ -88,6 +88,27 @@ class ModelTests(unittest.TestCase):
         self.response.pop('usage')
         self.client.generate([])
         self.assertFalse(self.client.usage_known)
+
+    def test_oversize_reply_marks_usage_unknown(self):
+        self.response=b" "*2_000_001
+        with self.assertRaisesRegex(ValueError,"Model response too large"):
+            self.client.generate([])
+        self.assertFalse(self.client.usage_known)
+
+    def test_invalid_usage_and_numeric_decision_values(self):
+        self.response['usage']='malformed'
+        self.assertEqual(self.client.generate([]),{'done':True})
+        self.assertFalse(self.client.usage_known)
+        self.assertEqual(strict_json('{"value":0.5}'),{'value':0.5})
+        with self.assertRaisesRegex(ValueError,"Nonfinite JSON number"):
+            strict_json('{"value":1e309}')
+
+    def test_missing_model_or_invalid_request_budget(self):
+        with self.assertRaisesRegex(ValueError,"Model required"):
+            ChatClient(self.client.endpoint,' ',key_env='UNUSED')
+        for budgets in ({'timeout':0},{'timeout':float('inf')},{'max_tokens':False},{'max_tokens':0}):
+            with self.subTest(budgets=budgets), self.assertRaisesRegex(ValueError,"Positive timeout"):
+                ChatClient(self.client.endpoint,'model',key_env='UNUSED',**budgets)
 
     def test_http_error_and_redirect_rejected(self):
         for status in (401,429,500,302):

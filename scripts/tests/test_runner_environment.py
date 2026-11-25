@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch, Mock
 from importlib import metadata
-from runner.cooperbench_adapter import installed_revision
+from runner.cooperbench_adapter import installed_revision, prepare_environment
 from runner.environment import MockEnvironment, ScriptedAgent
 from runner.task_loader import agent_view
 
@@ -13,6 +13,17 @@ class EnvironmentTests(unittest.TestCase):
            "goals":[{"owner_type":"agent","owner_agent_id":f"agent{i}","description":"edit",
                      "success_criteria":{"secret":"hidden"}} for i in (1,2)]}
         self.assertNotIn("hidden",str(agent_view(t)))
+
+    def test_projection_excludes_non_agent_goals_and_requires_both_agents(self):
+        fixture={"task_key":"fixture","shared_goal":"goal","constraints":{},"goals":[
+            {"owner_type":"shared","description":"evaluator-only"},
+            {"owner_type":"agent","owner_agent_id":"agent1","description":"first"},
+            {"owner_type":"agent","owner_agent_id":"agent2","description":"second"},
+        ]}
+        self.assertEqual(agent_view(fixture)["agent_goals"],{"agent1":"first","agent2":"second"})
+        fixture["goals"].pop()
+        with self.assertRaisesRegex(ValueError,"Exactly agent1 and agent2"):
+            agent_view(fixture)
     def test_mock(self):
         a=ScriptedAgent([{"action":{"tool":"bash","command":"echo hi"},"files_touched":[]}])
         e=MockEnvironment()
@@ -49,3 +60,22 @@ class EnvironmentTests(unittest.TestCase):
                    side_effect=metadata.PackageNotFoundError("cooperbench")):
             with self.assertRaisesRegex(RuntimeError,"does not match"):
                 installed_revision()
+
+    def test_dependency_pin_file_requires_one_valid_revision(self):
+        revision="a"*40
+        pin=f"git+https://github.com/cooperbench/CooperBench.git@{revision}"
+        for content in ("\n# missing pin\nother==1\n", f"{pin}\n{pin}\n"):
+            with self.subTest(content=content), patch("runner.cooperbench_adapter.Path.read_text",return_value=content), \
+                 patch("runner.cooperbench_adapter.metadata.distribution") as distribution:
+                with self.assertRaisesRegex(RuntimeError,"exactly one"):
+                    installed_revision()
+                distribution.assert_not_called()
+
+    def test_legacy_preparation_uses_declared_base_and_timeout(self):
+        task={"dataset_source":"cooperbench","base_commit":"a"*40,
+              "metadata":{"cooperbench_repo_directory":"fixture","cooperbench_task_id":1,"feature_ids":[1,2]},
+              "goals":[{"goal_key":"feature1","owner_agent_id":"agent1"},
+                       {"goal_key":"feature2","owner_agent_id":"agent2"}]}
+        with patch("runner.cooperbench_adapter.DockerEnvironment") as docker:
+            self.assertIs(prepare_environment(task,"image",timeout=3),docker.return_value)
+            docker.assert_called_once_with("image",task["base_commit"],timeout=3)
