@@ -1,13 +1,14 @@
 """Isolated execution and deterministic substitutes."""
-from copy import deepcopy
 import re
 import subprocess
+from copy import deepcopy
 from typing import Protocol
 from uuid import uuid4
 
-from .docker_utils import (ACTORS, COMMAND_CAPTURE_BYTES, MAX_PATCH_BYTES,
-                           agent_feedback, bounded_run, isolated_run_args,
-                           require_complete)
+from .docker_utils import (
+    ACTORS, COMMAND_CAPTURE_BYTES, MAX_PATCH_BYTES, agent_feedback,
+    bounded_run, isolated_run_args, require_complete,
+)
 
 class Agent(Protocol):
     def propose(self, context: dict) -> dict | None: ...
@@ -84,11 +85,11 @@ class DockerEnvironment:
         if action.get("tool")!="bash" or not isinstance(action.get("command"),str):
             raise ValueError("Expected bash action")
         try:
-            r=self._exec(actor,action["command"])
+            result = self._exec(actor, action["command"])
         except subprocess.TimeoutExpired as exc:
             self.close()
             raise TimeoutError("Command timed out; trial aborted") from exc
-        return agent_feedback(r)
+        return agent_feedback(result)
     def state(self):
         return {a:{"git_status":self._exec(a,"git status --porcelain",check=True).stdout[:4000],
                    "diff":self._exec(a,f"git diff --no-ext-diff {self.base_commit}",check=True).stdout[:8000]}

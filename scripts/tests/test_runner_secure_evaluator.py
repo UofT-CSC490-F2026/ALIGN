@@ -6,6 +6,10 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock, patch
 
 from runner.cooperbench_adapter import evaluate_patches
+from runner.deadline import TrialDeadline
+from runner.docker_utils import OutputLimitExceeded
+from runner.secure_evaluator import SecureSandbox
+import subprocess
 
 
 class SecureEvaluationTests(unittest.TestCase):
@@ -42,3 +46,17 @@ class SecureEvaluationTests(unittest.TestCase):
         second.terminate.assert_called_once()
         first.write_patch.assert_any_call("tests1.patch","tests for 1")
         second.write_patch.assert_any_call("tests2.patch","tests for 9")
+
+    def test_truncated_evaluator_output_is_not_scored(self):
+        sandbox = SecureSandbox.__new__(SecureSandbox)
+        sandbox.deadline = TrialDeadline(10)
+        sandbox.timeout = 5
+        sandbox.closed = False
+        sandbox.workdir = "/workspace"
+        sandbox.name = "fixture"
+        result = subprocess.CompletedProcess([], 0, b"1 passed", b"")
+        result.output_truncated = True
+        with patch("runner.secure_evaluator.bounded_run", return_value=result):
+            with self.assertRaises(OutputLimitExceeded) as error:
+                sandbox.exec("test-command")
+        self.assertEqual(error.exception.returncode, 0)

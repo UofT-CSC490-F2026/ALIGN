@@ -4,12 +4,13 @@ import json
 import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import FunctionType
 from .task_loader import cooperbench_identity
 from .environment import DockerEnvironment
 from .deadline import TrialDeadline
 from .shared_git import SharedDockerEnvironment, image_id
 from .secure_evaluator import SecureBackend
-from types import FunctionType
+from .docker_utils import OutputLimitExceeded
 
 def installed_revision():
     """Verify the installed VCS dependency against the sole requirements pin."""
@@ -85,7 +86,9 @@ def evaluation_evidence(task,result):
     return {"goal_results":goals,"shared_goal_satisfied":shared,
             "critical_constraints_passed":True if not task["constraints"] and not evaluation_error else None,
             "merge_status":merge,
-            "evaluation_error":evaluation_error,"evaluation_timeout":bool(result.get("timeout"))}
+            "evaluation_error":evaluation_error,"evaluation_timeout":bool(result.get("timeout")),
+            "evaluation_output_truncated":bool(result.get("output_truncated")),
+            "evaluation_exit_code":result.get("output_exit_code")}
 
 def evaluate_patches(task,patches,dataset_dir,*,timeout=600,deadline=None,expected_image=None):
     """Run pinned test logic in isolated Docker, preserving missing evidence.
@@ -112,6 +115,8 @@ def evaluate_patches(task,patches,dataset_dir,*,timeout=600,deadline=None,expect
             results={}
             evaluation_error=None
             timed_out=False
+            output_truncated=False
+            output_exit_code=None
             try:
                 final_patch=upstream._filter_test_files(patches["agent1"])
                 for i,feature in enumerate(features,1):
@@ -128,9 +133,13 @@ def evaluate_patches(task,patches,dataset_dir,*,timeout=600,deadline=None,expect
             except Exception as exc:
                 evaluation_error=type(exc).__name__
                 timed_out=isinstance(exc,TimeoutError)
+                if isinstance(exc,OutputLimitExceeded):
+                    output_truncated=True
+                    output_exit_code=exc.returncode
             result={"merge":{"status":"clean"},**results,
                     "both_passed":len(results)==2 and all(x["passed"] for x in results.values()),
-                    "error":evaluation_error,"partial_evidence":True,"timeout":timed_out}
+                    "error":evaluation_error,"partial_evidence":True,"timeout":timed_out,
+                    "output_truncated":output_truncated,"output_exit_code":output_exit_code}
         else:
             # Inject the sandbox factory and safe patch writer into a private
             # function globals copy; no global monkeypatch or backend mutation.

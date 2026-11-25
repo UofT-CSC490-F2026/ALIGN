@@ -5,7 +5,7 @@ protects snapshots, mailboxes and causal event order; no model or tool runs
 while it is held. The arbiter lock serializes model decisions only.
 """
 from copy import deepcopy
-from queue import Queue, Empty
+from queue import Empty, Queue
 from threading import Event, Lock, Thread
 from time import monotonic
 
@@ -95,32 +95,32 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                         version += 1
                         writer.emit("agent","agent_submitted",{},actor_id=actor)
                         return
-                    p = validate_proposal(proposal)
-                    if p["action"].get("recipient")==actor or p["action"].get("peer")==actor:
+                    validated_proposal = validate_proposal(proposal)
+                    if validated_proposal["action"].get("recipient")==actor or validated_proposal["action"].get("peer")==actor:
                         raise ValueError("Cannot target self")
-                    # Never dispatch a command containing a configured secret.
-                    if writer.sanitize(p) != p:
+                    # Never dispatch tool_action command containing tool_action configured secret.
+                    if writer.sanitize(validated_proposal) != validated_proposal:
                         raise ValueError("Proposal contains configured secret")
-                    queued = writer.emit("agent","proposal_queued",p,actor_id=actor)
-                    pending[actor] = {"proposed_action":deepcopy(p),"phase":"queued","queue_sequence":queued}
+                    queued = writer.emit("agent","proposal_queued",validated_proposal,actor_id=actor)
+                    pending[actor] = {"proposed_action":deepcopy(validated_proposal),"phase":"queued","queue_sequence":queued}
                 # Only arbitration is serialized. Waiting workers expose pending proposals.
                 with arbiter_lock:
                     with lock:
                         check()
-                        p = pending.pop(actor)["proposed_action"]
-                        a = p["action"]
-                        git_tool = a["tool"] in {"git_publish","git_fetch"}
-                        seq = writer.emit("agent","proposed_action",p,actor_id=actor)
-                        snap = state()
+                        validated_proposal = pending.pop(actor)["proposed_action"]
+                        tool_action = validated_proposal["action"]
+                        git_tool = tool_action["tool"] in {"git_publish","git_fetch"}
+                        seq = writer.emit("agent","proposed_action",validated_proposal,actor_id=actor)
+                        coordination_snapshot = state()
                         observed_version = version
-                        obs = writer.sanitize(observation(view,actor,seq,p,writer.snapshot()[:-1],snap))
-                        writer.emit("system","arbiter_observation",obs,trigger_sequence=seq)
-                        pending[actor] = {"proposal_sequence":seq, "proposed_action":p,"phase":"deciding"}
-                    evaluation = gate.evaluate(obs)
+                        arbiter_observation = writer.sanitize(observation(view,actor,seq,validated_proposal,writer.snapshot()[:-1],coordination_snapshot))
+                        writer.emit("system","arbiter_observation",arbiter_observation,trigger_sequence=seq)
+                        pending[actor] = {"proposal_sequence":seq, "proposed_action":validated_proposal,"phase":"deciding"}
+                    evaluation = gate.evaluate(arbiter_observation)
                     with lock:
                         check()
                         pending.pop(actor)
-                        action = gate.record(writer,obs,evaluation)
+                        action = gate.record(writer,arbiter_observation,evaluation)
                         if action != "continue":
                             result = writer.sanitize(gate.feedback(action,evaluation[1]))
                             writer.emit("system","action_result",{"outcome":"cancelled",**result},trigger_sequence=seq)
@@ -135,10 +135,10 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                                 deadline.cancel()
                                 return
                         elif (git_tool and shared().get("published",{})
-                              != snap["shared_git"].get("published",{})):
+                              != coordination_snapshot["shared_git"].get("published",{})):
                             result=stale(seq,observed_version)
                         else:
-                            inflight[actor]={"proposal_sequence":seq,"proposed_action":p,"started":False}
+                            inflight[actor]={"proposal_sequence":seq,"proposed_action":validated_proposal,"started":False}
                             result=None
                 # Release both locks before executing tools.
                 if result is None:
@@ -149,19 +149,19 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                             inflight[actor]["started"]=True
                             snapshot_status[actor] = "action_in_flight"
                             writer.emit("system","action_started",{"actor_id":actor},trigger_sequence=seq)
-                        if a["tool"]=="message":
+                        if tool_action["tool"]=="message":
                             with lock:
                                 check()
-                                peer=a["recipient"]
+                                peer=tool_action["recipient"]
                                 if peer in finished:
                                     result={"output":f"{peer} has submitted; message not delivered","exit_code":1}
                                 else:
-                                    mail[peer].append({"output":f"Message from {actor}: {a['content']}","exit_code":0})
+                                    mail[peer].append({"output":f"Message from {actor}: {tool_action['content']}","exit_code":0})
                                     result={"output":"Message delivered","exit_code":0}
                         elif git_tool:
-                            result=env.execute(actor,a,expected_refs=snap["shared_git"].get("published",{}))
+                            result=env.execute(actor,tool_action,expected_refs=coordination_snapshot["shared_git"].get("published",{}))
                         else:
-                            result=env.execute(actor,a)
+                            result=env.execute(actor,tool_action)
                     except Exception as exc:
                         with lock:
                             if not stop.is_set() and actor in inflight:
@@ -233,6 +233,9 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                     raise ValueError("Invalid evaluator evidence")
                 writer.emit("system","test_result",{"goal_key":key,"result":result})
             metrics.update({k:evidence.get(k) for k in ("shared_goal_satisfied","critical_constraints_passed","merge_status")})
+            if evidence.get("evaluation_output_truncated"):
+                metrics["evaluation_output_truncated"] = True
+                metrics["evaluation_exit_code"] = evidence.get("evaluation_exit_code")
             if evidence.get("evaluation_error"):
                 status="failed"
                 failure={"failure_category":"timeout" if evidence.get("evaluation_timeout") else "infrastructure_error",

@@ -3,19 +3,28 @@ from copy import deepcopy
 import json
 from time import monotonic
 
-ACTIONS={"continue","query","block","mediate","restructure","escalate"}
-ENFORCED={"continue","query","block","mediate","escalate"}
+ACTIONS = frozenset({"continue", "query", "block", "mediate", "restructure", "escalate"})
+ENFORCED = ACTIONS - {"restructure"}
 
-def validate_decision(d, actors):
-    if not isinstance(d,dict) or set(d)!={"action","reason","affected_agents","evidence"}:
+def validate_decision(decision, actors):
+    if not isinstance(decision, dict) or set(decision) != {
+        "action", "reason", "affected_agents", "evidence",
+    }:
         raise ValueError("Invalid arbiter decision schema")
-    if (not isinstance(d["action"],str) or d["action"] not in ACTIONS or not isinstance(d["reason"],str) or not d["reason"].strip()
-        or not isinstance(d["affected_agents"],list)
-        or not all(isinstance(a,str) and a in actors for a in d["affected_agents"])
-        or not isinstance(d["evidence"],dict)):
+    if (
+        not isinstance(decision["action"], str)
+        or decision["action"] not in ACTIONS
+        or not isinstance(decision["reason"], str)
+        or not decision["reason"].strip()
+        or not isinstance(decision["affected_agents"], list)
+        or not all(isinstance(actor, str) and actor in actors
+                   for actor in decision["affected_agents"])
+        or not isinstance(decision["evidence"], dict)
+    ):
         raise ValueError("Invalid arbiter decision values")
-    json.dumps(d, allow_nan=False, ensure_ascii=False).encode("utf-8")
-    return deepcopy(d)
+    json.dumps(decision, allow_nan=False, ensure_ascii=False).encode("utf-8")
+    return deepcopy(decision)
+
 
 class ArbitrationGate:
     def __init__(self,condition,arbiter=None):

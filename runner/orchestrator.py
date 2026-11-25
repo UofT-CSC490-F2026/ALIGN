@@ -1,31 +1,31 @@
-"""Bounded alternating two-agent runner; same execution path for mocks and live agents."""
+"""Deterministic alternating runner and shared proposal/observation helpers."""
 from copy import deepcopy
 import json
 from .arbitration import ArbitrationGate
 from .task_loader import agent_view
 
-def validate_proposal(p):
-    if not isinstance(p,dict) or set(p)!={"action","files_touched"}:
+def validate_proposal(proposal):
+    if not isinstance(proposal,dict) or set(proposal)!={"action","files_touched"}:
         raise ValueError("Invalid proposal")
-    a,paths=p["action"],p["files_touched"]
-    if not isinstance(a,dict) or not isinstance(paths,list) or not all(isinstance(x,str) for x in paths):
+    action,paths=proposal["action"],proposal["files_touched"]
+    if not isinstance(action,dict) or not isinstance(paths,list) or not all(isinstance(x,str) for x in paths):
         raise ValueError("Invalid action/paths")
-    if a.get("tool")=="bash":
-        if set(a)!={"tool","command"} or not isinstance(a.get("command"),str) or not a["command"].strip() or len(a["command"])>16000 or "\x00" in a["command"]:
+    if action.get("tool")=="bash":
+        if set(action)!={"tool","command"} or not isinstance(action.get("command"),str) or not action["command"].strip() or len(action["command"])>16000 or "\x00" in action["command"]:
             raise ValueError("Invalid bash command")
-    elif a.get("tool")=="message":
-        if set(a)!={"tool","recipient","content"} or a.get("recipient") not in ("agent1","agent2") or not isinstance(a.get("content"),str) or not a["content"].strip() or len(a["content"])>4000 or paths:
+    elif action.get("tool")=="message":
+        if set(action)!={"tool","recipient","content"} or action.get("recipient") not in ("agent1","agent2") or not isinstance(action.get("content"),str) or not action["content"].strip() or len(action["content"])>4000 or paths:
             raise ValueError("Invalid message")
-    elif a.get("tool")=="git_publish":
-        if set(a)!={"tool"} or paths:
+    elif action.get("tool")=="git_publish":
+        if set(action)!={"tool"} or paths:
             raise ValueError("Invalid Git publication")
-    elif a.get("tool")=="git_fetch":
-        if set(a)!={"tool","peer"} or a.get("peer") not in ("agent1","agent2") or paths:
+    elif action.get("tool")=="git_fetch":
+        if set(action)!={"tool","peer"} or action.get("peer") not in ("agent1","agent2") or paths:
             raise ValueError("Invalid Git fetch")
     else:
         raise ValueError("Unsupported tool")
-    json.dumps(p, ensure_ascii=False).encode("utf-8")
-    return deepcopy(p)
+    json.dumps(proposal, ensure_ascii=False).encode("utf-8")
+    return deepcopy(proposal)
 
 def observation(view,actor,seq,proposal,history,state):
     # Exclude earlier embedded observations to prevent recursive growth.
@@ -74,13 +74,13 @@ def run_task(task,agents,env,writer,*,max_steps=20,gate=None,evaluator=None,usag
                     finished.add(actor)
                     writer.emit("agent","agent_submitted",{},actor_id=actor)
                     continue
-                p=validate_proposal(proposed)
-                if writer.sanitize(p)!=p:
+                proposal = validate_proposal(proposed)
+                if writer.sanitize(proposal) != proposal:
                     raise ValueError("Proposal contains configured secret")
-                if p["action"].get("recipient")==actor:
+                if proposal["action"].get("recipient") == actor:
                     raise ValueError("Cannot message self")
-                seq=writer.emit("agent","proposed_action",p,actor_id=actor)
-                obs=writer.sanitize(observation(view,actor,seq,p,writer.snapshot()[:-1],state))
+                seq=writer.emit("agent", "proposed_action", proposal, actor_id=actor)
+                obs=writer.sanitize(observation(view, actor, seq, proposal, writer.snapshot()[:-1], state))
                 writer.emit("system","arbiter_observation",obs,trigger_sequence=seq)
                 attempted=False
                 def execute():
@@ -89,7 +89,7 @@ def run_task(task,agents,env,writer,*,max_steps=20,gate=None,evaluator=None,usag
                         raise RuntimeError("Proposal already dispatched")
                     attempted=True
                     phase="infrastructure_error"
-                    return writer.sanitize(dispatch(env,agents,actor,p["action"],finished))
+                    return writer.sanitize(dispatch(env, agents, actor, proposal["action"], finished))
                 result,stop=gate(writer,obs,execute)
                 if stop:
                     escalated=True

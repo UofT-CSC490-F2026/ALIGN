@@ -10,8 +10,9 @@ from threading import Lock
 from uuid import uuid4
 
 from .environment import DockerEnvironment
-from .docker_utils import (ACTORS, COMMAND_CAPTURE_BYTES, MAX_PATCH_BYTES,
-                           agent_feedback, isolated_run_args)
+from .docker_utils import (
+    ACTORS, COMMAND_CAPTURE_BYTES, MAX_PATCH_BYTES, agent_feedback, isolated_run_args,
+)
 
 MAX_BUNDLE = MAX_PATCH_BYTES
 BARE = "/tmp/align-shared.git"
@@ -133,8 +134,8 @@ class SharedDockerEnvironment(DockerEnvironment):
         tool = action.get("tool")
         if tool == "bash":
             # The supervisor owns cleanup; a worker must not remove peer containers.
-            r = self._exec(actor, action["command"])
-            return agent_feedback(r)
+            result = self._exec(actor, action["command"])
+            return agent_feedback(result)
         if tool not in {"git_publish", "git_fetch"}:
             raise ValueError("Unsupported environment tool")
         with self._git_lock:
