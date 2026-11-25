@@ -20,6 +20,7 @@ class RunnerIntegrationTests(unittest.TestCase):
             bundle=next((root/"runs").glob("*/bundle"))
             self.assertTrue(verify_bundle(bundle)["complete"])
             events,_=load_events((bundle/"events.jsonl").read_bytes())
+            self.assertIsNone(events[0]["payload"]["agent_config"]["upstream_revision"])
             self.assertTrue(any(e["event_type"]=="arbiter_decision" for e in events))
     def test_rule_baseline(self):
         d=SafetyRuleArbiter().decide({"actor_id":"agent1","constraints":{},

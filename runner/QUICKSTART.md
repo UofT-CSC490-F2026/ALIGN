@@ -65,6 +65,10 @@ mode remains in raw events and contributes no enforcement decision rows.
 
 Install optional pinned CooperBench evaluator with
 `pip install -r runner/requirements-cooperbench.txt` in an isolated environment.
+The requirements file is the sole source of the intended Git commit. Live runs
+verify the installed CooperBench VCS origin and commit via PEP 610 direct_url.json
+before creating containers or calling models. Mock runs require no installation
+and record a null upstream revision.
 Prepare the pinned A2 dataset locally. Preload a trusted compatible task image on
 a disposable Docker host, with clean /workspace/repo at the normalized base SHA.
 Create an image map such as

@@ -119,10 +119,12 @@ class ModelTests(unittest.TestCase):
                     'usage':{'prompt_tokens':9,'completion_tokens':4}}
         self.response=respond
         fixture=task()
+        verified_revision='a'*40
         with TemporaryDirectory() as tmp:
             images=Path(tmp)/'images.json'
             images.write_text('{"fixture_task:task0":"preloaded"}',encoding='utf-8')
             with patch('runner.cli.load_tasks',return_value=[fixture]), \
+                 patch('runner.cli.installed_revision',return_value=verified_revision), \
                  patch('runner.cli.cooperbench_identity',return_value=('fixture_task',0,[1,2])), \
                  patch('runner.cli.prepare_environment',return_value=MockEnvironment()), \
                  patch('runner.cli.evaluate_patches',return_value={}), \
@@ -134,6 +136,7 @@ class ModelTests(unittest.TestCase):
             self.assertEqual(code,0)
             raw=next(Path(tmp).glob('*/bundle/events.jsonl')).read_bytes()
             events,header=load_events(raw)
+            self.assertEqual(header['agent_config']['upstream_revision'],verified_revision)
             self.assertEqual(header['arbiter_config']['checkpoint'],'revision-123')
             self.assertEqual(header['arbiter_config']['training'],'sft')
             self.assertNotIn(b'-secret',raw)
