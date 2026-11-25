@@ -58,7 +58,7 @@ class ArbitrationGate:
     def feedback(action,decision):
         instruction = ("Inspect the missing facts, ask the peer if necessary, and submit a new proposal."
                        if action=="query" else
-                       "Reconcile the competing objectives or changes and submit a revised proposal."
+                       "Revise the proposed action to reconcile competing objectives or changes."
                        if action=="mediate" else "Revise the proposed action.")
         return {"output":f"Arbiter {action}: {decision['reason']}. {instruction}","exit_code":1}
 

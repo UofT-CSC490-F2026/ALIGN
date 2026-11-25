@@ -78,10 +78,8 @@ containers. Verify image contents and upstream evaluator isolation before runnin
 the upstream evaluator is separate and runs generated code, so use a disposable
 host without secrets. The pinned upstream evaluator resolves its own image name
 as `akhatua/cooperbench-<repo-without-_task-and-with-hyphens>:taskN`; confirm the
-agent and evaluator tags resolve to the same image ID and base commit. The
-upstream Docker backend does not request network isolation or the agent resource
-limits, and its timeout can wait on the worker. Verify evaluator isolation and
-timeouts before running generated code or using live scores.
+agent and evaluator tags resolve to the same image ID and base commit. The new ALIGN evaluator backend is intended to enforce isolation and deadlines;
+Phase 6 must verify this before running generated code or using live scores.
 
 The scripted smoke verified the pinned dataset's Click task 2956 (features 1
 and 8) against the official Linux image at
@@ -128,11 +126,10 @@ the remote model may not implement seeded generation. No automatic API retries.
 
 ## Contracts and limitations
 
-This implementation uses an ALIGN-specific alternating, separate-workspace loop,
-explicit bash/message tools and CooperBench's pinned merge/test evaluator; it is
-not a reproduction of upstream concurrent Mini-SWE-Agent or shared Git protocol.
-Mediation cancels the current action and requests revision; restructure/query are
-not enforced and produce a failed trial rather than silently executing.
+The prior verified implementation used an alternating loop. The new live path
+uses concurrent separate workspaces and host-mediated shared Git. Query and
+mediation withhold the proposal and request a revision. Restructure remains
+unsupported and fails closed.
 Monitor mode logs arbiter_advice (not arbiter_decision) to avoid treating advisory
 blocks as enforced in A2. Person 3 must score advisory events separately.
 Model paths are hints, not verified command effects. No complete constraint audit,
@@ -149,5 +146,43 @@ The adapter sends `model`, `messages`, `temperature` and `max_tokens`. It expect
 `finish_reason: stop` and a JSON object in `choices[0].message.content`. Loopback
 tests cover the wire contract and bearer auth. Confirm the GPT-OSS and Qwen
 endpoints support these fields, and that reasoning content is separate from the
-final JSON. HTTP timeout limits individual socket waits. A global deadline,
-general trace redaction, and real endpoint validation remain outstanding.
+final JSON. HTTP timeout limits individual socket waits. A trial deadline and configured-secret redaction are now implemented for the
+concurrent path but await Phase 6 verification; real endpoint validation remains outstanding.
+
+## Concurrent implementation — pending Phase 6 verification
+
+The live commands above now select `align-concurrent-shared-git-v1` for every
+condition. Use `--protocol concurrent` to exercise the concurrent scheduler
+with free mocks; default mocks remain alternating for deterministic regressions.
+Live alternating mode is disallowed to avoid accidentally mixing protocols.
+Use `--trial-timeout 600` (seconds), `--tool-timeout`, `--model-timeout` and
+`--max-steps` consistently across conditions.
+
+A live task needs the same preloaded immutable image for the agents, Git broker
+and evaluator. The new evaluator enforces network isolation and resource limits
+and streams patches into the container; no upstream default Docker sandbox is
+used. Ensure all test build dependencies are already in the trusted image
+(the earlier Click smoke needed flit_core). No network install is permitted.
+The new evaluator path and successful feature results must be verified locally.
+The Git broker supports structured `git_publish` and `git_fetch` tools;
+agents can inspect or merge `refs/remotes/align/agent1` and
+`refs/remotes/align/agent2` locally. It merges actual final commit ancestry
+before running both trusted feature tests. No force-push is allowed.
+See ARCHITECTURE.md for design tradeoffs.
+
+Optional Person 2 backend (only after training branch is available and paid
+inference explicitly authorized): add `--arbiter-backend modal --arbiter-model qwen`
+instead of HTTP arbiter endpoint; for SFT use `--training sft --checkpoint`
+with the actual adapter path. The runner calls ModalArbiter.decide directly
+inside Person 2's app context. No Modal usage was launched in this implementation
+pass. Callable arbiter token totals remain unknown unless its interface provides
+complete usage; do not compare unknown totals as zeros.
+
+Known configured secret values in ALIGN_AGENT_API_KEY, ALIGN_ARBITER_API_KEY,
+ALIGN_DATABASE_URL and env names listed in ALIGN_TRACE_SECRET_ENV (comma-separated)
+are redacted before event persistence. Extra credentials must be configured
+explicitly; this is not a general credential scanner.
+
+The previous verification results above describe the earlier turn-based runner.
+Do not treat them as verification of this concurrent branch. Phase 6 should
+repeat all tests and scripted Docker/PostgreSQL integration against this code.

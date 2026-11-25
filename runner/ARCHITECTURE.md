@@ -26,3 +26,29 @@ the environment in every condition, so do not claim measured prevention of
 those operations by the arbiter. Bundle transfer and final integration are
 additional overhead; validate supported task images and Git versions locally.
 Docker is not an absolute security boundary; use disposable hosts without secrets.
+
+## Implementation notes
+
+- Live CLI uses concurrent execution across all arbitration conditions; mock
+  alternating is retained as a deterministic reference.
+- Arbiter calls are serialized separately from coordination snapshots. A stale
+  enforced approval is cancelled and identified by authorization_stale. Shared
+  Git operations additionally compare expected published refs under the broker
+  lock. This conservative policy may affect throughput; report cancellations
+  and do not attribute them to the model's selected intervention.
+- Evaluator sandbox uses docker CLI subprocess timeouts, explicit resource limits,
+  no network, and identical image ID/base commit checks. Shared final commits
+  are merged in the broker and the pinned upstream per-feature test routine is
+  called on the merged tree. Legacy independent patches use a private injected
+  backend rather than mutating upstream module globals.
+- Prompt hash is recorded. The HTTP prompt is aligned with Person 2's contract;
+  if the training package is present its canonical prompt is imported. Until
+  branches are integrated, a snapshot of the same prompt provides compatibility.
+- Query consumes a turn and asks for missing facts/reproposal. Restructure is
+  not implemented because its decision schema does not specify a replacement
+  assignment; agree on the experimental action space with Person 2.
+- Trial expiry prevents new authorization and removes known containers. External
+  calls already issued may continue remotely; their usage is not fabricated.
+  Cleanup is bounded separately and reports failure. Phase 6 must verify actual
+  cancellation and partial evidence handling. Process-crash journaling is out
+  of scope.

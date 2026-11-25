@@ -28,6 +28,8 @@ def isolated_run_args(name, image, *, workdir=None):
 
 
 def image_id(image, deadline):
+    if not isinstance(image,str) or not image or image.startswith("-"):
+        raise ValueError("Invalid image reference")
     result = subprocess.run(["docker", "image", "inspect", "--format", "{{.Id}}", image],
                             capture_output=True, text=True, check=True,
                             timeout=deadline.remaining(30))
@@ -67,7 +69,10 @@ class SharedDockerEnvironment(DockerEnvironment):
         # Cleanup must still be possible after the trial deadline.
         if args[:2] != ["rm", "-f"]:
             timeout = self.deadline.remaining(timeout)
-        return super()._docker(args, timeout=timeout, check=check)
+        try:
+            return super()._docker(args, timeout=timeout, check=check)
+        except subprocess.TimeoutExpired as exc:
+            raise TimeoutError("Docker command timed out") from exc
 
     def _broker_exec(self, command, *, check=False):
         return self._docker(["exec", self._broker, "bash", "-lc", command],
@@ -75,8 +80,11 @@ class SharedDockerEnvironment(DockerEnvironment):
 
     def _binary(self, container, command, data=None):
         args = ["docker", "exec", "-i", container, "bash", "-lc", command]
-        result = subprocess.run(args, input=data, capture_output=True,
-                                timeout=self.deadline.remaining(self.timeout), check=True)
+        try:
+            result = subprocess.run(args, input=data, capture_output=True,
+                                    timeout=self.deadline.remaining(self.timeout), check=True)
+        except subprocess.TimeoutExpired as exc:
+            raise TimeoutError("Git transfer timed out") from exc
         if len(result.stdout) > MAX_BUNDLE:
             raise ValueError("Git transfer exceeded bundle limit")
         return result.stdout
@@ -179,9 +187,8 @@ class SharedDockerEnvironment(DockerEnvironment):
                 if self._broker_exec(f"git -C {MERGE_DIR} ls-files -u", check=True).stdout.strip():
                     return {"_merge_status": "conflicts", "agent1": "", "agent2": ""}
                 raise RuntimeError("Shared Git final merge failed")
-            patch = self._broker_exec(
-                f"git -C {MERGE_DIR} diff --binary --no-ext-diff --no-textconv {self.base_commit} HEAD",
-                check=True).stdout
+            patch = self._binary(self._broker,
+                f"git -C {MERGE_DIR} diff --binary --no-ext-diff --no-textconv {self.base_commit} HEAD").decode("utf-8")
             # An identical full merged patch avoids double-application of integrated changes.
             return {"_merge_status": "clean", "agent1": patch, "agent2": patch}
 

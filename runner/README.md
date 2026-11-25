@@ -1,87 +1,66 @@
 # ALIGN runner architecture
 
-The runner builds on the A2 task and event schemas. See [the quickstart](QUICKSTART.md)
-for verified commands, integration results and live execution prerequisites.
+See [architecture decision](ARCHITECTURE.md) and [quickstart](QUICKSTART.md).
+The concurrent implementation is pending Phase 6 local verification; earlier
+turn-based and PostgreSQL verification does not establish concurrent correctness.
 
 ## Ownership and interfaces
 
-- Runner (Person 1): environment, agent loop, context, action gate, execution and event traces.
-- Training (Person 2): offline decision examples and model implementing `Arbiter.decide`.
-- Evaluation (Person 3): independent labels, test runner and experiment matrix.
-- A5 (Person 4): system coverage, reviews and integration checks.
+- Runner: environment, independent agent workers, shared Git broker, action
+  gate, coordination state and A2 events.
+- Training: shared observation/decision contract, training prompt and inference.
+- Evaluation: independent conflict/constraint labels, task selection, scoring.
+- Quality: regression, Docker/DB integration, profiling and review.
 
-`runner/contracts.py` is the proposed shared boundary. Observations contain only
-decision-time evidence: no future results, gold patches, hidden tests, expected labels,
-or unrestricted database rows. `repository_state` and `recent_events` must be
-bounded and sanitized. Record the actual observation used by the model on a separate
-system event linked to the proposal, so training can replay it exactly. For `none`
-runs also record the same observation, without invoking a model.
+The top-level v1 observation fields in contracts.py remain unchanged.
+repository_state now includes workspaces, shared_git, pending_proposals,
+in_flight_actions, submitted_agents, and coordination_version. Workspace
+snapshots are last observed state, not a live atomic read of another worker.
+The queue event records arrival; proposed_action is recorded at decision time,
+and arbiter_observation contains exactly the sanitized input sent to the arbiter.
+All referenced recent events precede that canonical proposal event.
 
-## Execution flow
+## Execution and semantics
 
-1. Load normalized task and project an agent-visible goal/context.
-2. Prepare isolated workspace(s) from pinned base commit.
-3. Obtain a model-proposed tool action; record proposed_action.
-4. Build and record the observation from the prior state.
-5. In none mode dispatch; monitor mode records a decision but does not enforce it;
-   other conditions validate and enforce a decision before side effects.
-6. Record arbiter_decision (if applicable) and action_result, referencing proposal sequence.
-7. Return tool output or intervention feedback to the agent. Bound steps and retries.
-8. Trusted evaluator runs per-goal tests and emits test_result and run_end.
-9. Stage with scripts/run_artifacts.py, import with process_runs.py, evaluate with evaluate.py.
+Agents work independently on isolated local branches. Local bash and messages
+pass through the arbiter; publication/fetch are explicit structured tools
+mediated by a separate network-disabled Git container. Approved local actions
+may run concurrently. Authorization is serialized; no global state lock is held
+during model calls or tools. In-flight actions are visible to subsequent decisions.
+A changed coordination version can cancel a stale enforced approval; report
+authorization_stale separately from model-selected blocks. Monitor is advisory
+only, but synchronous inference can change timing. Compare all conditions on
+the same concurrent protocol and do not equate monitor timing with no arbiter.
 
-## Reuse CooperBench
+continue dispatches, block withholds, query requests clarification and a new
+proposal, mediate sends revision feedback and notifies affected active peers,
+escalate stops authorization and tears down workspaces. Query attempts are
+bounded by per-agent step and trial limits. Restructure is reserved: its
+four-field decision format does not unambiguously specify a new ownership or
+sequencing plan. Fail closed until the team agrees on semantics or excludes it.
+No action is silently remapped.
 
-Candidate upstream: https://github.com/cooperbench/CooperBench/tree/63b9d44d9f39a02fccf5bf0052db48a917a011fd
-(pinned for investigation; compatibility with A2's dataset revision is not verified).
+A2 v1 action_result records dispatched/cancelled/unknown. The arbiter_decision
+event records enforced decisions; monitor uses arbiter_advice. The trusted
+broker merges final commit ancestry once; the evaluator checks both features
+in an isolated container using pinned CooperBench test logic. Missing tests
+remain not_evaluated. Independent conflict labels/constraint audits are not
+inferred from arbiter decisions.
 
-Mini-SWE-Agent v2 has an explicit action dispatch seam:
-src/cooperbench/agents/mini_swe_agent_v2/agents/default.py, DefaultAgent.execute_actions.
-It parses send_message before calling env.execute, so wrapping Docker execution alone
-does not intercept every action and may also capture trusted internal commands.
-Investigate a minimal subclass/adapter with a per-action hook before both side
-effects, and retain upstream environment, prompts, communication, and evaluation where feasible.
-Upstream coop uses separate agent workspaces with optional shared Git remote, not a
-single shared filesystem. Preserve that behavior for CooperBench comparisons.
-Do not serialize blocking peer waits while holding a global action lock.
-Start with a deterministic fake backend, then one real task.
+## Limits
 
-## Action semantics and compatibility
+No unrestricted Git remote, shared mutable filesystem, forced remote writes,
+or cross-agent branch mutation. These are environment restrictions, not
+arbiter effects. The trial deadline bounds scheduling and local subprocesses;
+cleanup has a separate bounded grace period. An already issued external model
+request may continue remotely and incur usage after local cancellation. Such
+usage is unknown; late responses cannot authorize actions or append events.
+Configured-secret redaction is exact-value replacement, not arbitrary secret
+discovery. Use disposable hosts and trusted images; Docker is not a complete
+security boundary. The event recorder remains in-memory and validates prefixes;
+process crashes are not guaranteed to preserve evidence. Normal deadline
+termination preserves recorded events and marks incomplete actions honestly.
 
-Use existing lowercase action names and conditions. Initially enforce continue, block,
-mediate (cancel original proposal and send revision feedback), and optionally escalate
-(stop). Query/restructure are reserved until implemented; never silently dispatch
-unsupported decisions. Monitor-mode proposed blocks must be represented separately from
-enforced blocks: current process_runs.py assumes arbiter_decision action=block is enforced
-and rejects a dispatched result. Resolve this contract with evaluation before monitor runs.
-Monitor emits `arbiter_advice` in raw events. `action_result` accepts dispatched,
-cancelled and unknown. A cancelled action with an enforced block is imported as
-blocked. Dispatch records an attempt. The tool exit code captures success or failure.
-Do not treat uncertain files_touched as authoritative: shell commands can obscure paths.
-Enforce sandbox restrictions independently of any model or heuristic, in every condition.
-
-Keep arbiter_condition=llm for pretrained and SFT; distinguish in arbiter_config.
-Record model/revision, adapter ID, prompt version and reasoning configuration.
-Record unknown metrics as unknown, not success or zero. Conflict evidence must originate
-from independent observations, not an arbiter's own predictions.
-
-## Remaining integration work
-
-- Validate the dataset, task image and evaluator together in an isolated Docker environment.
-- Define independent conflict and constraint evidence for evaluation. Advisory outputs need
-  separate scoring. The runner records no inferred conflict labels.
-- Keep the alternating loop for controlled proposal-level studies. It exposes message
-  coordination and overlapping edits, but independent workspaces cannot reproduce write races.
-  Mediation can request a revision from the proposer. It cannot rewind earlier actions or
-  reopen a peer's submission. For upstream comparisons, adapt its agent dispatch before
-  both messaging and shell execution, and preserve its independent actor loops and shared Git.
-
-No cloud deployment is required for this core. Run from repository root:
-
-```bash
-python -m unittest discover -s scripts/tests -p 'test_runner_core.py' -v
-```
-
-The recorder keeps events in memory and validates each prefix, so work grows
-quadratically with trial length. The runner has no automatic trace redaction or
-model training implementation.
+No hosted infrastructure is needed for scripted verification. Phase 6 must
+exercise concurrency, shared Git, evaluator isolation, successful tests,
+deadlines, redaction, callable inference mocks and disposable PostgreSQL.

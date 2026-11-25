@@ -75,10 +75,12 @@ def run_task(task,agents,env,writer,*,max_steps=20,gate=None,evaluator=None,usag
                     writer.emit("agent","agent_submitted",{},actor_id=actor)
                     continue
                 p=validate_proposal(proposed)
+                if writer.sanitize(p)!=p:
+                    raise ValueError("Proposal contains configured secret")
                 if p["action"].get("recipient")==actor:
                     raise ValueError("Cannot message self")
                 seq=writer.emit("agent","proposed_action",p,actor_id=actor)
-                obs=observation(view,actor,seq,p,writer.snapshot()[:-1],state)
+                obs=writer.sanitize(observation(view,actor,seq,p,writer.snapshot()[:-1],state))
                 writer.emit("system","arbiter_observation",obs,trigger_sequence=seq)
                 attempted=False
                 def execute():
@@ -87,13 +89,13 @@ def run_task(task,agents,env,writer,*,max_steps=20,gate=None,evaluator=None,usag
                         raise RuntimeError("Proposal already dispatched")
                     attempted=True
                     phase="infrastructure_error"
-                    return dispatch(env,agents,actor,p["action"],finished)
+                    return writer.sanitize(dispatch(env,agents,actor,p["action"],finished))
                 result,stop=gate(writer,obs,execute)
                 if stop:
                     escalated=True
                     break
                 phase="agent_error"
-                agents[actor].receive(result)
+                agents[actor].receive(writer.sanitize(result))
             if escalated or len(finished)==len(agents):
                 break
         if evaluator is not None and not escalated:

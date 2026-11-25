@@ -126,6 +126,8 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                         elif gate.condition in {"llm","rule_based"} and (version!=observed_version or shared()!=snap["shared_git"]):
                             # A completion/publication during reasoning invalidates this
                             # approval. Do not silently dispatch against stale state.
+                            writer.emit("system","authorization_stale",{"observed_version":observed_version,
+                                        "current_version":version},trigger_sequence=seq)
                             result=cancelled(seq,"Coordination changed during arbitration; inspect and repropose.")
                         else:
                             inflight[actor]={"proposal_sequence":seq,"proposed_action":p,"started":False}

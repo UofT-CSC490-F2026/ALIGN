@@ -81,6 +81,8 @@ def run(args, *, arbiter_factory=None):
                 arbiter=ConstantArbiter(args.mock_action)
             if args.live:
                 env=prepare_environment(task,image,timeout=args.tool_timeout,deadline=deadline,concurrent=True)
+                writer.emit("system","environment_ready",{"image_id":getattr(env,"image_id",None),
+                            "base_commit":task.get("base_commit"),"protocol":"align-concurrent-shared-git-v1"})
             def usage():
                 if not args.live:
                     return {}
