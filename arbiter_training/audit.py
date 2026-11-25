@@ -63,8 +63,8 @@ def main():
                 raise ValueError("Completion action differs from label")
             if decision["evidence"].get("proposal_sequence") != observation["proposal_sequence"]:
                 raise ValueError("Completion cites a different proposal")
-            command = observation["proposed_action"].get("arguments", {}).get(
-                "command", "").lower()
+            command = str(observation["proposed_action"]["action"].get(
+                "command", "")).lower()
             if row["primary_action"] != "continue" or any(
                 token in command for token in
                 ("git reset --hard", "git checkout --", "git merge", "gh pr create")

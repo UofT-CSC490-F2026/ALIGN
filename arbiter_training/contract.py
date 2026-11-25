@@ -30,7 +30,7 @@ def messages_for(checkpoint):
 
 
 def observation_from_checkpoint(checkpoint):
-    """Map a public A2 checkpoint to Person 1's observation envelope.
+    """Map an A2 proposal to the runner's observation envelope.
 
     Public traces have no reliable repository snapshot, so repository_state is
     empty. The live harness must supply its own repository_state directly.
@@ -42,7 +42,7 @@ def observation_from_checkpoint(checkpoint):
     for goal in task.get("goals", []):
         owner = goal["owner_agent_id"]
         goals[owner] = (goals.get(owner, "") + "\n" + goal["description"]).strip()
-    proposal = checkpoint["proposal"]["action"]
+    proposal = checkpoint["proposal"]
     observation = {
         "schema_version": SCHEMA_VERSION,
         "task_key": task["task_key"],
@@ -52,10 +52,8 @@ def observation_from_checkpoint(checkpoint):
         "actor_id": checkpoint["agent_id"],
         "proposal_sequence": checkpoint["sequence_number"],
         "proposed_action": {
-            "kind": "tool_call",
-            "tool_name": proposal.get("tool", "unknown"),
-            "arguments": {"command": proposal.get("command", "")},
-            "content": None,
+            "action": proposal["action"],
+            "files_touched": proposal.get("files_touched", []),
         },
         "recent_events": checkpoint["prior_events"],
         "repository_state": checkpoint.get("repository_state", {}),
@@ -69,6 +67,12 @@ def messages_for_observation(observation):
                 "recent_events", "repository_state"}
     if set(observation) != required or observation["schema_version"] != SCHEMA_VERSION:
         raise ValueError("Observation does not match Person 1's schema")
+    proposal = observation["proposed_action"]
+    if (not isinstance(proposal, dict) or set(proposal) != {"action", "files_touched"}
+            or not isinstance(proposal["action"], dict)
+            or not isinstance(proposal["files_touched"], list)
+            or any(not isinstance(path, str) for path in proposal["files_touched"])):
+        raise ValueError("ProposedAction must match runner/contracts.py")
     return [{"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": json.dumps(
                 observation, ensure_ascii=False, sort_keys=True)}]

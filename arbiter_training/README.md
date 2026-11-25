@@ -116,30 +116,50 @@ modal run arbiter_training/modal_app.py --mode infer --model qwen `
 The current A2 example bundle and older pipeline input files are synthetic
 contract fixtures. They are insufficient for a meaningful training run.
 
-## Person 1 contract and second teacher pass
+## Runner contract and second teacher pass
 
-`contract.py` accepts the exact top-level observation fields Person 1 sent:
+`contract.py` accepts the exact top-level observation fields in PR #50's
+`runner/contracts.py`:
 `schema_version`, `task_key`, `shared_goal`, `agent_goals`, `constraints`,
 `actor_id`, `proposal_sequence`, `proposed_action`, `recent_events`, and
 `repository_state`. The decision has `action`, `reason`, `affected_agents`, and
-`evidence`. Public trace terminal calls are mapped into the A2 tool-call shape
-with `kind`, `tool_name`, `arguments`, and `content`. Person 1's precise
-`ProposedAction` definition is still needed to verify that nested mapping.
+`evidence`. The nested `ProposedAction` has `action: dict` and
+`files_touched: list[str]`. Public trace proposals already use this A2 event
+shape; `files_touched=[]` means the imported trace did not establish a reliable
+file list. The live runner should provide its own bounded observation. Model
+outputs of `query` and `restructure` require explicit runner handling; PR #50
+reserves these interventions rather than enforcing them. Invalid model output
+raises by default so the runner cannot silently dispatch a proposal.
 
 The first 35 labels were reconsidered with a fixed decision rubric. One label
 was changed and 14 real trace proposals were added. The resulting 49 observed
 decisions are still provisional teacher labels. The 34 counterfactuals remain
-explicitly tagged. The current combined set has 61 train and 22 validation
+explicitly tagged. The runner-contract set has 61 train and 22 validation
 decisions, with disjoint repositories. The high-impact observed proposals are
 exported in a blind 21-row packet at
-`data/person1-contract-v1/flagged-review-packet.jsonl` for later human review.
+`data/runner-contract-v1/flagged-review-packet.jsonl` for human review.
+On this corrected-format provisional validation set, pretrained Qwen accepted
+10/22 decisions (20 valid outputs) and pretrained gpt-oss accepted 7/22
+(21 valid outputs). A new adapter should be selected only after reviewed labels
+are incorporated. These are pilot selection scores, not independent test results.
 
 ```powershell
 python -m arbiter_training.adjudicate --tasks arbiter_training/data/public-trace-v1/tasks.jsonl --events-dir arbiter_training/data/public-trace-v1 --initial-labels arbiter_training/data/public-trace-v1/teacher-labels-provisional.jsonl --output arbiter_training/data/public-trace-v1/teacher-labels-v2-provisional.jsonl --review-log arbiter_training/data/public-trace-v1/teacher-review-v2.json
-python -m arbiter_training.prepare --tasks arbiter_training/data/public-trace-v1/tasks.jsonl --events-dir arbiter_training/data/public-trace-v1 --labels arbiter_training/data/public-trace-v1/teacher-labels-v2-provisional.jsonl --output-dir arbiter_training/data/person1-contract-v1/prepared --history-limit 8
-python -m arbiter_training.synthetic --tasks arbiter_training/data/public-trace-v1/tasks.jsonl --prepared-dir arbiter_training/data/person1-contract-v1/prepared --output-dir arbiter_training/data/person1-contract-v1/combined
-python -m arbiter_training.audit --prepared-dir arbiter_training/data/person1-contract-v1/combined --output arbiter_training/data/person1-contract-v1/combined/audit.json
-python -m arbiter_training.review_packet --prepared-dir arbiter_training/data/person1-contract-v1/combined --audit arbiter_training/data/person1-contract-v1/combined/audit.json --output arbiter_training/data/person1-contract-v1/flagged-review-packet.jsonl
+python -m arbiter_training.prepare --tasks arbiter_training/data/public-trace-v1/tasks.jsonl --events-dir arbiter_training/data/public-trace-v1 --labels arbiter_training/data/public-trace-v1/teacher-labels-v2-provisional.jsonl --output-dir arbiter_training/data/runner-contract-v1/prepared --history-limit 8
+python -m arbiter_training.synthetic --tasks arbiter_training/data/public-trace-v1/tasks.jsonl --prepared-dir arbiter_training/data/runner-contract-v1/prepared --output-dir arbiter_training/data/runner-contract-v1/combined
+python -m arbiter_training.audit --prepared-dir arbiter_training/data/runner-contract-v1/combined --output arbiter_training/data/runner-contract-v1/combined/audit.json
+python -m arbiter_training.review_packet --prepared-dir arbiter_training/data/runner-contract-v1/combined --audit arbiter_training/data/runner-contract-v1/combined/audit.json --output arbiter_training/data/runner-contract-v1/flagged-review-packet.jsonl
+python -m arbiter_training.review_sheet --packet arbiter_training/data/runner-contract-v1/flagged-review-packet.jsonl --output arbiter_training/data/runner-contract-v1/review-sheet.md
+```
+
+After a reviewer fills any packet rows, keep the original blind packet and save
+the edited copy separately. `merge_review.py` overlays only completed rows,
+records the reviewer and rationale, and leaves the remaining teacher labels
+provisional. Rerun `prepare.py`, `synthetic.py`, and `audit.py` with that merged
+label file before training.
+
+```powershell
+python -m arbiter_training.merge_review --teacher-labels arbiter_training/data/public-trace-v1/teacher-labels-v2-provisional.jsonl --reviewed-packet PATH_TO_EDITED_PACKET --output arbiter_training/data/runner-contract-v1/labels-with-human-review.jsonl
 ```
 
 Person 3 can create a blind test queue with `review_queue.py --test-limit N`
@@ -149,11 +169,11 @@ independent test requires new runner output or another separate source.
 See `PERSON3_HANDOFF.md` for the integration call, annotation procedure, and
 independent test protocol.
 
-The Person 1 contract-shaped, 60-step Qwen adapter accepted 16/22 provisional
+The earlier top-level-only, 60-step Qwen adapter accepted 16/22 provisional
 validation decisions, versus 11/22 for pretrained Qwen and 10/22 for
-pretrained gpt-oss on the same 22 decisions. It improved `query` to 3/6 and
-`mediate` to 2/3, so those cases still need independent evaluation. The
-versioned adapter is on Modal at
+pretrained gpt-oss on the same 22 decisions. That adapter was trained with a
+different nested `ProposedAction` shape and must not be treated as validated
+against PR #50. The archived versioned adapter is on Modal at
 `/checkpoints/person1-contract-v1-60steps-20261124/adapter` and locally at
 `data/checkpoints/person1-contract-v1-60steps-20261124/adapter-files/adapter`.
 

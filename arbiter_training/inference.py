@@ -10,7 +10,7 @@ from .modal_app import ArbiterModel, _decision_text
 
 class ModalArbiter:
     def __init__(self, model: str = "qwen", adapter_path: str = "",
-                 invalid_policy: str = "query", remote_model=None):
+                 invalid_policy: str = "raise", remote_model=None):
         if model not in {"qwen", "gpt-oss"}:
             raise ValueError("model must be qwen or gpt-oss")
         if adapter_path and model != "qwen":

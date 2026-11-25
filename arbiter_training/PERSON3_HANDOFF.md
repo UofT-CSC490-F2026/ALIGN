@@ -23,15 +23,31 @@ with app.run():
 
 Pass `model="qwen"` with no adapter for the pretrained Qwen baseline or
 `model="gpt-oss"` for the pretrained gpt-oss baseline. The nested
-`ProposedAction` type and a real observation sample from Person 1 still need to
-be checked against the public-trace mapping. Public traces have no trustworthy
-repository snapshot; their `repository_state` is `{}`. Live observations should
-include the actual repository state.
-`ModalArbiter` returns `query` with an `invalid_model_output` evidence marker
-if a model response does not parse; set `invalid_policy="raise"` during offline
-scoring so malformed outputs remain visible as errors.
+`ProposedAction` now matches PR #50's `runner/contracts.py`: `action: dict`
+and `files_touched: list[str]`. A real live observation sample is still needed
+to check the richer action payload and repository snapshot. Public traces have
+no trustworthy repository snapshot; their `repository_state` is `{}` and
+`files_touched=[]`. Live observations should include the actual bounded state.
+`ModalArbiter` raises on invalid model output by default. An explicit
+`invalid_policy="query"` instead returns a query with an
+`invalid_model_output` evidence marker. PR #50 reserves `query` and
+`restructure`, so the runner must handle these before enforcing model output.
 The ephemeral `class-smoke` run returned a valid four-field decision through
 this interface on one validation observation.
+
+## PR #50 schema alignment (2026-11-25)
+
+The current preparation code uses the exact nested proposal fields in PR #50,
+`action` and `files_touched`. The corrected-format provisional set is under
+`data/runner-contract-v1/combined/`: 61 training and 22 validation decisions,
+with no repository overlap. Its train and validation SHA256 values are
+`d8c46bc7c92aae33b3dfa3278430505e2fdbd8d8be7b0ef1cba878fd77431e70`
+and `30048795854ebda7353a0b5a041b8b2deea7df1055c3ad31c24cc5cb40b28c7f`.
+On those provisional validation labels, pretrained Qwen accepted 10/22 with
+20 valid outputs; pretrained gpt-oss accepted 7/22 with 21 valid outputs.
+The 21-item blind human review packet and numbered worksheet are in
+`data/runner-contract-v1/`. A corrected-format adapter is pending review and
+retraining; the adapter below is archived from the older proposal format.
 
 ## Training data and provenance
 
@@ -43,14 +59,14 @@ observed decision labels, and 34 additional counterfactuals are marked
 `synthetic_counterfactual`. All 83 labels remain provisional; no independent
 human reviewer has approved them.
 
-The current Person 1 shaped data are in `data/person1-contract-v1/combined/`:
+The archived top-level-only data are in `data/person1-contract-v1/combined/`:
 61 training and 22 validation decisions. The training action counts are 35
 `continue`, 10 `query`, 8 `mediate`, and 8 `block`; validation has 10, 6, 3,
 and 3 respectively. Repositories do not cross the split. The audit report is
 `audit.json`. The second-pass decisions and reasons are in
 `data/public-trace-v1/teacher-review-v2.json`.
 
-The 60-step BF16 LoRA adapter is on Modal volume `align-arbiter-checkpoints`
+The archived 60-step BF16 LoRA adapter is on Modal volume `align-arbiter-checkpoints`
 at `/person1-contract-v1-60steps-20261124/adapter` and locally under
 `data/checkpoints/person1-contract-v1-60steps-20261124/adapter-files/adapter`.
 The train and validation SHA256 values are respectively
@@ -60,7 +76,8 @@ All 83 prompt-plus-completion records are below the 8192-token training limit
 (maximum 6457 tokens with the pinned Qwen tokenizer). The best validation loss
 is 0.6122. In provisional validation decisions,
 pretrained Qwen accepted 11/22, pretrained gpt-oss accepted 10/22, and the
-fine-tuned Qwen adapter accepted 16/22. The adapter got 3/6 `query`, 2/3
+fine-tuned Qwen adapter accepted 16/22. Its nested `ProposedAction` differs
+from PR #50; this score does not validate runner-format inputs. The adapter got 3/6 `query`, 2/3
 `mediate`, 3/3 `block`, and 8/10 `continue` decisions. Observed public-trace
 decisions were 8/13; synthetic counterfactuals were 8/9. These are pilot
 selection results, not independent test scores.

@@ -25,6 +25,7 @@ training_image = modal.Image.debian_slim(python_version="3.11").pip_install(
 )
 
 MODELS = {"qwen": "Qwen/Qwen3.5-9B", "gpt-oss": "openai/gpt-oss-20b"}
+INPUT_CONTRACT = "runner/contracts.py:ProposedAction@7717249"
 MODEL_REVISIONS = {"qwen": "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
                    "gpt-oss": "6cee5e81ee83917806bbde320786a8fb61efebee"}
 
@@ -113,6 +114,16 @@ def _records(path):
                 yield json.loads(line)
 
 
+def _require_runner_contract(rows):
+    for row in rows:
+        observation = json.loads(row["prompt"][1]["content"])
+        proposal = observation["proposed_action"]
+        if (set(proposal) != {"action", "files_touched"}
+                or not isinstance(proposal["action"], dict)
+                or not isinstance(proposal["files_touched"], list)):
+            raise ValueError("Record does not match the runner ProposedAction")
+
+
 def _decision_text(model_name, output):
     if model_name == "gpt-oss" and "assistantfinal" in output:
         return output.rsplit("assistantfinal", 1)[1].removeprefix(" json").strip()
@@ -140,6 +151,7 @@ def train_qwen(run_name: str, max_steps: int = 100,
     train_rows, val_rows = list(_records(train_path)), list(_records(val_path))
     if len(train_rows) < 20 or len(val_rows) < 5:
         raise ValueError("Need at least 20 training and 5 validation checkpoints")
+    _require_runner_contract(train_rows + val_rows)
     train_actions = Counter(r["primary_action"] for r in train_rows)
     if sum(count for action, count in train_actions.items() if action != "continue") < 5:
         raise ValueError("Need at least 5 intervention examples before training")
@@ -203,6 +215,7 @@ def train_qwen(run_name: str, max_steps: int = 100,
     trainer.model.save_pretrained(str(adapter))
     tokenizer.save_pretrained(str(adapter))
     metadata = {"model": MODELS["qwen"], "model_revision": MODEL_REVISIONS["qwen"],
+                "input_contract": INPUT_CONTRACT,
                 "run_name": run_name,
                 "train_sha256": hashlib.sha256(Path(train_path).read_bytes()).hexdigest(),
                 "validation_sha256": hashlib.sha256(Path(val_path).read_bytes()).hexdigest(),
@@ -271,7 +284,8 @@ def main(mode: str = "infer", model: str = "qwen", checkpoint_file: str = "",
         rows = rows[:limit]
     if not rows:
         raise ValueError("Empty validation set")
-    report = {"examples": len(rows),
+    _require_runner_contract(rows)
+    report = {"examples": len(rows), "input_contract": INPUT_CONTRACT,
               "validation_sha256": hashlib.sha256(Path(validation_file).read_bytes()).hexdigest(),
               "models": {}}
     candidates = [name.strip() for name in models.split(",") if name.strip()]
