@@ -3,7 +3,7 @@ import argparse
 import json
 from pathlib import Path
 from .arbitration import ArbitrationGate,ConstantArbiter
-from .cooperbench_adapter import prepare_environment,evaluate_patches,UPSTREAM_REVISION
+from .cooperbench_adapter import prepare_environment,evaluate_patches,installed_revision
 from .environment import MockEnvironment,ScriptedAgent
 from .event_writer import EventWriter
 from .model_adapter import ChatAgent,ChatArbiter,ChatClient,SafetyRuleArbiter
@@ -18,13 +18,14 @@ def run(args):
         raise ValueError("Live mode requires agent endpoint/model, trusted image map and dataset dir")
     if args.live and args.condition in {"llm","monitor"} and not (args.arbiter_endpoint and args.arbiter_model):
         raise ValueError("Live LLM/monitor requires an arbiter endpoint and model")
+    upstream_revision=installed_revision() if args.live else None
     images=json.loads(Path(args.images).read_text()) if args.live else {}
     out=Path(args.output_dir)
     out.mkdir(parents=True,exist_ok=True)
     failures=0
     for task in tasks[:args.limit]:
         agent_config={"backend":"docker" if args.live else "mock","model":args.agent_model if args.live else "scripted",
-                      "max_steps":args.max_steps,"protocol":"align-turn-based-v1","upstream_revision":UPSTREAM_REVISION}
+                      "max_steps":args.max_steps,"protocol":"align-turn-based-v1","upstream_revision":upstream_revision}
         arbiter_config={"model":args.arbiter_model if args.live else "fixture",
                         "training":args.training,"checkpoint":args.checkpoint,"prompt_version":"v1"}
         writer=EventWriter(task_key=task["task_key"],arbiter_condition=args.condition,

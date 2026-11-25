@@ -2,6 +2,9 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch, Mock
+from importlib import metadata
+from runner.cooperbench_adapter import installed_revision
 from runner.cli import main
 from scripts.run_artifacts import verify_bundle,load_events
 from runner.model_adapter import SafetyRuleArbiter
@@ -20,6 +23,7 @@ class RunnerIntegrationTests(unittest.TestCase):
             bundle=next((root/"runs").glob("*/bundle"))
             self.assertTrue(verify_bundle(bundle)["complete"])
             events,_=load_events((bundle/"events.jsonl").read_bytes())
+            self.assertIsNone(events[0]["payload"]["agent_config"]["upstream_revision"])
             self.assertTrue(any(e["event_type"]=="arbiter_decision" for e in events))
     def test_rule_baseline(self):
         d=SafetyRuleArbiter().decide({"actor_id":"agent1","constraints":{},
@@ -36,3 +40,30 @@ class RunnerIntegrationTests(unittest.TestCase):
         self.assertTrue(evaluation_evidence(task,result)["critical_constraints_passed"])
         task["constraints"]={"protected_paths":["tests/"]}
         self.assertIsNone(evaluation_evidence(task,result)["critical_constraints_passed"])
+
+    def test_installed_cooperbench_revision(self):
+        pin=Path("runner/requirements-cooperbench.txt").read_text().strip()
+        repo, revision=pin.removeprefix("git+").rsplit("@",1)
+        dist=Mock()
+        source={"url":repo,"vcs_info":{"vcs":"git","commit_id":revision}}
+        with patch("runner.cooperbench_adapter.metadata.distribution",return_value=dist):
+            dist.read_text.return_value=json.dumps(source)
+            self.assertEqual(installed_revision(),revision)
+            source["vcs_info"]["commit_id"]="0"*40 if revision!="0"*40 else "1"*40
+            dist.read_text.return_value=json.dumps(source)
+            with self.assertRaisesRegex(RuntimeError,"does not match"):
+                installed_revision()
+            source["vcs_info"]["commit_id"]=revision
+            source["url"]="https://example.com/unrelated.git"
+            dist.read_text.return_value=json.dumps(source)
+            with self.assertRaisesRegex(RuntimeError,"does not match"):
+                installed_revision()
+            dist.read_text.return_value=None
+            with self.assertRaisesRegex(RuntimeError,"does not match"):
+                installed_revision()
+
+    def test_cooperbench_missing_installation(self):
+        with patch("runner.cooperbench_adapter.metadata.distribution",
+                   side_effect=metadata.PackageNotFoundError("cooperbench")):
+            with self.assertRaisesRegex(RuntimeError,"does not match"):
+                installed_revision()
