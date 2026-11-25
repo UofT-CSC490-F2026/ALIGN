@@ -9,7 +9,10 @@ import json
 import os
 from pathlib import Path
 
-from run_artifacts import load_events, verify_bundle, check
+if __package__:
+    from .run_artifacts import load_events, verify_bundle, check
+else:
+    from run_artifacts import load_events, verify_bundle, check
 
 ACTIONS = {"continue", "query", "block", "mediate", "restructure", "escalate"}
 RULES = {"force_push", "delete_tests", "touch_env", "edit_outside_area", "skip_tests"}
