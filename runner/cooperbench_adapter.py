@@ -51,7 +51,10 @@ def prepare_environment(task,image,*,timeout=30,deadline=None,concurrent=False):
     cooperbench_identity(task)
     if concurrent:
         deadline=deadline or TrialDeadline()
-        return SharedDockerEnvironment(image,task["base_commit"],timeout=timeout,deadline=deadline)
+        resolved=image_id(image,deadline)
+        env=SharedDockerEnvironment(resolved,task["base_commit"],timeout=timeout,deadline=deadline)
+        env.image_id=resolved
+        return env
     return DockerEnvironment(image,task["base_commit"],timeout=timeout)
 
 def evaluation_evidence(task,result):

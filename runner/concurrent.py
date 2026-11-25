@@ -60,7 +60,7 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
         return {"output":reason,"exit_code":1}
 
     def worker(actor, view):
-        nonlocal version, escalated
+        nonlocal version, escalated, failure
         agent = agents[actor]
         phase = "infrastructure_error"
         try:
@@ -93,19 +93,19 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                     # Never dispatch a command containing a configured secret.
                     if writer.sanitize(p) != p:
                         raise ValueError("Proposal contains configured secret")
-                    pending[actor] = deepcopy(p)
+                    pending[actor] = {"proposed_action":deepcopy(p),"phase":"queued"}
                     writer.emit("agent","proposal_queued",p,actor_id=actor)
                 # Only arbitration is serialized. Waiting workers expose pending proposals.
                 with arbiter_lock:
                     with lock:
                         check()
-                        p = pending.pop(actor)
+                        p = pending.pop(actor)["proposed_action"]
                         seq = writer.emit("agent","proposed_action",p,actor_id=actor)
                         snap = state()
                         observed_version = version
                         obs = writer.sanitize(observation(view,actor,seq,p,writer.snapshot()[:-1],snap))
                         writer.emit("system","arbiter_observation",obs,trigger_sequence=seq)
-                        pending[actor] = {"proposal_sequence":seq, "proposed_action":p}
+                        pending[actor] = {"proposal_sequence":seq, "proposed_action":p,"phase":"deciding"}
                     evaluation = gate.evaluate(obs)
                     with lock:
                         check()
@@ -123,19 +123,21 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                                 escalated=True
                                 stop.set()
                                 return
-                        elif gate.condition in {"llm","rule_based"} and version!=observed_version:
+                        elif gate.condition in {"llm","rule_based"} and (version!=observed_version or shared()!=snap["shared_git"]):
                             # A completion/publication during reasoning invalidates this
                             # approval. Do not silently dispatch against stale state.
                             result=cancelled(seq,"Coordination changed during arbitration; inspect and repropose.")
                         else:
-                            inflight[actor]={"proposal_sequence":seq,"proposed_action":p}
-                            writer.emit("system","action_started",{"actor_id":actor},trigger_sequence=seq)
+                            inflight[actor]={"proposal_sequence":seq,"proposed_action":p,"started":False}
                             result=None
                 # Release both locks before executing tools.
                 if result is None:
                     phase="infrastructure_error"
                     try:
-                        check()
+                        with lock:
+                            check()
+                            inflight[actor]["started"]=True
+                            writer.emit("system","action_started",{"actor_id":actor},trigger_sequence=seq)
                         a=p["action"]
                         if a["tool"]=="message":
                             with lock:
@@ -171,7 +173,11 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                 agent.receive(result)
             raise TimeoutError("Agent step limit reached")
         except Exception as exc:
-            done.put((actor,"timeout" if isinstance(exc,TimeoutError) else phase,type(exc).__name__))
+            with lock:
+                if not stop.is_set():
+                    failure={"failure_category":"timeout" if isinstance(exc,TimeoutError) else phase,
+                             "failure_reason":type(exc).__name__}
+                    stop.set()
         else:
             done.put((actor,None,None))
         finally:
@@ -241,7 +247,8 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
             thread.join(max(0,grace-monotonic()))
         with lock:
             for item in inflight.values():
-                writer.emit("system","action_result",{"outcome":"unknown","output":"Trial stopped during execution"},
+                writer.emit("system","action_result",{"outcome":"unknown" if item["started"] else "cancelled",
+                                                       "output":"Trial stopped during execution" if item["started"] else "Trial stopped before execution"},
                             trigger_sequence=item["proposal_sequence"])
             for item in pending.values():
                 if "proposal_sequence" in item:
