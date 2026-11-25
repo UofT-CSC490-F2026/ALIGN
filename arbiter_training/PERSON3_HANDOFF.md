@@ -16,7 +16,7 @@ from arbiter_training.modal_app import app
 with app.run():
     arbiter = ModalArbiter(
         model="qwen",
-        adapter_path="/checkpoints/person1-contract-v1-60steps-20261124/adapter",
+        adapter_path="/checkpoints/runner-contract-reviewed-60steps-20261125/adapter",
     )
     decision = arbiter.decide(observation)
 ```
@@ -30,10 +30,10 @@ no trustworthy repository snapshot; their `repository_state` is `{}` and
 `files_touched=[]`. Live observations should include the actual bounded state.
 `ModalArbiter` raises on invalid model output by default. An explicit
 `invalid_policy="query"` instead returns a query with an
-`invalid_model_output` evidence marker. PR #50 reserves `query` and
-`restructure`, so the runner must handle these before enforcing model output.
-The ephemeral `class-smoke` run returned a valid four-field decision through
-this interface on one validation observation.
+`invalid_model_output` evidence marker. The stacked runner PR #58 handles
+`query` and `mediate`; `restructure` remains unsupported for enforcement and
+fails closed. The earlier ephemeral `class-smoke` run returned a valid
+four-field decision through this interface on one validation observation.
 
 ## PR #50 schema alignment (2026-11-25)
 
@@ -46,8 +46,33 @@ and `30048795854ebda7353a0b5a041b8b2deea7df1055c3ad31c24cc5cb40b28c7f`.
 On those provisional validation labels, pretrained Qwen accepted 10/22 with
 20 valid outputs; pretrained gpt-oss accepted 7/22 with 21 valid outputs.
 The 21-item blind human review packet and numbered worksheet are in
-`data/runner-contract-v1/`. A corrected-format adapter is pending review and
-retraining; the adapter below is archived from the older proposal format.
+`data/runner-contract-v1/`. Jinhao completed all 21 reviews. Their annotations
+are tracked in `reviews/human-labels-20261125.jsonl`; the reviewed build is in
+`data/runner-contract-v1-reviewed/combined/`. It still has 61 train and 22
+validation decisions with disjoint repositories, now including 13 human
+training labels and 8 human validation labels. The train and validation SHA256
+values are `292b81f163d39dca2564cfd93a149d920b368b45fc4cf9185024c474b751fd85`
+and `a7afc34c103124060adb4ff64dd51e87c67ef6c180949632bbf82939da291685`.
+The reviewed data audit has no warnings. On the reviewed validation set,
+pretrained Qwen accepted 12/22 with 20 valid outputs; pretrained gpt-oss
+accepted 7/22 with 21 valid outputs. These remain pilot validation scores,
+not held-out test results. The new runner-format 60-step BF16 LoRA adapter is
+at `/checkpoints/runner-contract-reviewed-60steps-20261125/adapter` on the
+`align-arbiter-checkpoints` Modal volume. It accepted 17/22 decisions with
+22 valid outputs; 10/13 observed trace decisions and 7/9 synthetic cases.
+It accepted 5/8 human-reviewed validation observations. Its best validation
+loss was 0.5691. Metadata and a compact score breakdown are tracked in
+`results/runner-contract-reviewed-60steps-20261125-metadata.json` and
+`results/reviewed-validation-20261125.json`. A `class-smoke` run completed
+through `ModalArbiter.decide` with the new adapter on one validation
+observation.
+
+The adapter accepted only 1/3 `block` decisions versus 3/3 for pretrained
+Qwen. Both adapter misses were `query` decisions, which withhold the proposal
+in the current runner but do not match the reviewed block labels. Do not use
+this pilot score to claim intervention safety. Person 3 needs a separate
+held-out test and live-run outcome analysis. The adapter below is archived
+from the older proposal format.
 
 ## Training data and provenance
 
@@ -56,8 +81,8 @@ The pinned CooperBench task revision is
 revision is `bf6cc8469a7b853f70e8f043af145b5053952293`. The 10 imported
 two-agent runs contain 553 proposed actions. A second teacher pass has 49
 observed decision labels, and 34 additional counterfactuals are marked
-`synthetic_counterfactual`. All 83 labels remain provisional; no independent
-human reviewer has approved them.
+`synthetic_counterfactual`. Jinhao reviewed 21 observed decisions; 28 observed
+teacher labels and all 34 synthetic counterfactual labels remain provisional.
 
 The archived top-level-only data are in `data/person1-contract-v1/combined/`:
 61 training and 22 validation decisions. The training action counts are 35
@@ -124,7 +149,7 @@ without mixing it into training or validation:
 ```powershell
 python -m arbiter_training.prepare_test --tasks PATH_TO_TEST_TASKS_JSONL --events-dir PATH_TO_TEST_BUNDLES --labels PATH_TO_HUMAN_LABELS_JSONL --output arbiter_training/data/heldout/test.jsonl
 modal run arbiter_training/modal_app.py --mode compare --validation-file arbiter_training/data/heldout/test.jsonl --models qwen,gpt-oss --output-file arbiter_training/data/heldout/base-comparison.json
-modal run arbiter_training/modal_app.py --mode compare --validation-file arbiter_training/data/heldout/test.jsonl --models qwen --adapter-path /checkpoints/person1-contract-v1-60steps-20261124/adapter --output-file arbiter_training/data/heldout/adapter-comparison.json
+modal run arbiter_training/modal_app.py --mode compare --validation-file arbiter_training/data/heldout/test.jsonl --models qwen --adapter-path /checkpoints/runner-contract-reviewed-60steps-20261125/adapter --output-file arbiter_training/data/heldout/adapter-comparison.json
 ```
 
 `prepare_test.py` rejects non-test tasks and provisional teacher labels.

@@ -126,22 +126,22 @@ contract fixtures. They are insufficient for a meaningful training run.
 `evidence`. The nested `ProposedAction` has `action: dict` and
 `files_touched: list[str]`. Public trace proposals already use this A2 event
 shape; `files_touched=[]` means the imported trace did not establish a reliable
-file list. The live runner should provide its own bounded observation. Model
-outputs of `query` and `restructure` require explicit runner handling; PR #50
-reserves these interventions rather than enforcing them. Invalid model output
-raises by default so the runner cannot silently dispatch a proposal.
+file list. The live runner should provide its own bounded observation. The
+stacked runner PR #58 handles `query` and `mediate`, while `restructure` remains
+unsupported for enforcement and fails closed. Invalid model output raises by
+default so the runner cannot silently dispatch a proposal.
 
 The first 35 labels were reconsidered with a fixed decision rubric. One label
-was changed and 14 real trace proposals were added. The resulting 49 observed
-decisions are still provisional teacher labels. The 34 counterfactuals remain
-explicitly tagged. The runner-contract set has 61 train and 22 validation
+was changed and 14 real trace proposals were added. Before human review, all
+49 observed decisions were provisional teacher labels. The 34 counterfactuals
+remain explicitly tagged. The runner-contract set has 61 train and 22 validation
 decisions, with disjoint repositories. The high-impact observed proposals are
 exported in a blind 21-row packet at
 `data/runner-contract-v1/flagged-review-packet.jsonl` for human review.
 On this corrected-format provisional validation set, pretrained Qwen accepted
 10/22 decisions (20 valid outputs) and pretrained gpt-oss accepted 7/22
-(21 valid outputs). A new adapter should be selected only after reviewed labels
-are incorporated. These are pilot selection scores, not independent test results.
+(21 valid outputs). The reviewed rerun and selected adapter are documented
+below. These are pilot selection scores, not independent test results.
 
 ```powershell
 python -m arbiter_training.adjudicate --tasks arbiter_training/data/public-trace-v1/tasks.jsonl --events-dir arbiter_training/data/public-trace-v1 --initial-labels arbiter_training/data/public-trace-v1/teacher-labels-provisional.jsonl --output arbiter_training/data/public-trace-v1/teacher-labels-v2-provisional.jsonl --review-log arbiter_training/data/public-trace-v1/teacher-review-v2.json
@@ -161,6 +161,68 @@ label file before training.
 ```powershell
 python -m arbiter_training.merge_review --teacher-labels arbiter_training/data/public-trace-v1/teacher-labels-v2-provisional.jsonl --reviewed-packet PATH_TO_EDITED_PACKET --output arbiter_training/data/runner-contract-v1/labels-with-human-review.jsonl
 ```
+
+## Reviewed runner-contract pilot (2026-11-25)
+
+Jinhao reviewed and approved all 21 high-impact observed proposals in the blind
+packet. The five-field annotation export is tracked at
+`arbiter_training/reviews/human-labels-20261125.jsonl`; it contains no trace
+payloads or model predictions. Overlay it on the pinned provisional teacher
+labels with `merge_review.py`. The merged observed set has 21 human-reviewed
+and 28 provisional teacher labels. The 34 counterfactuals remain separately
+marked synthetic examples.
+
+```powershell
+python -m arbiter_training.merge_review --teacher-labels arbiter_training/data/public-trace-v1/teacher-labels-v2-provisional.jsonl --reviewed-packet arbiter_training/reviews/human-labels-20261125.jsonl --output arbiter_training/data/runner-contract-v1-reviewed/human-merged-labels.jsonl
+python -m arbiter_training.prepare --tasks arbiter_training/data/public-trace-v1/tasks.jsonl --events-dir arbiter_training/data/public-trace-v1 --labels arbiter_training/data/runner-contract-v1-reviewed/human-merged-labels.jsonl --output-dir arbiter_training/data/runner-contract-v1-reviewed/prepared --history-limit 8
+python -m arbiter_training.synthetic --tasks arbiter_training/data/public-trace-v1/tasks.jsonl --prepared-dir arbiter_training/data/runner-contract-v1-reviewed/prepared --output-dir arbiter_training/data/runner-contract-v1-reviewed/combined
+python -m arbiter_training.audit --prepared-dir arbiter_training/data/runner-contract-v1-reviewed/combined --output arbiter_training/data/runner-contract-v1-reviewed/combined/audit.json
+```
+
+The reviewed build has 61 train and 22 validation decisions, with disjoint
+repositories and no audit warnings. Human reviews cover 13 train and 8
+validation observations. Its train SHA256 is
+`292b81f163d39dca2564cfd93a149d920b368b45fc4cf9185024c474b751fd85`;
+validation SHA256 is
+`a7afc34c103124060adb4ff64dd51e87c67ef6c180949632bbf82939da291685`.
+These validation scores remain pilot checkpoint-selection evidence, not Person
+3's independent held-out test.
+
+On this reviewed validation set, pretrained Qwen accepted 12/22 decisions
+(20 valid four-field outputs); pretrained gpt-oss accepted 7/22 (21 valid
+outputs). Qwen was selected for the corrected-format 60-step LoRA run. The
+baseline comparison is saved locally at
+`data/runner-contract-v1-reviewed/combined/base-comparison.json`.
+The BF16 LoRA run used 60 steps and seed 3407. Its best validation loss was
+0.5691. The selected adapter is on the `align-arbiter-checkpoints` Modal
+volume at `/runner-contract-reviewed-60steps-20261125/adapter`; the tracked
+`results/runner-contract-reviewed-60steps-20261125-metadata.json` records
+model revision, input contract, dataset hashes, counts, and checkpoint path.
+The adapter accepted 17/22 reviewed-set validation decisions with 22/22 valid
+outputs, compared with 12/22 for pretrained Qwen and 7/22 for pretrained
+gpt-oss. It accepted 10/13 observed trace and 7/9 synthetic decisions. Of the
+eight human-reviewed validation observations, it accepted five. The adapter
+accepted only 1/3 `block` labels, while pretrained Qwen accepted 3/3; its two
+misses were `query` responses that would still withhold the proposed action.
+The small, partly provisional validation set cannot establish intervention
+safety. Person 3 should evaluate this candidate independently before treating
+it as a reliable intervention policy. A compact result breakdown is tracked at
+`results/reviewed-validation-20261125.json`; raw predictions remain in the
+ignored local comparison reports.
+
+```powershell
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+modal volume put align-arbiter-data arbiter_training/data/runner-contract-v1-reviewed/combined/train.jsonl /runner-contract-v1-reviewed-20261125/train.jsonl
+modal volume put align-arbiter-data arbiter_training/data/runner-contract-v1-reviewed/combined/validation.jsonl /runner-contract-v1-reviewed-20261125/validation.jsonl
+modal run arbiter_training/modal_app.py --mode train --run-name runner-contract-reviewed-60steps-20261125 --steps 60 --train-volume-path /data/runner-contract-v1-reviewed-20261125/train.jsonl --validation-volume-path /data/runner-contract-v1-reviewed-20261125/validation.jsonl
+modal run arbiter_training/modal_app.py --mode compare --validation-file arbiter_training/data/runner-contract-v1-reviewed/combined/validation.jsonl --models qwen --adapter-path /checkpoints/runner-contract-reviewed-60steps-20261125/adapter --output-file arbiter_training/data/runner-contract-v1-reviewed/combined/adapter-comparison.json
+modal run arbiter_training/modal_app.py --mode class-smoke --validation-file arbiter_training/data/runner-contract-v1-reviewed/combined/validation.jsonl --model qwen --adapter-path /checkpoints/runner-contract-reviewed-60steps-20261125/adapter
+```
+
+The `class-smoke` run completed through `ModalArbiter.decide` on one reviewed
+validation observation. Choose a new run name and volume paths for a repeat
+training run; the command above records the completed run.
 
 Person 3 can create a blind test queue with `review_queue.py --test-limit N`
 once new held-out traces exist. The pinned public trajectory release has no
