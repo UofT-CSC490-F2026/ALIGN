@@ -16,6 +16,12 @@ def validate_proposal(p):
     elif a.get("tool")=="message":
         if set(a)!={"tool","recipient","content"} or a.get("recipient") not in ("agent1","agent2") or not isinstance(a.get("content"),str) or not a["content"].strip() or len(a["content"])>4000 or paths:
             raise ValueError("Invalid message")
+    elif a.get("tool")=="git_publish":
+        if set(a)!={"tool"} or paths:
+            raise ValueError("Invalid Git publication")
+    elif a.get("tool")=="git_fetch":
+        if set(a)!={"tool","peer"} or a.get("peer") not in ("agent1","agent2") or paths:
+            raise ValueError("Invalid Git fetch")
     else:
         raise ValueError("Unsupported tool")
     json.dumps(p, ensure_ascii=False).encode("utf-8")
