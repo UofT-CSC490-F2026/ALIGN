@@ -98,3 +98,5 @@ class DockerEnvironment:
                     self.containers.pop(a,None)
             except (OSError,subprocess.TimeoutExpired):
                 pass
+        if self.containers:
+            raise RuntimeError("Could not remove all trial containers")

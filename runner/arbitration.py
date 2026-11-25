@@ -1,5 +1,6 @@
 """Pre-dispatch arbiter gate; monitor recommendations never enter enforced decision_log."""
 from copy import deepcopy
+import json
 from time import monotonic
 
 ACTIONS={"continue","query","block","mediate","restructure","escalate"}
@@ -8,11 +9,12 @@ ENFORCED={"continue","block","mediate","escalate"}
 def validate_decision(d, actors):
     if not isinstance(d,dict) or set(d)!={"action","reason","affected_agents","evidence"}:
         raise ValueError("Invalid arbiter decision schema")
-    if (d["action"] not in ACTIONS or not isinstance(d["reason"],str)
+    if (not isinstance(d["action"],str) or d["action"] not in ACTIONS or not isinstance(d["reason"],str)
         or not isinstance(d["affected_agents"],list)
-        or not all(a in actors for a in d["affected_agents"])
+        or not all(isinstance(a,str) and a in actors for a in d["affected_agents"])
         or not isinstance(d["evidence"],dict)):
         raise ValueError("Invalid arbiter decision values")
+    json.dumps(d, allow_nan=False, ensure_ascii=False).encode("utf-8")
     return deepcopy(d)
 
 class ArbitrationGate:
@@ -35,7 +37,8 @@ class ArbitrationGate:
                 if self.condition!="monitor" and action not in ENFORCED:
                     raise ValueError("Unsupported enforced action")
             except Exception as exc:
-                writer.emit("system","arbiter_error",{"error_type":type(exc).__name__},trigger_sequence=seq)
+                writer.emit("system","arbiter_error",{"error_type":type(exc).__name__,
+                            "decision_latency_ms":int((monotonic()-started)*1000)},trigger_sequence=seq)
                 if self.condition!="monitor":
                     writer.emit("system","action_result",{"outcome":"cancelled"},trigger_sequence=seq)
                     raise
@@ -46,7 +49,11 @@ class ArbitrationGate:
                 writer.emit("arbiter",event,{**decision,"decision_latency_ms":int((monotonic()-started)*1000)},
                             actor_id="arbiter",trigger_sequence=seq)
         if self.condition=="monitor" or action=="continue":
-            result=execute()
+            try:
+                result=execute()
+            except Exception as exc:
+                writer.emit("system","action_result",{"outcome":"unknown","error_type":type(exc).__name__},trigger_sequence=seq)
+                raise
             writer.emit("system","action_result",{"outcome":"dispatched",**result},trigger_sequence=seq)
             return result,False
         result={"output":f"Arbiter {action}: {decision['reason']}. Revise the proposed action.",

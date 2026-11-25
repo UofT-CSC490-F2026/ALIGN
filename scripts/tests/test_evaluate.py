@@ -129,6 +129,11 @@ class EvaluationDatabaseTests(unittest.TestCase):
                     self.assertEqual(conn.execute("""SELECT COUNT(*) FROM decision_labels dl
                            JOIN events e ON dl.checkpoint_event_id=e.event_id
                            WHERE e.run_id=%s AND dl.is_reference""", (db_run_id,)).fetchone()[0], 1)
+                    conn.execute("""UPDATE events SET payload = payload || '{"result":"not_evaluated"}'::jsonb
+                                    WHERE run_id=%s AND event_type='test_result'""", (db_run_id,))
+                    missing = evaluate.evaluate(conn, run_key, "rules-v1")
+                    self.assertEqual(missing["goals_evaluated"], 0)
+                    self.assertIsNone(missing["outcome_correct"])
                 finally:
                     with conn.transaction():
                         if db_run_id is not None:

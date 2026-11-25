@@ -12,6 +12,10 @@ from .task_loader import load_tasks,cooperbench_identity
 
 def run(args):
     tasks=load_tasks(args.tasks)
+    if args.task_key:
+        tasks=[task for task in tasks if task["task_key"] in args.task_key]
+        if {task["task_key"] for task in tasks}!=set(args.task_key):
+            raise ValueError("Unknown task key requested")
     if args.limit<1 or args.max_steps<1:
         raise ValueError("Positive limits required")
     if args.live and not all((args.agent_endpoint,args.agent_model,args.images,args.dataset_dir)):
@@ -24,9 +28,17 @@ def run(args):
     failures=0
     for task in tasks[:args.limit]:
         agent_config={"backend":"docker" if args.live else "mock","model":args.agent_model if args.live else "scripted",
-                      "max_steps":args.max_steps,"protocol":"align-turn-based-v1","upstream_revision":UPSTREAM_REVISION}
-        arbiter_config={"model":args.arbiter_model if args.live else "fixture",
-                        "training":args.training,"checkpoint":args.checkpoint,"prompt_version":"v1"}
+                      "max_steps":args.max_steps,"protocol":"align-turn-based-v1","upstream_revision":UPSTREAM_REVISION,
+                      "model_timeout_s":args.model_timeout,"tool_timeout_s":args.tool_timeout}
+        arbiter_config={}
+        if args.condition in {"llm","monitor"}:
+            if args.live:
+                arbiter_config={"model":args.arbiter_model,"training":args.training,
+                                "checkpoint":args.checkpoint,"prompt_version":"v1"}
+            else:
+                arbiter_config={"model":"fixture","action":args.mock_action}
+        elif args.condition=="rule_based":
+            arbiter_config={"rules":"a2-provisional-v1"}
         writer=EventWriter(task_key=task["task_key"],arbiter_condition=args.condition,
                            agent_config=agent_config,arbiter_config=arbiter_config,seed=args.seed)
         folder=out/writer.run_key
@@ -36,7 +48,6 @@ def run(args):
             if args.live:
                 repo,number,_=cooperbench_identity(task)
                 image=images[f"{repo}:task{number}"]
-                env=prepare_environment(task,image,timeout=args.tool_timeout)
                 agents={a:ChatAgent(ChatClient(args.agent_endpoint,args.agent_model,key_env="ALIGN_AGENT_API_KEY",
                                                 timeout=args.model_timeout)) for a in ("agent1","agent2")}
                 evaluator=lambda t,p:evaluate_patches(t,p,args.dataset_dir)
@@ -54,6 +65,8 @@ def run(args):
                                                timeout=args.model_timeout))
             else:
                 arbiter=ConstantArbiter(args.mock_action)
+            if args.live:
+                env=prepare_environment(task,image,timeout=args.tool_timeout)
             def usage():
                 if not args.live:
                     return {}
@@ -68,7 +81,10 @@ def run(args):
                             gate=ArbitrationGate(args.condition,arbiter),evaluator=evaluator,usage=usage)
         except Exception as exc:
             if env is not None:
-                env.close()
+                try:
+                    env.close()
+                except Exception:
+                    pass
             events=writer.snapshot()
             if events[-1]["event_type"]!="run_end":
                 writer.finish("failed",failure_category="infrastructure_error",failure_reason=type(exc).__name__)
@@ -87,6 +103,7 @@ def main(argv=None):
     p.add_argument("--condition",choices=["none","monitor","rule_based","llm"],default="none")
     p.add_argument("--live",action="store_true",help="Explicitly allow Docker and paid model calls")
     p.add_argument("--limit",type=int,default=1)
+    p.add_argument("--task-key",action="append",help="Select a normalized task key; repeat to select several")
     p.add_argument("--max-steps",type=int,default=20)
     p.add_argument("--seed",type=int,default=42,help="Trial identifier; endpoints may not support deterministic seeds")
     p.add_argument("--images",help="Trusted JSON image map keyed repo_directory:taskN")

@@ -30,7 +30,7 @@ def cooperbench_identity(task):
     m = task["metadata"]
     repo, number, fs = m["cooperbench_repo_directory"], m["cooperbench_task_id"], m["feature_ids"]
     if (not isinstance(repo,str) or not repo or "/" in repo or "\\" in repo or repo in {".",".."}
-        or type(number) is not int or number < 1 or not isinstance(fs,list) or len(fs)!=2
+        or type(number) is not int or number < 0 or not isinstance(fs,list) or len(fs)!=2
         or any(type(f) is not int or f<1 for f in fs) or fs[0]>=fs[1]):
         raise ValueError("Invalid CooperBench identity")
     if not all(any(g["goal_key"]==f"feature{f}" and g["owner_agent_id"]==f"agent{i+1}"

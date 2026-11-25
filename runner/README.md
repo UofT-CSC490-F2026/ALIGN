@@ -1,7 +1,7 @@
-# ALIGN runner architecture (initial proposal)
+# ALIGN runner architecture
 
-Base: final-project / A2. This PR introduces contracts and local event recording only;
-it does not execute models or containers yet.
+The runner builds on the A2 task and event schemas. See [the quickstart](QUICKSTART.md)
+for verified commands, integration results and live execution prerequisites.
 
 ## Ownership and interfaces
 
@@ -54,8 +54,9 @@ mediate (cancel original proposal and send revision feedback), and optionally es
 unsupported decisions. Monitor-mode proposed blocks must be represented separately from
 enforced blocks: current process_runs.py assumes arbiter_decision action=block is enforced
 and rejects a dispatched result. Resolve this contract with evaluation before monitor runs.
-Existing action_result accepts dispatched/cancelled/unknown, not blocked. A block with
-cancelled is imported as blocked. Dispatch does not imply tool success; log exit code separately.
+Monitor emits `arbiter_advice` in raw events. `action_result` accepts dispatched,
+cancelled and unknown. A cancelled action with an enforced block is imported as
+blocked. Dispatch records an attempt. The tool exit code captures success or failure.
 Do not treat uncertain files_touched as authoritative: shell commands can obscure paths.
 Enforce sandbox restrictions independently of any model or heuristic, in every condition.
 
@@ -64,15 +65,16 @@ Record model/revision, adapter ID, prompt version and reasoning configuration.
 Record unknown metrics as unknown, not success or zero. Conflict evidence must originate
 from independent observations, not an arbiter's own predictions.
 
-## Proposed next PRs
+## Remaining integration work
 
-- Environment and agent adapter: investigate actual CooperBench task/image compatibility,
-  container isolation, trusted test setup, and model provider. No host shell execution
-  of model-generated commands; no host credentials, Docker socket or hidden tests in agents.
-- Orchestration: bounded two-agent execution, decision-time observations, raw baseline traces.
-- Intervention gate: actual cancellation/feedback, timeout and invalid output handling,
-  monitoring compatibility, tests with fake environments.
-- Integration: model adapter, trusted tests, real trace through A2 import/evaluation.
+- Validate the dataset, task image and evaluator together in an isolated Docker environment.
+- Define independent conflict and constraint evidence for evaluation. Advisory outputs need
+  separate scoring. The runner records no inferred conflict labels.
+- Keep the alternating loop for controlled proposal-level studies. It exposes message
+  coordination and overlapping edits, but independent workspaces cannot reproduce write races.
+  Mediation can request a revision from the proposer. It cannot rewind earlier actions or
+  reopen a peer's submission. For upstream comparisons, adapt its agent dispatch before
+  both messaging and shell execution, and preserve its independent actor loops and shared Git.
 
 No cloud deployment is required for this core. Run from repository root:
 
@@ -80,6 +82,6 @@ No cloud deployment is required for this core. Run from repository root:
 python -m unittest discover -s scripts/tests -p 'test_runner_core.py' -v
 ```
 
-Known limitations: local in-memory recorder (no durable streaming); prefix validation
-is quadratic and should be profiled; no automatic redaction; no runtime enforcement,
-agent execution, upstream dependency, or model training is implemented yet.
+The recorder keeps events in memory and validates each prefix, so work grows
+quadratically with trial length. The runner has no automatic trace redaction or
+model training implementation.
