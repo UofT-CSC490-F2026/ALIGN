@@ -1,7 +1,7 @@
 """Single-process event recorder compatible with the existing A2 v1 contract.
 
-Only sanitized payloads may be passed by callers. This is not a redaction layer.
-A future concurrent adapter must share one recorder and serialize action decisions.
+The recorder serializes event sequence assignment and redacts configured secrets.
+One recorder is shared by all workers.
 """
 from __future__ import annotations
 
@@ -12,12 +12,14 @@ from threading import RLock
 from uuid import uuid4
 
 from scripts.run_artifacts import validate_events, stage
+from .redaction import Redactor
 
 
 class EventWriter:
     def __init__(self, *, task_key, arbiter_condition, agent_config,
-                 arbiter_config, seed=None, run_key=None):
+                 arbiter_config, seed=None, run_key=None, redactor=None):
         self.run_key = run_key if run_key is not None else str(uuid4())
+        self.redactor = redactor if redactor is not None else Redactor.from_env()
         self._events = []
         self._lock = RLock()
         self.emit("system", "run_start", {
@@ -34,6 +36,7 @@ class EventWriter:
                 raise ValueError("Run already ended")
             if event_type == "run_start" and self._events:
                 raise ValueError("Duplicate run_start")
+            payload = self.redactor.clean(payload)
             seq = len(self._events) + 1
             event = {
                 "schema_version": 1, "event_uuid": str(uuid4()),
@@ -61,6 +64,9 @@ class EventWriter:
             validate_events([*self._events, snapshot])
             self._events.append(snapshot)
             return seq
+
+    def sanitize(self, value):
+        return self.redactor.clean(value)
 
     def snapshot(self):
         """Return an independent copy; callers cannot mutate recorded history."""
