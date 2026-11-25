@@ -4,27 +4,18 @@ No network or host mounts are needed. Agent-generated Git bundles are parsed
 only inside isolated containers. The broker owns refs and permits fast-forward
 publication to the calling agent's branch; it never executes model shell text.
 """
-from copy import deepcopy
 import re
 import subprocess
 from threading import Lock
 from uuid import uuid4
 
 from .environment import DockerEnvironment
+from .docker_utils import (ACTORS, COMMAND_CAPTURE_BYTES, MAX_PATCH_BYTES,
+                           agent_feedback, isolated_run_args)
 
-ACTORS = ("agent1", "agent2")
-MAX_BUNDLE = 64 * 1024 * 1024
+MAX_BUNDLE = MAX_PATCH_BYTES
 BARE = "/tmp/align-shared.git"
 MERGE_DIR = "/tmp/align-final"
-
-
-def isolated_run_args(name, image, *, workdir=None):
-    args = ["run", "-d", "--pull=never", "--name", name, "--network=none",
-            "--cap-drop=ALL", "--security-opt=no-new-privileges",
-            "--pids-limit=256", "--memory=4g", "--cpus=2"]
-    if workdir:
-        args += ["-w", workdir]
-    return args + ["--entrypoint=sleep", image, "infinity"]
 
 
 def image_id(image, deadline):
@@ -68,12 +59,12 @@ class SharedDockerEnvironment(DockerEnvironment):
             self.close()
             raise
 
-    def _docker(self, args, *, timeout, check=False):
+    def _docker(self, args, *, timeout, check=False, output_limit=COMMAND_CAPTURE_BYTES):
         # Cleanup must still be possible after the trial deadline.
         if args[:2] != ["rm", "-f"]:
             timeout = self.deadline.remaining(timeout)
         try:
-            return super()._docker(args, timeout=timeout, check=check)
+            return super()._docker(args, timeout=timeout, check=check, output_limit=output_limit)
         except subprocess.TimeoutExpired as exc:
             raise TimeoutError("Docker command timed out") from exc
 
@@ -143,7 +134,7 @@ class SharedDockerEnvironment(DockerEnvironment):
         if tool == "bash":
             # The supervisor owns cleanup; a worker must not remove peer containers.
             r = self._exec(actor, action["command"])
-            return {"output": (r.stdout + r.stderr)[:12000], "exit_code": r.returncode}
+            return agent_feedback(r)
         if tool not in {"git_publish", "git_fetch"}:
             raise ValueError("Unsupported environment tool")
         with self._git_lock:

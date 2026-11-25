@@ -5,6 +5,10 @@ import subprocess
 from typing import Protocol
 from uuid import uuid4
 
+from .docker_utils import (ACTORS, COMMAND_CAPTURE_BYTES, MAX_PATCH_BYTES,
+                           agent_feedback, bounded_run, isolated_run_args,
+                           require_complete)
+
 class Agent(Protocol):
     def propose(self, context: dict) -> dict | None: ...
     def receive(self, feedback: dict) -> None: ...
@@ -51,12 +55,10 @@ class DockerEnvironment:
             raise ValueError("Positive timeout required")
         self.base_commit, self.timeout, self.containers = base_commit, timeout, {}
         try:
-            for actor in ("agent1","agent2"):
+            for actor in ACTORS:
                 name = "align-"+uuid4().hex
                 self.containers[actor] = name
-                self._docker(["run","-d","--pull=never","--name",name,"--network=none",
-                    "--cap-drop=ALL","--security-opt=no-new-privileges","--pids-limit=256",
-                    "--memory=4g","--cpus=2","--entrypoint=sleep",image,"3600"],timeout=60,check=True)
+                self._docker(isolated_run_args(name, image, lifetime="3600"), timeout=60, check=True)
                 if self._exec(actor,"git rev-parse HEAD",check=True).stdout.strip()!=base_commit:
                     raise ValueError("Task image base commit mismatch")
                 if self._exec(actor,"git status --porcelain",check=True).stdout.strip():
@@ -65,12 +67,19 @@ class DockerEnvironment:
             self.close()
             raise
     @staticmethod
-    def _docker(args, *, timeout, check=False):
-        return subprocess.run(["docker",*args],capture_output=True,text=True,
-            encoding="utf-8",errors="replace",timeout=timeout,check=check)
-    def _exec(self,actor,command,*,check=False):
-        return self._docker(["exec","-w","/workspace/repo",self.containers[actor],"bash","-lc",command],
-                            timeout=self.timeout,check=check)
+    def _docker(args, *, timeout, check=False, output_limit=COMMAND_CAPTURE_BYTES):
+        result = bounded_run(["docker", *args], timeout=timeout, limit=output_limit)
+        result.stdout = result.stdout.decode("utf-8", errors="replace")
+        result.stderr = result.stderr.decode("utf-8", errors="replace")
+        if check:
+            result.check_returncode()
+        return result
+
+    def _exec(self, actor, command, *, check=False, output_limit=COMMAND_CAPTURE_BYTES):
+        return self._docker(
+            ["exec", "-w", "/workspace/repo", self.containers[actor], "bash", "-lc", command],
+            timeout=self.timeout, check=check, output_limit=output_limit,
+        )
     def execute(self,actor,action):
         if action.get("tool")!="bash" or not isinstance(action.get("command"),str):
             raise ValueError("Expected bash action")
@@ -79,7 +88,7 @@ class DockerEnvironment:
         except subprocess.TimeoutExpired as exc:
             self.close()
             raise TimeoutError("Command timed out; trial aborted") from exc
-        return {"output":(r.stdout+r.stderr)[:12000],"exit_code":r.returncode}
+        return agent_feedback(r)
     def state(self):
         return {a:{"git_status":self._exec(a,"git status --porcelain",check=True).stdout[:4000],
                    "diff":self._exec(a,f"git diff --no-ext-diff {self.base_commit}",check=True).stdout[:8000]}
@@ -88,7 +97,10 @@ class DockerEnvironment:
         out={}
         for a in self.containers:
             self._exec(a,"git add -A",check=True)
-            out[a]=self._exec(a,f"git diff --cached --no-ext-diff --binary {self.base_commit}",check=True).stdout
+            out[a] = require_complete(self._exec(
+                a, f"git diff --cached --no-ext-diff --binary {self.base_commit}",
+                check=True, output_limit=MAX_PATCH_BYTES,
+            )).stdout
         return out
     def close(self):
         for a,name in list(self.containers.items()):

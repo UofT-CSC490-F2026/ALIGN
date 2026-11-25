@@ -24,7 +24,8 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
     stop = Event()
     done = Queue()
     pending, inflight, workspaces = {}, {}, {}
-    mail = {a: [] for a in agents}
+    mail = {actor: [] for actor in agents}
+    snapshot_status = {actor: "initializing" for actor in agents}
     finished = set()
     version = 0
     failure = None
@@ -49,6 +50,7 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
 
     def state():
         return {"workspaces": deepcopy(workspaces), "shared_git": shared(),
+                "workspace_snapshot_status": dict(snapshot_status),
                 "pending_proposals": deepcopy(pending),
                 "in_flight_actions": deepcopy(inflight),
                 "submitted_agents": sorted(finished),
@@ -73,6 +75,7 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
             with lock:
                 check()
                 workspaces[actor] = writer.sanitize(initial)
+                snapshot_status[actor] = "current"
             for _ in range(max_steps):
                 check()
                 with lock:
@@ -144,6 +147,7 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                         with lock:
                             check()
                             inflight[actor]["started"]=True
+                            snapshot_status[actor] = "action_in_flight"
                             writer.emit("system","action_started",{"actor_id":actor},trigger_sequence=seq)
                         if a["tool"]=="message":
                             with lock:
@@ -162,6 +166,7 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                         with lock:
                             if not stop.is_set() and actor in inflight:
                                 inflight.pop(actor)
+                                snapshot_status[actor] = "stale"
                                 version+=1
                                 writer.emit("system","action_result",{"outcome":"unknown","error_type":type(exc).__name__},
                                             trigger_sequence=seq)
@@ -169,6 +174,7 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                     with lock:
                         check()
                         inflight.pop(actor)
+                        snapshot_status[actor] = "refreshing"
                         version+=1
                         result=writer.sanitize(result)
                         if result.get("stale") is True and git_tool:
@@ -179,6 +185,7 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                     with lock:
                         check()
                         workspaces[actor]=writer.sanitize(after)
+                        snapshot_status[actor] = "current"
                 phase="agent_error"
                 check()
                 agent.receive(result)

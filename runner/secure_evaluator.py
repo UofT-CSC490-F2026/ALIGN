@@ -8,7 +8,9 @@ from dataclasses import dataclass
 import subprocess
 from uuid import uuid4
 
-from .shared_git import image_id, isolated_run_args
+from .shared_git import image_id
+from .docker_utils import (EVALUATOR_CAPTURE_BYTES, bounded_run,
+                           isolated_run_args, require_complete)
 
 
 @dataclass
@@ -45,8 +47,11 @@ class SecureSandbox:
 
     def _run(self,args,*,data=None,check=False,cap=None):
         try:
-            return subprocess.run(["docker",*args],input=data,capture_output=True,check=check,
-                                  timeout=self.deadline.remaining(cap or self.timeout))
+            return require_complete(bounded_run(
+                ["docker", *args], data=data, check=check,
+                timeout=self.deadline.remaining(cap or self.timeout),
+                limit=EVALUATOR_CAPTURE_BYTES,
+            ))
         except subprocess.TimeoutExpired as exc:
             self.terminate()
             raise TimeoutError("Evaluator Docker command timed out") from exc

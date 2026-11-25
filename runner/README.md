@@ -12,9 +12,11 @@ See the quickstart for the tested concurrent protocol and local evaluator setup.
 - Quality: regression, Docker/DB integration, profiling and review.
 
 The top-level v1 observation fields in contracts.py remain unchanged.
-repository_state now includes workspaces, shared_git, pending_proposals,
-in_flight_actions, submitted_agents, and coordination_version. Workspace
-snapshots are last observed state, not a live atomic read of another worker.
+repository_state includes workspaces, workspace_snapshot_status, shared_git,
+pending_proposals, in_flight_actions, submitted_agents, and coordination_version.
+Workspace snapshots are last observed state, not an atomic read of another worker.
+The status map distinguishes initializing, current (last refresh completed),
+action_in_flight, refreshing, and stale (failed or uncertain action).
 The queue event records arrival; proposed_action is recorded at decision time,
 and arbiter_observation contains exactly the sanitized input sent to the arbiter.
 All referenced recent events precede that canonical proposal event.
@@ -59,5 +61,10 @@ discovery. Use disposable hosts and trusted images; Docker is not a complete
 security boundary. The event recorder remains in-memory and validates prefixes;
 process crashes are not guaranteed to preserve evidence. Normal deadline
 termination preserves recorded events and marks incomplete actions honestly.
+
+Shell output capture drains both streams with a fixed host-memory cap and
+retains the real exit code. Agent feedback marks output_truncated when data
+was dropped. Evaluator commands exceeding the cap fail closed rather than
+scoring incomplete logs; exact patch transfers reject oversized output.
 
 No hosted infrastructure is needed for scripted verification.

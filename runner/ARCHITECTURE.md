@@ -53,3 +53,8 @@ Docker is not an absolute security boundary; use disposable hosts without secret
   before arbitration receives `proposal_cancelled`; a canonical proposal has
   one terminal `action_result`. Completed tool results are preserved even if
   the following workspace refresh fails. Process-crash journaling is out of scope.
+
+- Workspace snapshot freshness is explicit during tool execution and refresh.
+  Shell and evaluator output use bounded capture; incomplete evaluator logs
+  are not used to claim a passing feature. Container limits are shared across
+  the execution, Git broker and evaluator implementations.

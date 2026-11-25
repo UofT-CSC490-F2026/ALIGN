@@ -59,7 +59,7 @@ class DockerContractTests(unittest.TestCase):
             env=DockerEnvironment.__new__(DockerEnvironment)
             env.containers={'agent1':'fake'}
             env.base_commit=base
-            def execute(actor,command,check=False):
+            def execute(actor,command,check=False,output_limit=None):
                 return git(*shlex.split(command)[1:])
             env._exec=execute
             generated=env.patches()['agent1']

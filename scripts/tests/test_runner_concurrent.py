@@ -324,3 +324,31 @@ class ConcurrentTests(unittest.TestCase):
         sequence = next(iter(pending.values()))["queue_sequence"]
         self.assertLess(sequence,obs["proposal_sequence"])
         self.assertEqual(events[sequence-1]["event_type"],"proposal_queued")
+
+    def test_peer_observation_marks_snapshot_refresh_in_progress(self):
+        refreshing, observed = threading.Event(), threading.Event()
+
+        class Environment(MockEnvironment):
+            def state_for(self, actor):
+                if actor == "agent1" and self.executed:
+                    refreshing.set()
+                    wait(observed)
+                return {"actor": actor}
+
+        def second(_):
+            wait(refreshing)
+            return proposal("inspect peer")
+
+        def decide(obs):
+            if obs["actor_id"] == "agent2":
+                state = obs["repository_state"]
+                self.assertEqual(state["workspace_snapshot_status"]["agent1"], "refreshing")
+                self.assertNotIn("agent1", state["in_flight_actions"])
+                observed.set()
+            return ConstantArbiter().decide(obs)
+
+        events = self.run_case(
+            {"agent1": Agent(proposal("edit")), "agent2": Agent(second)},
+            Environment(), "llm", Arbiter(decide),
+        )
+        self.assertEqual(events[-1]["payload"]["status"], "completed")
