@@ -93,7 +93,7 @@ def run(args, *, arbiter_factory=None):
                     # The callable API currently exposes no complete usage totals.
                     return {"usage_incomplete":True}
                 if not all(c.usage_known for c in clients):
-                    return {}
+                    return {"usage_incomplete":True}
                 return {"input_tokens":sum(c.input_tokens for c in clients),
                         "output_tokens":sum(c.output_tokens for c in clients)}
             runner=run_concurrent if concurrent else run_task

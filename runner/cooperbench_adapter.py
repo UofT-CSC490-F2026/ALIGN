@@ -69,7 +69,7 @@ def evaluation_evidence(task,result):
         observed=(type(passed) is bool and
                   ("exit_code" not in evidence or type(exit_code) is int and exit_code>=0) and
                   (not counts or any(type(count) is int and count>0 for count in counts)))
-        if result.get("error") or evidence.get("feature_id",f)!=f or not observed:
+        if (result.get("error") and not result.get("partial_evidence")) or evidence.get("feature_id",f)!=f or not observed:
             goals[f"feature{f}"]="not_evaluated"
         else:
             goals[f"feature{f}"]="passed" if passed else "failed"
@@ -85,7 +85,7 @@ def evaluation_evidence(task,result):
     return {"goal_results":goals,"shared_goal_satisfied":shared,
             "critical_constraints_passed":True if not task["constraints"] and not evaluation_error else None,
             "merge_status":merge,
-            "evaluation_error":evaluation_error}
+            "evaluation_error":evaluation_error,"evaluation_timeout":bool(result.get("timeout"))}
 
 def evaluate_patches(task,patches,dataset_dir,*,timeout=600,deadline=None,expected_image=None):
     """Run pinned test logic in isolated Docker, preserving missing evidence.
@@ -109,20 +109,29 @@ def evaluate_patches(task,patches,dataset_dir,*,timeout=600,deadline=None,expect
             # directly rather than trying to merge two duplicated textual diffs.
             root=Path(dataset_dir)/repo/f"task{number}"
             sb=backend.create_sandbox(image,timeout)
+            results={}
+            evaluation_error=None
+            timed_out=False
             try:
                 final_patch=upstream._filter_test_files(patches["agent1"])
                 sb.write_patch("merged.patch",final_patch)
-                results=[]
                 for i,feature in enumerate(features,1):
                     name=f"tests{i}.patch"
                     tests=(root/f"feature{feature}"/"tests.patch").read_text(encoding="utf-8")
                     sb.write_patch(name,tests)
                     result=upstream._run_tests(sb,name,"merged.patch",task["base_commit"])
-                    results.append({"feature_id":feature,**result})
-                result={"merge":{"status":"clean"},"feature1":results[0],"feature2":results[1],
-                        "both_passed":all(x["passed"] for x in results),"error":None}
+                    results[f"feature{i}"]={"feature_id":feature,**result}
+            except Exception as exc:
+                evaluation_error=type(exc).__name__
+                timed_out=isinstance(exc,TimeoutError)
             finally:
-                sb.terminate()
+                try:
+                    sb.terminate()
+                except Exception as exc:
+                    evaluation_error="Evaluator cleanup failed: "+type(exc).__name__
+            result={"merge":{"status":"clean"},**results,
+                    "both_passed":len(results)==2 and all(x["passed"] for x in results.values()),
+                    "error":evaluation_error,"partial_evidence":True,"timeout":timed_out}
         else:
             # Inject the sandbox factory and safe patch writer into a private
             # function globals copy; no global monkeypatch or backend mutation.
@@ -139,7 +148,10 @@ def evaluate_patches(task,patches,dataset_dir,*,timeout=600,deadline=None,expect
                     path.write_bytes(patches[f"agent{i}"].encode("utf-8"))
                 result=test_merged(repo,number,*features,patch1=paths[0],patch2=paths[1],
                                    timeout=timeout,backend="docker",dataset_dir=dataset_dir)
-        deadline.remaining()
+        try:
+            deadline.remaining()
+        except TimeoutError:
+            result={**result,"error":"Trial deadline exceeded","partial_evidence":True,"timeout":True}
         return evaluation_evidence(task,result)
     finally:
         backend.close()

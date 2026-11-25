@@ -215,7 +215,6 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
             # No workers can mutate workspaces after all have submitted.
             deadline.remaining()
             evidence=evaluator(task,env.patches())
-            deadline.remaining()
             for goal in task["goals"]:
                 key=goal["goal_key"]
                 result=evidence.get("goal_results",{}).get(key,"not_evaluated")
@@ -225,7 +224,11 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
             metrics.update({k:evidence.get(k) for k in ("shared_goal_satisfied","critical_constraints_passed","merge_status")})
             if evidence.get("evaluation_error"):
                 status="failed"
-                failure={"failure_category":"infrastructure_error","failure_reason":"Evaluator failed"}
+                failure={"failure_category":"timeout" if evidence.get("evaluation_timeout") else "infrastructure_error",
+                         "failure_reason":"Evaluator failed"}
+            elif deadline.end<=monotonic():
+                status="failed"
+                failure={"failure_category":"timeout","failure_reason":"Trial deadline exceeded after evaluation"}
     except Exception as exc:
         status="failed"
         failure={"failure_category":"timeout" if isinstance(exc,TimeoutError) else "infrastructure_error",

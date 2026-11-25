@@ -8,6 +8,7 @@ from copy import deepcopy
 import re
 import subprocess
 from threading import Lock
+from tempfile import TemporaryFile
 from uuid import uuid4
 
 from .environment import DockerEnvironment
@@ -81,25 +82,30 @@ class SharedDockerEnvironment(DockerEnvironment):
     def _binary(self, container, command, data=None):
         args = ["docker", "exec", "-i", container, "bash", "-lc", command]
         try:
-            result = subprocess.run(args, input=data, capture_output=True,
-                                    timeout=self.deadline.remaining(self.timeout), check=True)
+            with TemporaryFile() as output:
+                subprocess.run(args, input=data, stdout=output, stderr=subprocess.DEVNULL,
+                               timeout=self.deadline.remaining(self.timeout), check=True)
+                output.seek(0)
+                result=output.read(MAX_BUNDLE+1)
         except subprocess.TimeoutExpired as exc:
             raise TimeoutError("Git transfer timed out") from exc
-        if len(result.stdout) > MAX_BUNDLE:
+        if len(result)>MAX_BUNDLE:
             raise ValueError("Git transfer exceeded bundle limit")
-        return result.stdout
+        return result
 
     def _export(self, actor):
         # Explicit base ancestry check; a submitted branch must derive from the task base.
         return self._binary(self.containers[actor],
             f"cd /workspace/repo && git merge-base --is-ancestor {self.base_commit} HEAD && "
-            "git bundle create - HEAD")
+            f"git bundle create - HEAD ^{self.base_commit}")
 
     def _import_broker(self, actor, *, final=False):
-        data = self._export(actor)
-        if len(data) > MAX_BUNDLE:
-            raise ValueError("Git transfer exceeded bundle limit")
         ref = f"refs/align/{'final' if final else 'staged'}/{actor}"
+        head=self._exec(actor,"git rev-parse HEAD",check=True).stdout.strip()
+        if head==self.base_commit:
+            self._broker_exec(f"git -C {BARE} update-ref {ref} {self.base_commit}",check=True)
+            return self.base_commit
+        data = self._export(actor)
         self._binary(self._broker,
             f"cat > /tmp/align-transfer.bundle && git -C {BARE} fetch --no-tags "
             f"/tmp/align-transfer.bundle +HEAD:{ref} && rm -f /tmp/align-transfer.bundle", data)
@@ -156,7 +162,11 @@ class SharedDockerEnvironment(DockerEnvironment):
                 self._published = {**self._published, actor: tip}
                 return {"output": f"Published {actor} at {tip}", "exit_code": 0,
                         "published": self.shared_state()["published"]}
-            bundle = self._binary(self._broker, f"git -C {BARE} bundle create - refs/heads/{target}")
+            if old==self.base_commit:
+                self._exec(actor,f"git update-ref refs/remotes/align/{target} {old}",check=True)
+                return {"output":f"Fetched align/{target} at {old}; inspect or merge it locally.",
+                        "exit_code":0,"published":self.shared_state()["published"]}
+            bundle = self._binary(self._broker, f"git -C {BARE} bundle create - refs/heads/{target} ^{self.base_commit}")
             self._binary(self.containers[actor],
                 "cd /workspace/repo && cat > /tmp/align-transfer.bundle && "
                 f"git fetch --no-tags /tmp/align-transfer.bundle +refs/heads/{target}:refs/remotes/align/{target} "
