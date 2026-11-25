@@ -137,9 +137,10 @@ class LoaderTests(unittest.TestCase):
         other = self.path / "dups"
         other.mkdir()
         rows = "\n".join(normalize_tasks.canonical_json(x) for x in records) + "\n"
-        (other / "tasks.jsonl").write_text(rows, encoding="utf-8")
+        raw = rows.encode("utf-8")
+        (other / "tasks.jsonl").write_bytes(raw)
         import hashlib
-        (other / "manifest.json").write_text(json.dumps({"schema_version": 1, "dataset_source": "align-custom", "source_revision": "v1", "task_count": 2, "tasks_sha256": hashlib.sha256(rows.encode()).hexdigest()}), encoding="utf-8")
+        (other / "manifest.json").write_text(json.dumps({"schema_version": 1, "dataset_source": "align-custom", "source_revision": "v1", "task_count": 2, "tasks_sha256": hashlib.sha256(raw).hexdigest()}), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "Duplicate task_key"):
             load_tasks.read_batch(other)
 
