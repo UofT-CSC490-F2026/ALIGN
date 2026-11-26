@@ -1,6 +1,7 @@
 [run]
 source = arbiter_training
 branch = True
+omit = arbiter_training/tests/*
 
 [report]
 show_missing = True

@@ -19,7 +19,7 @@ model weights. The package-specific coverage configuration checks all
 
 ```powershell
 python -m pip install -r arbiter_training/requirements-test.txt
-python -m pytest scripts/tests/test_arbiter_training.py scripts/tests/test_arbiter_scripts.py scripts/tests/test_arbiter_modal_offline.py --cov=arbiter_training --cov-config=arbiter_training/.coveragerc --cov-branch --cov-fail-under=100 --cov-report=term-missing
+python -m pytest arbiter_training/tests/test_arbiter_training.py arbiter_training/tests/test_arbiter_scripts.py arbiter_training/tests/test_arbiter_modal_offline.py --cov=arbiter_training --cov-config=arbiter_training/.coveragerc --cov-branch --cov-fail-under=100 --cov-report=term-missing
 ```
 
 The `Arbiter training tests` workflow enforces 100% line and branch coverage on
