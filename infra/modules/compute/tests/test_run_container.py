@@ -3,13 +3,14 @@
 import builtins
 import importlib.util
 import json
+import runpy
 from pathlib import Path
 import subprocess
 import sys
 from types import SimpleNamespace
 import tempfile
 import unittest
-from unittest.mock import mock_open, patch
+from unittest.mock import call, mock_open, patch
 
 
 script = Path(__file__).resolve().parents[1] / "scripts" / "run_container.py"
@@ -31,6 +32,54 @@ class RuntimeTestCase(unittest.TestCase):
             side_effect=AssertionError("A runtime test attempted a real command"),
         )
         self.replace(runner, "LOG")
+
+
+class CommandTests(RuntimeTestCase):
+    def test_expired_deadline_never_starts_command(self):
+        self.replace(runner.time, "monotonic", return_value=10)
+        with self.assertRaises(subprocess.TimeoutExpired):
+            runner.execute(["docker", "info"], deadline=10)
+        runner.subprocess.run.assert_not_called()
+
+    def test_failed_command_reports_stderr_and_keeps_stdout_private(self):
+        self.replace(runner.time, "monotonic", return_value=10)
+        args = ["aws", "ecr", "get-login-password"]
+        result = subprocess.CompletedProcess(args, 2, "fixture-private-output", " access denied ")
+        command = runner.subprocess.run
+        command.side_effect = None
+        command.return_value = result
+        with self.assertRaises(RuntimeError) as error:
+            runner.execute(args, deadline=14)
+        self.assertEqual(str(error.exception), "aws failed (2): access denied")
+        command.assert_called_once_with(args, input=None, text=True, capture_output=True, timeout=4)
+        self.assertIs(runner.execute(args, check=False), result)
+
+    def test_login_uses_stdin_and_pull_uses_isolated_docker_config(self):
+        config = {"region": "test-region", "registry": "fixture-registry", "image": "fixture-image"}
+        docker = ["docker", "--config", "/mock/runtime/docker"]
+        cmd = runner.subprocess.run
+        cmd.side_effect = [
+            subprocess.CompletedProcess([], 0, output, "") for output in ("fixture-password", "", "")
+        ]
+        self.replace(runner.time, "monotonic", return_value=10)
+        self.assertEqual(runner.prepare_image(config, Path("/mock/runtime"), 20), docker)
+        options = dict(text=True, capture_output=True, timeout=10)
+        self.assertEqual(cmd.call_args_list, [
+            call(["aws", "ecr", "get-login-password", "--region", "test-region"], input=None, **options),
+            call(docker + ["login", "--username", "AWS", "--password-stdin", "fixture-registry"],
+                 input="fixture-password", **options),
+            call(docker + ["pull", "--platform", "linux/amd64", "fixture-image"], input=None, **options),
+        ])
+
+    def test_signal_raises_runner_interruption(self):
+        with self.assertRaisesRegex(runner.RunnerInterrupted, str(runner.signal.SIGTERM)):
+            runner.interrupted(runner.signal.SIGTERM, None)
+
+    def test_cli_rejects_unknown_workload_before_setup(self):
+        self.replace(sys, "argv", new=[str(script), "unknown"])
+        with patch("sys.stderr"), self.assertRaises(SystemExit) as error:
+            runpy.run_path(str(script), run_name="__main__")
+        self.assertEqual(error.exception.code, 2)
 
 
 class ServiceImageTests(RuntimeTestCase):
@@ -202,8 +251,60 @@ class SharedServiceTests(RuntimeTestCase):
             runner.require_running_service(self.config, 900)
         self.assertTrue(all("inspect" in call.args[0] for call in self.execute.call_args_list))
 
+    def test_service_without_memory_budget_accepts_matching_container(self):
+        del self.config["service_memory_mb"]
+        del self.details["HostConfig"]
+        runner.require_running_service(self.config, 900)
+        self.assertEqual(self.execute.call_count, 2)
+
+    def test_cached_tag_pointing_to_different_image_blocks_smoke(self):
+        self.details["Image"] = "old-image-id"
+        with self.assertRaisesRegex(RuntimeError, "Cached image differs"):
+            runner.require_running_service(self.config, 900)
+        self.assertEqual(self.execute.call_count, 2)
+
+    def test_existing_service_only_started_when_stopped(self):
+        for running in (True, False):
+            with self.subTest(running=running):
+                self.details["State"]["Running"] = running
+                self.execute.reset_mock()
+                self.execute.side_effect = [
+                    SimpleNamespace(stdout="existing-id"), SimpleNamespace(stdout=json.dumps([self.details])), None,
+                ]
+                self.assertEqual(runner.start_service(self.config, ["docker"], Path("/mock/env")), 0)
+                commands = [entry.args[0] for entry in self.execute.call_args_list]
+                expected = [["docker", "inspect", "existing-id"]]
+                if not running:
+                    expected.append(["docker", "start", "existing-id"])
+                self.assertEqual(commands[1:], expected)
+
+    def test_new_service_applies_configured_limits_and_loopback_port(self):
+        for memory, port in ((None, None), (128, 8080)):
+            with self.subTest(memory=memory, port=port):
+                config = dict(self.config, service_port=port, service_memory_mb=memory, service_command=["serve"])
+                self.execute.side_effect = [SimpleNamespace(stdout=""), None]
+                self.assertEqual(runner.start_service(config, ["docker"], Path("/mock/env")), 0)
+                args = self.execute.call_args.args[0]
+                self.assertEqual(args[:3], ["docker", "run", "--detach"])
+                self.assertEqual(args[-2:], ["mock-image", "serve"])
+                for flag in ("--memory", "--memory-swap"):
+                    if memory is None:
+                        self.assertNotIn(flag, args)
+                    else:
+                        self.assertEqual(args[args.index(flag) + 1], "128m")
+                if port is None:
+                    self.assertNotIn("--publish", args)
+                else:
+                    self.assertEqual(args[args.index("--publish") + 1], "127.0.0.1:8080:8080")
+
 
 class OfflineEnvironmentTests(RuntimeTestCase):
+    def test_service_environment_has_only_configured_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = runner.write_environment({"environment": {"SERVICE_SETTING": "fixture"}}, Path(directory))
+            self.assertEqual(path.read_text(), "SERVICE_SETTING=fixture\n")
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
     def test_smoke_does_not_inherit_service_settings(self):
         config = {
             "environment": {"ALIGN_DB_SECRET_ARN": "fixture-reference", "SERVICE_SETTING": "service"},
@@ -226,6 +327,63 @@ class SmokeImageTests(RuntimeTestCase):
         with self.assertRaisesRegex(RuntimeError, "VOLUME"):
             runner.run_smoke({"image": "fixture-image"}, ["docker"], Path("/mock/env"), "fixture-run", 900)
         execute.assert_called_once_with(["docker", "image", "inspect", "fixture-image"], deadline=900, limit=30)
+
+
+class SmokeLifecycleTests(RuntimeTestCase):
+    def setUp(self):
+        super().setUp()
+        self.config = dict(image="fixture-image", smoke_cpus=0.5, smoke_memory_mb=64,
+                           smoke_pids_limit=16, smoke_tmpfs_mb=8, smoke_command=["check"],
+                           smoke_timeout_seconds=60)
+        self.image = SimpleNamespace(stdout='[{"Config": {}}]')
+        self.execute = self.replace(runner, "execute")
+        self.remove = call(["docker", "rm", "--force", "align-smoke-fixture"], limit=30)
+
+    def run_job(self):
+        return runner.run_smoke(self.config, ["docker"], Path("/mock/env"), "fixture", 900)
+
+    def test_smoke_returns_container_status_and_removes_container(self):
+        for status, output in ((0, ""), (7, "failed check")):
+            with self.subTest(status=status):
+                self.execute.reset_mock()
+                self.execute.side_effect = [
+                    self.image, None, None, SimpleNamespace(stdout=str(status)),
+                    SimpleNamespace(stdout="", stderr=output), None,
+                ]
+                self.assertEqual(self.run_job(), status)
+                create = self.execute.call_args_list[1].args[0]
+                self.assertEqual(create[:2], ["docker", "create"])
+                self.assertEqual(create[-2:], ["fixture-image", "check"])
+                self.assertEqual(create[create.index("--network") + 1], "none")
+                self.assertIn("--read-only", create)
+                self.assertEqual(self.execute.call_args_list[2:], [
+                    call(["docker", "start", "align-smoke-fixture"], deadline=900),
+                    call(["docker", "wait", "align-smoke-fixture"], deadline=900, limit=60),
+                    call(["docker", "logs", "--tail", "200", "align-smoke-fixture"], check=False, limit=30),
+                    self.remove,
+                ])
+                if output:
+                    runner.LOG.info.assert_any_call("Smoke container output:\n%s%s", "", output)
+
+    def test_ambiguous_create_only_removes_container_owned_by_this_run(self):
+        for label, found in (("fixture", True), ("another-run", True), (None, False)):
+            with self.subTest(label=label, found=found):
+                probe = SimpleNamespace(returncode=0 if found else 1,
+                                        stdout=json.dumps([{"Config": {"Labels": {"align.run_id": label}}}]))
+                self.execute.reset_mock()
+                self.execute.side_effect = [self.image, subprocess.TimeoutExpired("create", 1), probe, None]
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    self.run_job()
+                expected = [call(["docker", "inspect", "align-smoke-fixture"], check=False, limit=30)]
+                if label == "fixture":
+                    expected.append(self.remove)
+                self.assertEqual(self.execute.call_args_list[2:], expected)
+
+    def test_wait_timeout_still_removes_started_container(self):
+        self.execute.side_effect = [self.image, None, None, subprocess.TimeoutExpired("wait", 60), None]
+        with self.assertRaises(subprocess.TimeoutExpired):
+            self.run_job()
+        self.assertEqual(self.execute.call_args_list[-1], self.remove)
 
 
 class RunnerRoutingTests(RuntimeTestCase):
@@ -309,6 +467,24 @@ class RunnerRoutingTests(RuntimeTestCase):
         self.smoke_image.assert_called_once_with(self.config, Path("/mock/runtime"), 1000)
         self.smoke.assert_called_once()
         self.service.assert_not_called()
+        self.lock.close.assert_called_once()
+
+    def test_disabled_workload_exits_successfully_without_preflight(self):
+        self.config.update(smoke_enabled=False)
+        self.assertEqual(self.invoke(), 0)
+        self.scratch.assert_not_called()
+        self.flock.assert_not_called()
+
+    def test_invalid_smoke_config_fails_before_lock_or_launch(self):
+        for change in ({"image": ""}, {"smoke_command": []}, {"environment": {"ALIGN_ENVIRONMENT": "prod"}}):
+            with self.subTest(change=change), patch.dict(self.config, change):
+                self.assertEqual(self.invoke(), 1)
+                self.flock.assert_not_called()
+                self.scratch.assert_not_called()
+
+    def test_smoke_timeout_returns_124_and_releases_lock(self):
+        self.smoke.side_effect = subprocess.TimeoutExpired("docker wait", 900)
+        self.assertEqual(self.invoke(), 124)
         self.lock.close.assert_called_once()
 
     def test_busy_lock_skips_without_docker_or_ecr_calls(self):

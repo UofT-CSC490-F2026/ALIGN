@@ -1,5 +1,8 @@
 """PR-3 loader contract tests; live DB test runs only when explicitly configured."""
 
+import io
+import runpy
+from unittest.mock import MagicMock, patch
 import copy
 import json
 import os
@@ -111,6 +114,30 @@ class LoaderTests(unittest.TestCase):
         self.path = Path(self.temp.name)
         self.task = scenario()
         normalize_tasks.write_output([self.task], self.path, "align-custom", "v1", "all")
+
+    def test_disappearing_conflicting_row_aborts_import(self):
+        conn = MagicMock()
+        conn.cursor.return_value.__enter__.return_value.fetchone.return_value = None
+        with self.assertRaisesRegex(RuntimeError, "Task vanished"):
+            load_tasks.import_batch(conn, [self.task])
+
+    def test_cli_dry_run_and_apply(self):
+        args = [load_tasks.__file__, "--input-dir", str(self.path)]
+        db = FakeConnection()
+        with patch("psycopg.connect") as connect:
+            connect.return_value.__enter__.return_value = db
+            with patch.object(sys, "argv", args), patch("sys.stdout", new_callable=io.StringIO) as output:
+                runpy.run_path(load_tasks.__file__, run_name="__main__")
+            self.assertIn("DRY RUN", output.getvalue())
+            connect.assert_not_called()
+            with patch.object(sys, "argv", args + ["--apply"]):
+                with patch.dict(os.environ, {"ALIGN_DATABASE_URL": ""}), patch("sys.stderr", new_callable=io.StringIO), self.assertRaises(SystemExit):
+                    load_tasks.main()
+                connect.assert_not_called()
+                with patch.dict(os.environ, {"ALIGN_DATABASE_URL": "fixture"}), patch("sys.stdout", new_callable=io.StringIO) as output:
+                    load_tasks.main()
+            self.assertIn("Committed 1 new tasks", output.getvalue())
+            connect.assert_called_once_with("fixture", autocommit=True, connect_timeout=10)
 
     def test_manifest_checksum_and_parse(self):
         self.assertEqual(load_tasks.read_batch(self.path), [self.task])

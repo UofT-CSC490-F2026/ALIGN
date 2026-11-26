@@ -15,6 +15,7 @@ from .orchestrator import observation, validate_proposal
 from .task_loader import agent_view
 
 
+# Depth-test names below refer to a5/test_concurrent.py.
 def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                    evaluator=None, usage=None, deadline=None):
     """Run independent agent loops; retain a bounded cleanup window on abort."""
@@ -80,6 +81,7 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                 check()
                 with lock:
                     check()
+                    # test_mailbox_delivers_two_messages_once_in_order: a drained inbox must not replay peer messages.
                     inbox, mail[actor] = mail[actor], []
                     context = {"goal":view["agent_goals"][actor],"shared_goal":view["shared_goal"],
                                "constraints":view["constraints"],"actor_id":actor,
@@ -120,8 +122,13 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                     with lock:
                         check()
                         pending.pop(actor)
+                        # test_monitor_block_advice_still_dispatches_once: advice must leave baseline execution intact.
+                        # test_enforced_arbiter_error_cancels_proposal_once: invalid decisions must leave one cancellation.
+                        # test_monitor_error_records_error_and_continues: observer failure must remain visible without stopping work.
                         action = gate.record(writer,arbiter_observation,evaluation)
                         if action != "continue":
+                            # test_enforced_block_allows_safe_reproposal: only the revised action may execute.
+                            # test_query_feedback_stays_with_requesting_agent: clarification belongs to the proposer.
                             result = writer.sanitize(gate.feedback(action,evaluation[1]))
                             writer.emit("system","action_result",{"outcome":"cancelled",**result},trigger_sequence=seq)
                             if action=="mediate":
@@ -188,6 +195,7 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                         snapshot_status[actor] = "current"
                 phase="agent_error"
                 check()
+                # test_feedback_failure_preserves_dispatched_result: feedback can fail after the tool has run.
                 agent.receive(result)
             raise TimeoutError("Agent step limit reached")
         except Exception as exc:
@@ -222,12 +230,15 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
             elif failure is None and len(finished)==len(agents):
                 status="completed"
                 metrics["termination_reason"]="agents_submitted"
+        # test_evaluation_waits_for_both_submissions: scoring too early misses the last edit.
+        # test_escalation_skips_patch_collection_and_evaluation: escalation ends work before solution grading.
         if status=="completed" and not escalated and evaluator is not None:
             # No workers can mutate workspaces after all have submitted.
             deadline.remaining()
             evidence=evaluator(task,env.patches())
             for goal in task["goals"]:
                 key=goal["goal_key"]
+                # test_missing_goal_result_is_recorded_as_not_evaluated: missing evidence must remain distinct from failure.
                 result=evidence.get("goal_results",{}).get(key,"not_evaluated")
                 if result not in {"passed","failed","not_evaluated"}:
                     raise ValueError("Invalid evaluator evidence")
@@ -261,6 +272,7 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
             env.close()
         except Exception as exc:
             status="failed"
+            # test_cleanup_failure_preserves_original_agent_error: teardown must preserve the initiating fault.
             metrics["cleanup_failed"]=True
             if failure is None:
                 failure={"failure_category":"infrastructure_error","failure_reason":"Environment cleanup failed: "+type(exc).__name__}
@@ -281,6 +293,7 @@ def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
                 else:
                     writer.emit("system","proposal_cancelled",{"actor_id":actor,"reason":"Trial stopped while queued"},
                                 trigger_sequence=item["queue_sequence"])
+            # test_usage_failure_preserves_completed_trial: missing cost data must not invalidate a completed trial.
             if usage is not None:
                 try:
                     if all(not t.is_alive() for t in threads):

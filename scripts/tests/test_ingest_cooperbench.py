@@ -1,5 +1,10 @@
 """Offline tests for the CooperBench raw snapshot uploader."""
 
+import io
+import runpy
+import shutil
+import sys
+from unittest.mock import Mock, patch
 import hashlib
 import importlib.util
 import json
@@ -62,6 +67,73 @@ class IngestTests(unittest.TestCase):
         path = self.dataset / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
+
+    def test_inventory_requires_dataset_metadata(self):
+        for name in ("README.md", "subsets/flash.json"):
+            with self.subTest(name=name):
+                path = self.dataset / name
+                data = path.read_bytes()
+                path.unlink()
+                with self.assertRaisesRegex(ValueError, name):
+                    ingest.inventory(self.dataset, REVISION)
+                path.write_bytes(data)
+
+    def test_subset_rejects_missing_task_and_incomplete_pair(self):
+        for task_id, pair, error in [(2, [1, 2], "Missing CooperBench task"), (1, [1], "Invalid feature pair")]:
+            with self.subTest(task_id=task_id):
+                self.write("subsets/flash.json", json.dumps({"tasks": [
+                    {"repo": "example_task", "task_id": task_id, "pairs": [pair]}]}))
+                with self.assertRaisesRegex(ValueError, error):
+                    ingest.inventory(self.dataset, REVISION)
+
+    def test_symlink_is_not_snapshotted(self):
+        (self.dataset / "alias").symlink_to(self.dataset / "README.md")
+        with self.assertRaisesRegex(ValueError, "Symlinks"):
+            ingest.inventory(self.dataset, REVISION)
+
+    def test_incomplete_readback_never_publishes_manifest(self):
+        manifest, entries = ingest.inventory(self.dataset, REVISION)
+        with patch.object(self.s3, "upload_file"), self.assertRaisesRegex(ClientError, "404"):
+            ingest.upload_snapshot(self.s3, "lake", REVISION, manifest, entries)
+        with patch.object(self.s3, "head_object", side_effect=[
+                ClientError({"Error": {"Code": "404"}}, "HeadObject"), {"ContentLength": 0}]), \
+                self.assertRaisesRegex(RuntimeError, "verification failed"):
+            ingest.upload_snapshot(self.s3, "lake", REVISION, manifest, entries)
+        self.assertFalse(any(key.endswith("manifest.json") for _, key in self.s3.objects))
+
+    def test_completed_snapshot_with_missing_file_is_rejected(self):
+        manifest, entries = ingest.inventory(self.dataset, REVISION)
+        ingest.upload_snapshot(self.s3, "lake", REVISION, manifest, entries)
+        del self.s3.objects["lake", f"benchmarks/raw/cooperbench/{REVISION}/{entries[0][1]}"]
+        with self.assertRaisesRegex(ValueError, "missing object"):
+            ingest.upload_snapshot(self.s3, "lake", REVISION, manifest, entries)
+
+    def test_access_denied_is_not_treated_as_missing(self):
+        with patch.object(self.s3, "get_object", side_effect=ClientError({"Error": {"Code": "AccessDenied"}}, "GetObject")), \
+                self.assertRaisesRegex(ClientError, "AccessDenied"):
+            ingest.optional_object(self.s3, "get_object", bucket="lake", key="key")
+
+    def test_cli_validates_revision_bucket_and_local_source(self):
+        for args in (["--revision", "main"], ["--revision", REVISION],
+                     ["--revision", REVISION, "--bucket", "lake", "--source-dir", str(self.dataset)]):
+            with self.subTest(args=args), patch.object(sys, "argv", [str(MODULE), *args]), \
+                    patch("sys.stderr", new_callable=io.StringIO), self.assertRaises(SystemExit) as error:
+                ingest.main()
+            self.assertEqual(error.exception.code, 2)
+
+    def test_cli_dry_run_and_pinned_download(self):
+        args = [str(MODULE), "--revision", REVISION]
+        with patch.object(sys, "argv", args + ["--dry-run", "--source-dir", str(self.dataset)]), \
+                patch("sys.stdout", new_callable=io.StringIO) as output:
+            runpy.run_path(str(MODULE), run_name="__main__")
+        self.assertIn("DRY RUN", output.getvalue())
+        hub = Mock()
+        hub.snapshot_download.side_effect = lambda **kwargs: shutil.copytree(self.dataset, kwargs["local_dir"])
+        with patch.dict(sys.modules, {"huggingface_hub": hub}), patch("boto3.client", return_value=self.s3), \
+                patch.object(sys, "argv", args + ["--bucket", "lake"]), patch("sys.stdout", new_callable=io.StringIO):
+            ingest.main()
+        self.assertEqual(hub.snapshot_download.call_args.kwargs["revision"], REVISION)
+        self.assertIn(("lake", f"benchmarks/raw/cooperbench/{REVISION}/manifest.json"), self.s3.objects)
 
     def test_inventory_preserves_relative_paths_and_checksums(self):
         manifest, entries = ingest.inventory(self.dataset, REVISION)

@@ -1,12 +1,15 @@
 [run]
+branch = True
 source =
     runner
     scripts
+    infra/modules/compute/scripts
+    infra/tests/e2e
+omit =
+    */test_*.py
+    */scripts/tests/*
+    */scripts/coverage_summary.py
 
 [report]
-include =
-    runner/*
-    scripts/evaluate.py
-    scripts/process_runs.py
 precision = 2
 show_missing = True

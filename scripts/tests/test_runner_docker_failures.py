@@ -130,3 +130,36 @@ class DockerFailureTests(unittest.TestCase):
             self.assertTrue(sandbox.closed)
             sandbox.terminate()
         self.assertEqual(docker.call_count, 2)
+
+    def test_output_larger_than_git_bundle_limit_is_rejected(self):
+        env = SharedDockerEnvironment.__new__(SharedDockerEnvironment)
+        env.deadline, env.timeout = TrialDeadline(), 30
+        with patch("runner.shared_git.MAX_BUNDLE", 2), patch("runner.shared_git.subprocess.run",
+                return_value=subprocess.CompletedProcess([], 0, b"abc", b"")):
+            with self.assertRaisesRegex(ValueError, "bundle limit"):
+                env._binary("broker", "git bundle create - HEAD")
+
+    def test_sandbox_streams_patch_and_closes_on_timeout(self):
+        base, digest = "a" * 40, "sha256:" + "b" * 64
+        backend = SecureBackend(digest, base, TrialDeadline())
+        def completed(stdout=b"", stderr=b""):
+            return subprocess.CompletedProcess([], 0, stdout, stderr)
+        replies = [completed(), completed(base.encode()), completed(), completed(),
+                   completed(), completed(b"success", b"warning"), subprocess.TimeoutExpired("docker", 1)]
+        with patch("runner.shared_git.subprocess.run", side_effect=[Mock(stdout=digest), Mock(returncode=0)]), \
+                patch("runner.secure_evaluator.bounded_run", side_effect=replies) as docker:
+            sandbox = backend.create_sandbox("fixture-image")
+            self.assertEqual(backend.sandboxes, [sandbox])
+            with self.assertRaisesRegex(ValueError, "Invalid patch filename"):
+                sandbox.write_patch("../other.patch", "diff")
+            sandbox.write_patch("feature.patch", "diff")
+            self.assertEqual(docker.call_args.kwargs["data"], b"diff")
+            self.assertEqual(docker.call_args.args[0][-1], "/patches/feature.patch")
+            result = sandbox.exec("fixture-check")
+            self.assertEqual((result.stdout_read(), result.stderr_read()), ("success", "warning"))
+            with self.assertRaisesRegex(TimeoutError, "timed out"):
+                sandbox.exec("fixture-check")
+            with self.assertRaisesRegex(RuntimeError, "closed"):
+                sandbox.exec("fixture-check")
+            with self.assertRaisesRegex(RuntimeError, "closed"):
+                sandbox.write_patch("feature.patch", "diff")

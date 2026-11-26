@@ -7,23 +7,23 @@ Git broker and pre-execution arbitration. See the [runner quickstart](runner/QUI
 
 [Coverage workflow and PR reports](https://github.com/UofT-CSC490-F2026/ALIGN/actions/workflows/coverage.yml)
 
-<!-- runner-coverage:start -->
+<!-- project-coverage:start -->
 
 | Scope | Covered | Total | Coverage |
 | --- | ---: | ---: | ---: |
-| Executable lines | 1682 | 1682 | 100.00% |
-| Branches | 564 | 564 | 100.00% |
+| Executable lines | 2110 | 2638 | 79.98% |
+| Branches | 662 | 834 | 79.38% |
 
-<!-- runner-coverage:end -->
+<!-- project-coverage:end -->
 
-The report measures production Python in `runner/` and the A2 ingestion and
-evaluation modules changed by this stack. Each PR check publishes a summary
-and JSON artifact. The check requires 100% line and branch coverage. Successful
-pushes to `final-project` refresh the README.
+The table shows line and branch coverage for the runner, pipeline scripts, EC2
+container runner and infrastructure data-path helpers. PR checks publish a
+summary and JSON report. Pushes to `a5` and `final-project` refresh the table
+when the suite passes. A separate check enforces 100% line coverage.
 
-```powershell
-py -m pip install -r requirements-coverage.txt
-py -m pytest scripts/tests --cov --cov-branch --cov-report=term-missing --cov-fail-under=100
+```sh
+python -m pip install -r requirements-coverage.txt
+python -m pytest scripts/tests infra/modules/compute/tests infra/tests/e2e --cov -ra --cov-report=term-missing
 ```
 
 For the same integration tests as CI, point `ALIGN_TEST_DATABASE_URL` at a

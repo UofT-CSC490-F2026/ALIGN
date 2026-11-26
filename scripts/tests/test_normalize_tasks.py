@@ -1,5 +1,8 @@
 """No-AWS tests for the ALIGN dataset-neutral task normalizer."""
 
+import runpy
+import sys
+from unittest.mock import patch
 import importlib.util
 import hashlib
 import json
@@ -55,6 +58,30 @@ class NormalizeTests(unittest.TestCase):
                        "success_criteria": {"type": "manual_review"}, "is_critical": True}],
         }
 
+    def test_cli_normalizes_custom_directory(self):
+        out = self.root / "out"
+        args = [str(MODULE), "custom", "--scenarios-dir", str(self.custom), "--revision", "v1", "--output-dir", str(out)]
+        with patch.object(sys, "argv", args):
+            runpy.run_path(str(MODULE), run_name="__main__")
+        self.assertEqual(json.loads((out / "tasks.jsonl").read_text()), normalize.normalized_custom(self.custom, "v1")[0])
+
+    def test_cooperbench_cli_defaults_to_flash_without_manifest(self):
+        out = self.root / "flash-output"
+        args = [str(MODULE), "cooperbench", "--dataset-dir", str(self.dataset),
+                "--revision", REVISION, "--output-dir", str(out)]
+        with patch.object(sys, "argv", args):
+            normalize.main()
+        expected = normalize.normalized_cooperbench(self.dataset, REVISION, "flash")
+        records = [json.loads(line) for line in (out / "tasks.jsonl").read_text().splitlines()]
+        self.assertEqual(records, expected)
+
+    def test_failed_flush_leaves_no_partial_output(self):
+        out = self.root / "out"
+        records = normalize.normalized_custom(self.custom, "v1")
+        with patch.object(normalize.os, "fsync", side_effect=OSError("disk full")), self.assertRaisesRegex(OSError, "disk full"):
+            normalize.write_output(records, out, "align-custom", "v1", "all")
+        self.assertEqual(list(out.iterdir()), [])
+
     def test_cooperbench_pair_has_expected_database_fields(self):
         records = normalize.normalized_cooperbench(self.dataset, REVISION, "flash")
         self.assertEqual(len(records), 1)
@@ -70,6 +97,7 @@ class NormalizeTests(unittest.TestCase):
         self.assertIn("feature1/tests.patch", task["goals"][0]["success_criteria"]["evaluator_test_patch"])
 
     def test_all_selects_all_unordered_feature_pairs(self):
+        (self.dataset / "pallets_click_task" / "docs").mkdir()
         records = normalize.normalized_cooperbench(self.dataset, REVISION, "all")
         self.assertEqual(len(records), 3)
         self.assertEqual([r["metadata"]["feature_ids"] for r in records], [[1, 2], [1, 3], [2, 3]])
@@ -158,7 +186,11 @@ class NormalizeTests(unittest.TestCase):
         self.write(raw_manifest, json.dumps({"source": "cooperbench",
                                               "source_repository": "CodeConflict/cooperbench-dataset",
                                               "source_revision": REVISION, "file_count": len(files), "files": files}))
-        normalize.verify_raw_manifest(self.dataset, REVISION, raw_manifest)
+        out = self.root / "verified"
+        with patch.object(sys, "argv", [str(MODULE), "cooperbench", "--dataset-dir", str(self.dataset),
+                                       "--revision", REVISION, "--raw-manifest", str(raw_manifest), "--output-dir", str(out)]):
+            normalize.main()
+        self.assertEqual(json.loads((out / "manifest.json").read_text())["task_count"], 1)
         self.write(self.dataset / "pallets_click_task/task2068/feature2/tests.patch", "modified")
         with self.assertRaisesRegex(ValueError, "checksum mismatch"):
             normalize.verify_raw_manifest(self.dataset, REVISION, raw_manifest)
