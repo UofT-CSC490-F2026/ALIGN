@@ -41,6 +41,8 @@ def test_modal_model_loading_and_generation_are_offline(monkeypatch):
         def apply_chat_template(self, messages, **kwargs):
             loaded.append((messages, kwargs))
             return "PROMPT"
+        def encode(self, prompt, add_special_tokens=False):
+            return list(prompt)
     class LLM:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
@@ -73,6 +75,12 @@ def test_modal_model_loading_and_generation_are_offline(monkeypatch):
     output = modal_app._generate_batch(gpt, None, "gpt-oss", "", [[{"role": "user", "content": "Hi"}]])
     assert output[0]["adapter"] is None
     assert loaded[-1][0][0].endswith("<|channel|>final<|message|>")
+    class Oversized:
+        def encode(self, prompt, add_special_tokens=False):
+            return range(modal_app.MAX_MODEL_LEN)
+    with pytest.raises(ValueError, match="context exceeds"):
+        modal_app._require_context_fit(Oversized(), ["x"])
+    assert modal_app._require_context_fit(Oversized(), [], reserve=0) == []
     assert modal_app.infer_batch._raw_f_("qwen", [[{"role": "user", "content": "Hi"}]])
     assert modal_app._decision_text("gpt-oss", "assistantfinal json {\"action\": 1}") == '{"action": 1}'
     assert modal_app._decision_text("qwen", "plain") == "plain"
@@ -150,6 +158,8 @@ def test_training_input_guards_and_mocked_sft(monkeypatch):
         def apply_chat_template(self, prompt, **kwargs):
             calls.append(("template", kwargs))
             return "prompt"
+        def encode(self, prompt, add_special_tokens=False):
+            return list(prompt)
         def save_pretrained(self, path):
             calls.append(("tokenizer", path))
     class Model:
@@ -181,6 +191,7 @@ def test_training_input_guards_and_mocked_sft(monkeypatch):
     metadata = raw("good", 4)
     assert metadata["train_examples"] == 20 and metadata["validation_examples"] == 5
     assert metadata["best_metric"] == .5
+    assert metadata["max_train_tokens"] > 0
     assert any(name == "adapter" for name, _ in calls)
     assert saved[0][1]["run_name"] == "good"
     assert calls[-1][0] == "commit"

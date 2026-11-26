@@ -25,6 +25,7 @@ jobs:
           arbiter_training/tests/test_arbiter_training.py
           arbiter_training/tests/test_arbiter_scripts.py
           arbiter_training/tests/test_arbiter_modal_offline.py
+          arbiter_training/tests/test_merged_runner_integration.py
           --cov=arbiter_training
           --cov-config=arbiter_training/.coveragerc
           --cov-branch

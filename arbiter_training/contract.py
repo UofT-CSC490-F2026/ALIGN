@@ -3,6 +3,7 @@
 import json
 
 ACTIONS = frozenset({"continue", "query", "block", "mediate", "restructure", "escalate"})
+ENFORCED_ACTIONS = ACTIONS - {"restructure"}
 SCHEMA_VERSION = 1
 SYSTEM_PROMPT = (
     "You are the ALIGN arbiter. Decide what to do before a coding agent's proposed "
@@ -10,15 +11,15 @@ SYSTEM_PROMPT = (
     "Return exactly one JSON object with keys action, reason, affected_agents, "
     "and evidence. affected_agents is a list of agent IDs; evidence is an "
     "object citing relevant proposal or prior event sequence numbers. action must be "
-    "one of: continue, query, block, mediate, restructure, escalate. "
+    "one of: continue, query, block, mediate, escalate. "
     "Choose continue for a safe or reversible step, including read-only inspection "
     "and an ordinary merge probe on a known clean branch. Choose query when a "
     "missing fact such as file ownership or unsaved work must be checked before "
     "acting. Choose block when the proposal would discard or overwrite known "
     "unintegrated work. Choose mediate when both agents' confirmed changes to "
     "the same behavior need an agreed combined edit before proceeding. Choose "
-    "restructure for a needed change in task ownership or sequencing, and "
     "escalate when the agents cannot resolve a substantive goal conflict. "
+    "Do not choose restructure: the runner reserves it but cannot enforce it. "
     "Do not infer a conflict merely from sharing a file. Do not assume an "
     "earlier conflict is still open after a conflict_resolution event. "
     "Keep reason concise and name the decisive evidence."
@@ -99,7 +100,7 @@ def decision_for_observation(action, reason, observation):
     }
 
 
-def parse_decision(output):
+def parse_decision(output, observation=None, enforceable=False):
     text = output.strip()
     if text.startswith("```json"):
         text = text[7:]
@@ -122,4 +123,13 @@ def parse_decision(output):
             or any(not isinstance(agent, str) for agent in value["affected_agents"])
             or not isinstance(value["evidence"], dict)):
         raise ValueError("Arbiter response has invalid affected_agents or evidence")
+    if observation is not None and any(agent not in observation["agent_goals"]
+                                       for agent in value["affected_agents"]):
+        raise ValueError("Arbiter response names an unknown affected agent")
+    if enforceable and value["action"] not in ENFORCED_ACTIONS:
+        raise ValueError("Arbiter response selects an unsupported enforced action")
+    try:
+        json.dumps(value, allow_nan=False, ensure_ascii=False).encode("utf-8")
+    except (TypeError, ValueError, UnicodeError) as exc:
+        raise ValueError("Arbiter response is not JSON serializable") from exc
     return value

@@ -58,7 +58,8 @@ def main():
                 raise ValueError("Future event leaked into a prompt")
             if observation["repository_state"] and row.get("scenario_source") == "public_trace":
                 raise ValueError("Public trace has no reliable repository snapshot")
-            decision = parse_decision(row["completion"][0]["content"])
+            decision = parse_decision(row["completion"][0]["content"],
+                                      observation=observation, enforceable=True)
             if decision["action"] != row["primary_action"]:
                 raise ValueError("Completion action differs from label")
             if decision["evidence"].get("proposal_sequence") != observation["proposal_sequence"]:

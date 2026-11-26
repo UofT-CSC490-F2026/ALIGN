@@ -2,6 +2,7 @@
 
 import json
 import sys
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -128,7 +129,7 @@ def test_trace_action_parser_handles_missing_and_duplicate_calls():
 
 def test_trace_bundle_builds_ordered_events(tmp_path, monkeypatch):
     row = {"repo": "sample", "task_id": 1, "f1": 1, "f2": 2,
-           "task_key": "cooperbench:sample:task1:f1_f2", "split": "train"}
+           "task_key": f"cooperbench:sample:task1:f1-f2:{import_traces.TASK_REVISION}", "split": "train"}
     trace = {"messages": [
         {"role": "assistant", "extra": {"timestamp": 10}, "tool_calls": [
             {"id": "call", "function": {"name": "bash", "arguments": '{"command":"git status"}'}}]},
@@ -151,11 +152,19 @@ def test_trace_bundle_builds_ordered_events(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="No tool proposals"):
         import_traces.make_bundle(row, {"agent1": "agent1_full_traj.json",
                                         "agent2": "agent2_full_traj.json"}, tmp_path)
+    invalid_trace = deepcopy(trace)
+    invalid_trace["messages"][0]["tool_calls"][0]["function"]["name"] = "terminal"
+    monkeypatch.setattr(import_traces, "download_text",
+                        lambda *args: json.dumps(invalid_trace) if args[-1].endswith("full_traj.json")
+                        else "Feature specification")
+    with pytest.raises(ValueError, match="unsupported by the runner"):
+        import_traces.make_bundle(row, {"agent1": "agent1_full_traj.json",
+                                        "agent2": "agent2_full_traj.json"}, tmp_path)
 
 
 def test_trace_bundle_keeps_proposal_without_tool_result(tmp_path, monkeypatch):
     row = {"repo": "sample", "task_id": 1, "f1": 1, "f2": 2,
-           "task_key": "cooperbench:sample:task1:f1_f2", "split": "train"}
+           "task_key": f"cooperbench:sample:task1:f1-f2:{import_traces.TASK_REVISION}", "split": "train"}
     trace = {"messages": [{"role": "assistant", "extra": {"timestamp": 10},
              "tool_calls": [{"id": "call", "function": {"name": "bash",
                             "arguments": '{"command":"git status"}'}}]}]}
@@ -170,7 +179,7 @@ def test_trace_bundle_keeps_proposal_without_tool_result(tmp_path, monkeypatch):
 
 def test_trace_import_main_selects_complete_pairs(tmp_path, monkeypatch, capsys):
     row = {"repo": "sample", "task_id": 1, "f1": 1, "f2": 2,
-           "task_key": "cooperbench:sample:task1:f1_f2", "split": "train"}
+           "task_key": f"cooperbench:sample:task1:f1-f2:{import_traces.TASK_REVISION}", "split": "train"}
     manifest = tmp_path / "split.json"
     manifest.write_text(json.dumps({"revision": import_traces.TASK_REVISION, "pairs": [row]}))
     prefix = import_traces.TRACE_PREFIX
@@ -187,6 +196,10 @@ def test_trace_import_main_selects_complete_pairs(tmp_path, monkeypatch, capsys)
     manifest.write_text(json.dumps({"revision": "wrong", "pairs": [row]}))
     with pytest.raises(ValueError, match="revision differs"):
         invoke(monkeypatch, import_traces, *args)
+    manifest.write_text(json.dumps({"revision": import_traces.TASK_REVISION,
+                                    "pairs": [{**row, "task_key": "legacy"}]}))
+    with pytest.raises(ValueError, match="A2 normalized identity"):
+        invoke(monkeypatch, import_traces, *args)
     manifest.write_text(json.dumps({"revision": import_traces.TASK_REVISION, "pairs": [row]}))
     monkeypatch.setattr(import_traces, "HfApi", lambda: SimpleNamespace(list_repo_files=lambda *a, **kw: []))
     with pytest.raises(ValueError, match="No complete"):
@@ -198,7 +211,8 @@ def test_trace_import_main_selects_complete_pairs(tmp_path, monkeypatch, capsys)
 def test_trace_import_round_robins_and_skips_other_split(tmp_path, monkeypatch, capsys):
     def row(repo, number, split):
         return {"repo": repo, "task_id": number, "f1": 1, "f2": 2,
-                "task_key": f"cooperbench:{repo}:task{number}:f1_f2", "split": split}
+                "task_key": f"cooperbench:{repo}:task{number}:f1-f2:{import_traces.TASK_REVISION}",
+                "split": split}
     rows = [row("alpha", 1, "train"), row("beta", 1, "train"),
             row("beta", 2, "train"), row("gamma", 1, "validation")]
     manifest = tmp_path / "split.json"

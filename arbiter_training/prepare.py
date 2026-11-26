@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from .contract import (ACTIONS, SCHEMA_VERSION, decision_for_observation,
+from .contract import (ENFORCED_ACTIONS, SCHEMA_VERSION, decision_for_observation,
                        messages_for_observation, observation_from_checkpoint)
 
 
@@ -50,7 +50,7 @@ def validated_labels(path):
         review_status = item.get("review_status", "reviewed" if source == "human" else "provisional")
         if not isinstance(event_uuid, str) or not isinstance(actions, list) or not actions:
             raise ValueError("Each label needs event_uuid and nonempty expected_actions")
-        if len(set(actions)) != len(actions) or not set(actions) <= ACTIONS:
+        if len(set(actions)) != len(actions) or not set(actions) <= ENFORCED_ACTIONS:
             raise ValueError(f"Invalid actions for {event_uuid}")
         if source not in {"human", "teacher_gpt"} or review_status not in {"reviewed", "provisional"}:
             raise ValueError(f"Invalid label provenance for {event_uuid}")
@@ -84,6 +84,17 @@ def build_records(tasks_path, events_dir, labels_path, history_limit=20,
     files = sorted(Path(events_dir).rglob("events.jsonl"))
     if not files:
         raise ValueError("No events.jsonl bundles found")
+    # The runner retains a raw file beside its staged bundle; both contain the
+    # same events. Read the verified bundle copy once, and reject divergence.
+    file_set = set(files)
+    raw_copies = set()
+    for path in files:
+        raw = path.parent.parent / "events.jsonl"
+        if path.parent.name == "bundle" and raw in file_set:
+            if raw.read_bytes() != path.read_bytes():
+                raise ValueError(f"Raw events differ from staged bundle: {path}")
+            raw_copies.add(raw)
+    files = [path for path in files if path not in raw_copies]
     for path in files:
         events = list(read_jsonl(path))
         if not events or events[0].get("event_type") != "run_start":
@@ -97,10 +108,21 @@ def build_records(tasks_path, events_dir, labels_path, history_limit=20,
                             if e.get("event_type") == "proposed_action")
             continue
         run_key = events[0].get("run_key")
+        observations = {}
+        has_runner_observations = False
+        for number, item in enumerate(events, 1):
+            if item.get("run_key") != run_key or item.get("sequence_number") != number:
+                raise ValueError(f"Invalid run identity or event order in {path}")
+            if item.get("event_type") == "arbiter_observation":
+                has_runner_observations = True
+                trigger = item.get("trigger_sequence")
+                if (type(trigger) is not int or not 0 < trigger < number
+                        or events[trigger - 1].get("event_type") != "proposed_action"
+                        or trigger in observations):
+                    raise ValueError(f"Invalid arbiter_observation link in {path}")
+                observations[trigger] = item["payload"]
         history = []
         for index, event in enumerate(events, 1):
-            if event.get("run_key") != run_key or event.get("sequence_number") != index:
-                raise ValueError(f"Invalid run identity or event order in {path}")
             if event.get("event_type") == "proposed_action" and event.get("event_uuid") in labels:
                 event_uuid = event["event_uuid"]
                 if event_uuid in used:
@@ -116,7 +138,17 @@ def build_records(tasks_path, events_dir, labels_path, history_limit=20,
                     "proposal": event.get("payload", {}),
                     "prior_events": history[-history_limit:],
                 }
-                observation = observation_from_checkpoint(checkpoint)
+                if has_runner_observations:
+                    if index not in observations:
+                        raise ValueError(f"Missing arbiter_observation for proposal {index} in {path}")
+                    observation = observations[index]
+                    if (observation.get("task_key") != task_key
+                            or observation.get("proposal_sequence") != index
+                            or observation.get("actor_id") != event.get("actor_id")
+                            or observation.get("proposed_action") != event.get("payload")):
+                        raise ValueError(f"arbiter_observation disagrees with proposal {index} in {path}")
+                else:
+                    observation = observation_from_checkpoint(checkpoint)
                 messages = messages_for_observation(observation)
                 records.append({
                     "schema_version": SCHEMA_VERSION,
@@ -124,6 +156,7 @@ def build_records(tasks_path, events_dir, labels_path, history_limit=20,
                     "run_key": run_key,
                     "checkpoint_event_uuid": event_uuid,
                     "source_bundle": str(path),
+                    "observation_source": "runner_event" if has_runner_observations else "public_reconstruction",
                     "expected_actions": actions,
                     "primary_action": primary,
                     "reviewer": reviewer,

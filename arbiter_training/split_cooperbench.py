@@ -6,6 +6,7 @@ from collections import Counter
 from pathlib import Path
 
 from huggingface_hub import hf_hub_download
+from scripts.normalize_tasks import cooperbench_task_key
 
 DATASET = "CooperBench/cooperbench-dataset"
 REVISION = "b612b1a35af722751454813d9e5a7888f065fc9e"
@@ -33,7 +34,7 @@ def make_split(subset):
         for pair in task["pairs"]:
             f1, f2 = sorted(pair)
             rows.append({"repo": repo, "task_id": task_id, "f1": f1, "f2": f2,
-                         "task_key": f"cooperbench:{repo}:task{task_id}:f{f1}_f{f2}",
+                         "task_key": cooperbench_task_key(repo, task_id, f1, f2, REVISION),
                          "split": split,
                          # Used only for split audits, never copied to arbiter input.
                          "gold_patches_merge_conflict": conflict_map[(repo, task_id, f1, f2)]})

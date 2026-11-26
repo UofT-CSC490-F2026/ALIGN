@@ -28,6 +28,17 @@ MODELS = {"qwen": "Qwen/Qwen3.5-9B", "gpt-oss": "openai/gpt-oss-20b"}
 INPUT_CONTRACT = "runner/contracts.py:ProposedAction@7717249"
 MODEL_REVISIONS = {"qwen": "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
                    "gpt-oss": "6cee5e81ee83917806bbde320786a8fb61efebee"}
+MAX_MODEL_LEN = 8192
+MAX_DECISION_TOKENS = 256
+
+
+def _require_context_fit(tokenizer, prompts, reserve=MAX_DECISION_TOKENS):
+    lengths = [len(tokenizer.encode(prompt, add_special_tokens=False))
+               for prompt in prompts]
+    if lengths and max(lengths) + reserve > MAX_MODEL_LEN:
+        raise ValueError(f"Arbiter context exceeds {MAX_MODEL_LEN} tokens "
+                         f"(longest prompt {max(lengths)}, reserved output {reserve})")
+    return lengths
 
 
 def _load_inference_engine(model_name: str, adapter_path: str):
@@ -39,7 +50,7 @@ def _load_inference_engine(model_name: str, adapter_path: str):
 
     model_id = MODELS[model_name]
     kwargs = {"model": model_id, "revision": MODEL_REVISIONS[model_name],
-              "max_model_len": 8192, "enforce_eager": True}
+              "max_model_len": MAX_MODEL_LEN, "enforce_eager": True}
     if adapter_path:
         from vllm.lora.request import LoRARequest
         kwargs.update(enable_lora=True, max_lora_rank=16)
@@ -62,7 +73,8 @@ def _generate_batch(llm, lora_request, model_name, adapter_path, batch):
         # The Harmony template otherwise starts an analysis channel. Force the
         # final channel so the decision contract receives only the answer.
         prompts = [prompt + "<|channel|>final<|message|>" for prompt in prompts]
-    params = SamplingParams(temperature=0, max_tokens=256)
+    _require_context_fit(tokenizer, prompts)
+    params = SamplingParams(temperature=0, max_tokens=MAX_DECISION_TOKENS)
     results = llm.generate(prompts, params, lora_request=lora_request)
     return [{"model": model_id, "model_revision": MODEL_REVISIONS[model_name],
              "adapter": adapter_path or None,
@@ -175,7 +187,7 @@ def train_qwen(run_name: str, max_steps: int = 100,
     from datasets import Dataset
     from trl import SFTConfig, SFTTrainer
 
-    max_length = 8192
+    max_length = MAX_MODEL_LEN
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=MODELS["qwen"], max_seq_length=max_length,
         revision=MODEL_REVISIONS["qwen"],
@@ -189,12 +201,18 @@ def train_qwen(run_name: str, max_steps: int = 100,
         max_seq_length=max_length,
     )
     def as_dataset(rows):
-        return Dataset.from_list([{
+        examples = [{
             "prompt": tokenizer.apply_chat_template(
                 r["prompt"], tokenize=False, add_generation_prompt=True,
                 enable_thinking=False),
             "completion": r["completion"][0]["content"] + tokenizer.eos_token,
-        } for r in rows])
+        } for r in rows]
+        lengths = _require_context_fit(tokenizer,
+                                       [e["prompt"] + e["completion"] for e in examples],
+                                       reserve=0)
+        return Dataset.from_list(examples), max(lengths)
+    train_dataset, max_train_tokens = as_dataset(train_rows)
+    eval_dataset, max_validation_tokens = as_dataset(val_rows)
     interval = max(1, max_steps // 4)
     config = SFTConfig(
         output_dir=str(output / "training"), max_length=max_length,
@@ -208,7 +226,7 @@ def train_qwen(run_name: str, max_steps: int = 100,
     )
     trainer = SFTTrainer(
         model=model, processing_class=tokenizer, args=config,
-        train_dataset=as_dataset(train_rows), eval_dataset=as_dataset(val_rows),
+        train_dataset=train_dataset, eval_dataset=eval_dataset,
     )
     trainer.train()
     adapter = output / "adapter"
@@ -222,6 +240,9 @@ def train_qwen(run_name: str, max_steps: int = 100,
                 "train_examples": len(train_rows), "validation_examples": len(val_rows),
                 "train_tasks": len(train_tasks), "validation_tasks": len(val_tasks),
                 "max_steps": max_steps, "seed": 3407,
+                "max_model_len": MAX_MODEL_LEN,
+                "max_train_tokens": max_train_tokens,
+                "max_validation_tokens": max_validation_tokens,
                 "label_sources": sorted({r["label_source"] for r in train_rows}),
                 "train_actions": dict(train_actions),
                 "synthetic_train_examples": sum(r.get("scenario_source") == "synthetic_counterfactual"
@@ -247,18 +268,21 @@ def main(mode: str = "infer", model: str = "qwen", checkpoint_file: str = "",
         print(json.dumps(train_qwen.remote(run_name, steps, train_volume_path,
                                            validation_volume_path), indent=2))
         return
-    from arbiter_training.contract import (messages_for, messages_for_observation,
+    from arbiter_training.contract import (observation_from_checkpoint, messages_for_observation,
                                            parse_decision)
 
     if mode == "infer":
         if not checkpoint_file:
             raise ValueError("--checkpoint-file is required for inference")
         observation = json.loads(Path(checkpoint_file).read_text(encoding="utf-8"))
-        messages = (messages_for(observation) if "task" in observation
-                    else messages_for_observation(observation))
+        if "task" in observation:
+            observation = observation_from_checkpoint(observation)
+        messages = messages_for_observation(observation)
         response = infer_batch.remote(model, [messages], adapter_path)[0]
         try:
-            response["decision"] = parse_decision(_decision_text(model, response["text"]))
+            response["decision"] = parse_decision(_decision_text(model, response["text"]),
+                                                    observation=observation,
+                                                    enforceable=True)
         except ValueError as exc:
             response["parse_error"] = str(exc)
         print(json.dumps(response, indent=2))
@@ -302,7 +326,9 @@ def main(mode: str = "infer", model: str = "qwen", checkpoint_file: str = "",
         judged = []
         for row, result in zip(rows, outputs):
             try:
-                decision = parse_decision(_decision_text(candidate, result["text"]))
+                observation = json.loads(row["prompt"][1]["content"])
+                decision = parse_decision(_decision_text(candidate, result["text"]),
+                                          observation=observation, enforceable=True)
                 action = decision["action"]
                 valid = True
             except ValueError:

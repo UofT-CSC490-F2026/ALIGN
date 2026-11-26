@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from huggingface_hub import HfApi, hf_hub_download
+from scripts.normalize_tasks import cooperbench_task_key
 
 TRACE_REPO = "CooperBench/qwen35-9b-cooper-flash-evals"
 TRACE_REVISION = "bf6cc8469a7b853f70e8f043af145b5053952293"
@@ -114,7 +115,13 @@ def make_bundle(row, paths, output_dir):
     actions.sort(key=lambda a: (a["timestamp"], a["actor"], a["index"]))
     if not actions:
         raise ValueError(f"No tool proposals for {row['task_key']}")
-    run_key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{TRACE_REPO}@{TRACE_REVISION}/{row['task_key']}"))
+    if any(action["tool"] != "bash" for action in actions):
+        raise ValueError("Public trace contains a tool unsupported by the runner")
+    # Preserve source trace/event identities when the A2 task key format changes.
+    source_identity = (f"cooperbench:{row['repo']}:task{row['task_id']}:"
+                       f"f{row['f1']}_f{row['f2']}")
+    run_key = str(uuid.uuid5(uuid.NAMESPACE_URL,
+                             f"{TRACE_REPO}@{TRACE_REVISION}/{source_identity}"))
     started = actions[0]["timestamp"] - 0.001
     events = [event(run_key, 1, "system", None, "run_start", started,
                     {"task_key": row["task_key"], "arbiter_condition": "monitor",
@@ -189,6 +196,10 @@ def main():
     counts = defaultdict(int)
     available = defaultdict(lambda: defaultdict(list))
     for row in split_manifest["pairs"]:
+        expected_key = cooperbench_task_key(row["repo"], row["task_id"],
+                                            row["f1"], row["f2"], TASK_REVISION)
+        if row["task_key"] != expected_key:
+            raise ValueError("Split task_key differs from A2 normalized identity")
         split = row["split"]
         if split not in args.splits:
             continue

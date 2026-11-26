@@ -103,6 +103,25 @@ def test_contract_rejects_bad_decisions(raw, message):
         contract.parse_decision(raw)
 
 
+def test_decision_matches_runner_agent_ids_and_enforcement():
+    observation = contract.observation_from_checkpoint({
+        "schema_version": 1, "task": task(), "agent_id": "agent1",
+        "sequence_number": 2, "proposal": {"action": {"tool": "bash", "command": "git status"},
+                                           "files_touched": []}, "prior_events": []})
+    decision = contract.decision_for_observation("query", "Check", observation)
+    assert contract.parse_decision(json.dumps(decision), observation, True) == decision
+    bad_agent = {**decision, "affected_agents": ["unknown"]}
+    with pytest.raises(ValueError, match="unknown affected agent"):
+        contract.parse_decision(json.dumps(bad_agent), observation, True)
+    reserved = {**decision, "action": "restructure"}
+    assert contract.parse_decision(json.dumps(reserved))["action"] == "restructure"
+    with pytest.raises(ValueError, match="unsupported enforced action"):
+        contract.parse_decision(json.dumps(reserved), observation, True)
+    nonfinite = {**decision, "evidence": {"score": float("nan")}}
+    with pytest.raises(ValueError, match="JSON serializable"):
+        contract.parse_decision(json.dumps(nonfinite), observation, True)
+
+
 def test_prepare_records_and_split(tmp_path):
     tasks, events_dir, labels = fixture_files(tmp_path)
     rows = prepare.build_records(tasks, events_dir, labels)
@@ -111,6 +130,7 @@ def test_prepare_records_and_split(tmp_path):
     assert row["label_source"] == "human"
     assert row["review_status"] == "reviewed"
     assert row["primary_action"] == "continue"
+    assert row["observation_source"] == "public_reconstruction"
     assert json.loads(row["prompt"][1]["content"])["recent_events"][0]["event_type"] == "run_start"
     assert json.loads(row["completion"][0]["content"])["action"] == "continue"
     assert prepare.split_records(rows, .2) == (rows, [])
@@ -118,6 +138,51 @@ def test_prepare_records_and_split(tmp_path):
     with pytest.raises(ValueError, match="validation_fraction"):
         prepare.split_records(rows, 1)
     assert prepare.build_records(tasks, events_dir, labels, excluded_tasks={task()["task_key"]}) == []
+
+
+def test_prepare_uses_recorded_runner_observation(tmp_path):
+    tasks, events_dir, labels = fixture_files(tmp_path)
+    path = events_dir / "one" / "events.jsonl"
+    rows = list(prepare.read_jsonl(path))
+    checkpoint = {"schema_version": 1, "task": task(), "agent_id": "agent1",
+                  "sequence_number": 2, "proposal": rows[1]["payload"],
+                  "prior_events": []}
+    recorded = contract.observation_from_checkpoint(checkpoint)
+    recorded["repository_state"] = {"pending_proposals": {"agent2": {"phase": "queued"}},
+                                    "in_flight_actions": {"agent2": {"started": True}}}
+    recorded["recent_events"] = []
+    rows.insert(2, {**event("arbiter_observation", 3, recorded, actor=None),
+                    "trigger_sequence": 2})
+    rows[3]["sequence_number"] = 4
+    write_jsonl(path, rows)
+    result = prepare.build_records(tasks, events_dir, labels)[0]
+    assert result["observation_source"] == "runner_event"
+    assert json.loads(result["prompt"][1]["content"]) == recorded
+    write_jsonl(path, [*rows, {**rows[2], "sequence_number": 5}])
+    with pytest.raises(ValueError, match="Invalid arbiter_observation link"):
+        prepare.build_records(tasks, events_dir, labels)
+    write_jsonl(path, [rows[0], rows[1], {**rows[2], "payload": {**recorded, "actor_id": "agent2"}}, rows[3]])
+    with pytest.raises(ValueError, match="disagrees with proposal"):
+        prepare.build_records(tasks, events_dir, labels)
+    second = event("proposed_action", 5, rows[1]["payload"], uuid="event-5")
+    write_jsonl(path, [*rows, second])
+    first_label = list(prepare.read_jsonl(labels))[0]
+    write_jsonl(labels, [first_label, {**first_label, "event_uuid": "event-5"}])
+    with pytest.raises(ValueError, match="Missing arbiter_observation"):
+        prepare.build_records(tasks, events_dir, labels)
+
+
+def test_prepare_uses_staged_copy_once_and_rejects_divergence(tmp_path):
+    tasks, events_dir, labels = fixture_files(tmp_path)
+    raw = events_dir / "one" / "events.jsonl"
+    staged = events_dir / "one" / "bundle" / "events.jsonl"
+    staged.parent.mkdir()
+    staged.write_bytes(raw.read_bytes())
+    rows = prepare.build_records(tasks, events_dir, labels)
+    assert len(rows) == 1 and rows[0]["source_bundle"] == str(staged)
+    staged.write_text("different", encoding="utf-8")
+    with pytest.raises(ValueError, match="Raw events differ"):
+        prepare.build_records(tasks, events_dir, labels)
 
 
 def test_prepare_rejects_bad_inputs(tmp_path):
@@ -212,6 +277,10 @@ def test_modal_arbiter_offline_interface():
         arbiter.decide(observation)
     fallback = inference.ModalArbiter(remote_model=remote, invalid_policy="query")
     assert fallback.decide(observation)["evidence"]["error"] == "invalid_model_output"
+    remote.outputs = [{"text": json.dumps({**expected, "affected_agents": ["missing"]})}]
+    assert fallback.decide(observation)["action"] == "query"
+    remote.outputs = [{"text": json.dumps({**expected, "action": "restructure"})}]
+    assert fallback.decide(observation)["action"] == "query"
     for kwargs in ({"model": "wrong"}, {"model": "gpt-oss", "adapter_path": "adapter"},
                    {"invalid_policy": "continue"}):
         with pytest.raises(ValueError):
@@ -225,6 +294,7 @@ def test_synthetic_record_preserves_provenance(tmp_path, monkeypatch, capsys):
     assert row["review_status"] == "provisional"
     assert row["label_source"] == "teacher_gpt"
     assert json.loads(row["prompt"][1]["content"])["proposed_action"]["action"]["command"] == "git diff"
+    assert json.loads(row["prompt"][1]["content"])["proposed_action"]["action"]["tool"] == "bash"
     tasks = tmp_path / "tasks.jsonl"
     prepared, output = tmp_path / "prepared", tmp_path / "output"
     write_jsonl(tasks, [task()])
@@ -240,6 +310,15 @@ def test_synthetic_record_preserves_provenance(tmp_path, monkeypatch, capsys):
     with pytest.raises(ValueError, match="No imported task"):
         run_main(monkeypatch, synthetic, "--tasks", tasks, "--prepared-dir", prepared,
                  "--output-dir", output)
+
+
+def test_synthetic_message_uses_structured_runner_tool():
+    case = ("sample", "Agents need to compare edits",
+            {"tool": "message", "recipient": "agent1", "content": "Compare edits"},
+            "continue", "Safe coordination")
+    row = synthetic.build_record(1, case, task())
+    action = json.loads(row["prompt"][1]["content"])["proposed_action"]["action"]
+    assert action == case[2]
 
 
 @pytest.mark.parametrize("command,kind", [
@@ -334,6 +413,8 @@ def test_split_cooperbench_keeps_repositories_apart(tmp_path, monkeypatch, capsy
     monkeypatch.setattr(split_cooperbench, "source_json", lambda name: source if name.startswith("subsets/") else report)
     rows = split_cooperbench.make_split("lite")
     assert [row["split"] for row in rows] == ["test", "train"]
+    assert rows[0]["task_key"] == (
+        f"cooperbench:pallets_click_task:task1:f1-f2:{split_cooperbench.REVISION}")
     output = tmp_path / "split.json"
     run_main(monkeypatch, split_cooperbench, "--output", output)
     assert json.loads(capsys.readouterr().out)["test"]["merge_conflicts"] == 1

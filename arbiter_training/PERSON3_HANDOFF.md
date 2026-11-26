@@ -1,5 +1,21 @@
 # Arbiter training handoff
 
+## 2026-11-26 runner review update
+
+The current code in PR #51 now uses the merged runner's recorded
+`arbiter_observation` for labeled runner proposals. An offline merged-runner
+trial verified exact observation reuse, including repository state. Public
+CooperBench traces still require reconstruction and have empty repository
+state. Task keys now match A2 normalization, synthetic proposals use runner
+tool shapes, and inference rejects unknown affected agents and reserved
+`restructure` decisions. The model context limit is checked before inference
+or training. The rebuilt ignored pilot data are under
+`data/runner-aligned-v2/combined/` (61 train, 22 validation); all 83 examples
+fit the pinned Qwen 8,192-token training limit, with a maximum of 6,489.
+The older checkpoint below has not been retrained on this revision. It should
+be reported as a historical public-trace pilot, not a runner-trained model.
+
+
 ## Interface for Person 1
 
 `contract.py` accepts the top-level `ArbiterObservation` fields Person 1 sent and

@@ -19,14 +19,61 @@ model weights. The package-specific coverage configuration checks all
 
 ```powershell
 python -m pip install -r arbiter_training/requirements-test.txt
-python -m pytest arbiter_training/tests/test_arbiter_training.py arbiter_training/tests/test_arbiter_scripts.py arbiter_training/tests/test_arbiter_modal_offline.py --cov=arbiter_training --cov-config=arbiter_training/.coveragerc --cov-branch --cov-fail-under=100 --cov-report=term-missing
+python -m pytest arbiter_training/tests/test_arbiter_training.py arbiter_training/tests/test_arbiter_scripts.py arbiter_training/tests/test_arbiter_modal_offline.py arbiter_training/tests/test_merged_runner_integration.py --cov=arbiter_training --cov-config=arbiter_training/.coveragerc --cov-branch --cov-fail-under=100 --cov-report=term-missing
 ```
 
 The `Arbiter training tests` workflow enforces 100% line and branch coverage on
 pull requests. These offline tests do not replace a live Modal training run or
 Person 3's independent model evaluation.
 
-## Build the public-trace pilot
+## Runner alignment review (2026-11-26)
+
+The CooperBench Lite split now uses the same revision-qualified task keys as
+`scripts/normalize_tasks.py`. Public trace import preserves its original event
+UUIDs, so the 21 human reviews still attach to the same proposals. The new
+ignored build is `data/runner-aligned-v2/`: 10 imported public runs, 49 observed
+labels, and 34 marked synthetic counterfactuals (61 train, 22 validation).
+The split still holds out the same repositories. The new train and validation
+SHA256 values are respectively
+`a833a6f5022ecb7f27b896b0fa9496387b856e311ab3bfab5822dba484fe2e77`
+and `701a613a79050192b7f0b4d565074006714869353e091d0d1b97a886f8ed26ad`.
+The audit reports no warnings.
+
+To reproduce the revised build from the existing pinned teacher labels and
+tracked human review file, use new output paths so the historical pilot stays
+available:
+
+```powershell
+python -m arbiter_training.split_cooperbench --subset lite --output arbiter_training/data/runner-aligned-v2/cooperbench-lite-split.json
+python -m arbiter_training.import_traces --split-manifest arbiter_training/data/runner-aligned-v2/cooperbench-lite-split.json --output-dir arbiter_training/data/runner-aligned-v2/public-traces --max-pairs-per-split 5
+python -m arbiter_training.merge_review --teacher-labels arbiter_training/data/public-trace-v1/teacher-labels-v2-provisional.jsonl --reviewed-packet arbiter_training/reviews/human-labels-20261125.jsonl --output arbiter_training/data/runner-aligned-v2/human-merged-labels.jsonl
+python -m arbiter_training.prepare --tasks arbiter_training/data/runner-aligned-v2/public-traces/tasks.jsonl --events-dir arbiter_training/data/runner-aligned-v2/public-traces --labels arbiter_training/data/runner-aligned-v2/human-merged-labels.jsonl --output-dir arbiter_training/data/runner-aligned-v2/prepared --history-limit 8
+python -m arbiter_training.synthetic --tasks arbiter_training/data/runner-aligned-v2/public-traces/tasks.jsonl --prepared-dir arbiter_training/data/runner-aligned-v2/prepared --output-dir arbiter_training/data/runner-aligned-v2/combined
+python -m arbiter_training.audit --prepared-dir arbiter_training/data/runner-aligned-v2/combined --output arbiter_training/data/runner-aligned-v2/combined/audit.json
+```
+
+`prepare.py` uses a runner bundle's `arbiter_observation` event linked by
+`trigger_sequence`, retaining the exact decision-time repository state. It
+reconstructs observations only for imported public traces, which lack those
+events and do not establish repository state. The merged-runner offline
+integration test checks an actual bundle and all synthetic tool proposals.
+
+Inference and training now reject inputs exceeding 8,192 tokens; inference
+reserves 256 output tokens. With the pinned Qwen tokenizer, all 83 new pilot
+prompt-plus-completion records fit (maximum 6,489 tokens). This does not bound
+future live runner observations with larger workspaces or concurrent state;
+audit those before training or deploying on them. The model prompt offers only
+enforceable actions. `restructure` stays in the runner's v1 schema for
+compatibility but is rejected by this inference adapter until the team defines
+its enforcement semantics. Affected agent IDs are checked against the input.
+
+The archived 2026-11-25 checkpoint was trained on the earlier prompt, task
+keys, and synthetic proposals. It remains a pilot baseline; these revised
+examples have not been used for another training run. New training is most
+useful after labeled runner-generated observations are available, because the
+current public trajectories still omit the live coordination state.
+
+## Original public-trace pilot recipe
 
 The scripts pin both the official CooperBench task revision and a public two-agent
 trajectory revision. The source traces were produced by CooperBench, not by our

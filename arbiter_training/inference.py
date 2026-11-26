@@ -36,7 +36,8 @@ class ModalArbiter:
         for observation, result in zip(observations, outputs):
             try:
                 decisions.append(parse_decision(_decision_text(
-                    self.model, result["text"])))
+                    self.model, result["text"]), observation=observation,
+                    enforceable=True))
             except ValueError:
                 if self.invalid_policy == "raise":
                     raise
