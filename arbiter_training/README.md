@@ -9,6 +9,23 @@ completion follow Person 1's `ArbiterObservation` and `ArbiterDecision` envelope
 The public traces do not contain a reliable repository snapshot, so their
 `repository_state` is `{}`; the live harness should send its actual snapshot.
 
+## Offline tests
+
+Run the Person 2 regression suite from the repository root. It uses fake Modal
+engines and fake Hugging Face responses; it does not start GPU jobs or download
+model weights. The package-specific coverage configuration checks all
+`arbiter_training` application code, excluding only the `if __name__ ==
+"__main__"` launch guards whose `main()` functions are tested directly.
+
+```powershell
+python -m pip install -r arbiter_training/requirements-test.txt
+python -m pytest scripts/tests/test_arbiter_training.py scripts/tests/test_arbiter_scripts.py scripts/tests/test_arbiter_modal_offline.py --cov=arbiter_training --cov-config=arbiter_training/.coveragerc --cov-branch --cov-fail-under=100 --cov-report=term-missing
+```
+
+The `Arbiter training tests` workflow enforces 100% line and branch coverage on
+pull requests. These offline tests do not replace a live Modal training run or
+Person 3's independent model evaluation.
+
 ## Build the public-trace pilot
 
 The scripts pin both the official CooperBench task revision and a public two-agent

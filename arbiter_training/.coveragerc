@@ -1,0 +1,10 @@
+[run]
+source = arbiter_training
+branch = True
+
+[report]
+show_missing = True
+# Tests call main() directly with controlled arguments. The module launch guard
+# contains no application logic and is exercised by the same entry point.
+exclude_also =
+    if __name__ == .__main__.:
