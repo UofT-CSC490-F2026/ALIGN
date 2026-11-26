@@ -57,6 +57,8 @@ python -m arbiter_training.audit --prepared-dir arbiter_training/data/runner-ali
 reconstructs observations only for imported public traces, which lack those
 events and do not establish repository state. The merged-runner offline
 integration test checks an actual bundle and all synthetic tool proposals.
+The training contract calls the runner's proposal and decision validators
+directly, so both paths use its tool vocabulary and affected-agent checks.
 
 Inference and training now reject inputs exceeding 8,192 tokens; inference
 reserves 256 output tokens. With the pinned Qwen tokenizer, all 83 new pilot

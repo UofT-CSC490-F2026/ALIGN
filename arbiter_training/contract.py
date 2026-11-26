@@ -1,9 +1,9 @@
 """One inference contract shared by the training and execution harnesses."""
 
 import json
+from runner.arbitration import ACTIONS, ENFORCED as ENFORCED_ACTIONS, validate_decision
+from runner.orchestrator import validate_proposal
 
-ACTIONS = frozenset({"continue", "query", "block", "mediate", "restructure", "escalate"})
-ENFORCED_ACTIONS = ACTIONS - {"restructure"}
 SCHEMA_VERSION = 1
 SYSTEM_PROMPT = (
     "You are the ALIGN arbiter. Decide what to do before a coding agent's proposed "
@@ -68,12 +68,10 @@ def messages_for_observation(observation):
                 "recent_events", "repository_state"}
     if set(observation) != required or observation["schema_version"] != SCHEMA_VERSION:
         raise ValueError("Observation does not match Person 1's schema")
-    proposal = observation["proposed_action"]
-    if (not isinstance(proposal, dict) or set(proposal) != {"action", "files_touched"}
-            or not isinstance(proposal["action"], dict)
-            or not isinstance(proposal["files_touched"], list)
-            or any(not isinstance(path, str) for path in proposal["files_touched"])):
-        raise ValueError("ProposedAction must match runner/contracts.py")
+    try:
+        validate_proposal(observation["proposed_action"])
+    except ValueError as exc:
+        raise ValueError("ProposedAction must match runner/orchestrator.py") from exc
     return [{"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": json.dumps(
                 observation, ensure_ascii=False, sort_keys=True)}]
@@ -112,24 +110,12 @@ def parse_decision(output, observation=None, enforceable=False):
         value = json.loads(text.strip())
     except json.JSONDecodeError as exc:
         raise ValueError("Arbiter response is not valid JSON") from exc
-    if not isinstance(value, dict) or set(value) != {
-        "action", "reason", "affected_agents", "evidence"
-    }:
-        raise ValueError("Arbiter response must contain the four decision fields")
-    if (not isinstance(value["action"], str) or value["action"] not in ACTIONS
-            or not isinstance(value["reason"], str) or not value["reason"].strip()):
-        raise ValueError("Arbiter response has invalid action or reason")
-    if (not isinstance(value["affected_agents"], list)
-            or any(not isinstance(agent, str) for agent in value["affected_agents"])
-            or not isinstance(value["evidence"], dict)):
-        raise ValueError("Arbiter response has invalid affected_agents or evidence")
-    if observation is not None and any(agent not in observation["agent_goals"]
-                                       for agent in value["affected_agents"]):
-        raise ValueError("Arbiter response names an unknown affected agent")
-    if enforceable and value["action"] not in ENFORCED_ACTIONS:
-        raise ValueError("Arbiter response selects an unsupported enforced action")
+    actors = (observation["agent_goals"] if observation is not None else
+              value.get("affected_agents", []) if isinstance(value, dict) else [])
     try:
-        json.dumps(value, allow_nan=False, ensure_ascii=False).encode("utf-8")
+        decision = validate_decision(value, actors)
     except (TypeError, ValueError, UnicodeError) as exc:
-        raise ValueError("Arbiter response is not JSON serializable") from exc
-    return value
+        raise ValueError("Arbiter response violates runner decision contract") from exc
+    if enforceable and decision["action"] not in ENFORCED_ACTIONS:
+        raise ValueError("Arbiter response selects an unsupported enforced action")
+    return decision

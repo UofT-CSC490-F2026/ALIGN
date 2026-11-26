@@ -93,10 +93,10 @@ def test_contract_round_trip_and_schema_rejection():
 
 @pytest.mark.parametrize("raw,message", [
     ("not-json", "not valid JSON"),
-    ('{"action":"continue"}', "four decision fields"),
-    (json.dumps({"action": "unsafe", "reason": "r", "affected_agents": [], "evidence": {}}), "invalid action"),
-    (json.dumps({"action": "continue", "reason": " ", "affected_agents": [], "evidence": {}}), "invalid action"),
-    (json.dumps({"action": "continue", "reason": "r", "affected_agents": [1], "evidence": {}}), "invalid affected"),
+    ('{"action":"continue"}', "runner decision contract"),
+    (json.dumps({"action": "unsafe", "reason": "r", "affected_agents": [], "evidence": {}}), "runner decision contract"),
+    (json.dumps({"action": "continue", "reason": " ", "affected_agents": [], "evidence": {}}), "runner decision contract"),
+    (json.dumps({"action": "continue", "reason": "r", "affected_agents": [1], "evidence": {}}), "runner decision contract"),
 ])
 def test_contract_rejects_bad_decisions(raw, message):
     with pytest.raises(ValueError, match=message):
@@ -111,14 +111,14 @@ def test_decision_matches_runner_agent_ids_and_enforcement():
     decision = contract.decision_for_observation("query", "Check", observation)
     assert contract.parse_decision(json.dumps(decision), observation, True) == decision
     bad_agent = {**decision, "affected_agents": ["unknown"]}
-    with pytest.raises(ValueError, match="unknown affected agent"):
+    with pytest.raises(ValueError, match="runner decision contract"):
         contract.parse_decision(json.dumps(bad_agent), observation, True)
     reserved = {**decision, "action": "restructure"}
     assert contract.parse_decision(json.dumps(reserved))["action"] == "restructure"
     with pytest.raises(ValueError, match="unsupported enforced action"):
         contract.parse_decision(json.dumps(reserved), observation, True)
     nonfinite = {**decision, "evidence": {"score": float("nan")}}
-    with pytest.raises(ValueError, match="JSON serializable"):
+    with pytest.raises(ValueError, match="runner decision contract"):
         contract.parse_decision(json.dumps(nonfinite), observation, True)
 
 
