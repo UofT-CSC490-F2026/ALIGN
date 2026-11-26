@@ -92,101 +92,141 @@ class EvaluationLogicTests(unittest.TestCase):
                 evaluate.load_manual_labels(p)
 
 
+@contextlib.contextmanager
+def ingested_run(events):
+    """Import the events into the test database, yield the run, then delete every row."""
+    import psycopg
+    key = "evaluate-fixture-" + uuid.uuid4().hex
+    run_key = str(uuid.uuid4())
+    for event in events:
+        event["run_key"] = run_key
+        event["event_uuid"] = str(uuid.uuid4())
+    events[0]["payload"]["task_key"] = key
+    with tempfile.TemporaryDirectory() as root:
+        dir = Path(root)
+        raw = dir / "events.jsonl"
+        raw.write_text("\n".join(run_artifacts.canonical(e) for e in events) + "\n")
+        bundle = dir / "bundle"
+        run_artifacts.stage(raw, bundle)
+        with psycopg.connect(os.environ["ALIGN_TEST_DATABASE_URL"], autocommit=True) as conn:
+            with conn.transaction():
+                row = conn.execute("""INSERT INTO tasks
+                       (task_key,dataset_source,repo_url,base_commit,shared_goal,
+                        conflict_type,expected_outcome)
+                       VALUES (%s,'integration','https://github.com/UofT-CSC490-F2026/ALIGN',
+                               %s,'Integration goal','execution_conflict','complete_all_goals')
+                       RETURNING task_id""", (key, "c" * 40)).fetchone()
+                task_id = row[0]
+                conn.execute("""INSERT INTO task_goals
+                       (task_id,goal_key,owner_type,owner_agent_id,description,is_critical)
+                       VALUES (%s,'agent1_change','agent','agent1','Test agent goal',true)""", (task_id,))
+            db_run_id = None
+            try:
+                db_run_id, _ = process_runs.import_run(conn, bundle)
+                yield conn, run_key, db_run_id
+            finally:
+                with conn.transaction():
+                    if db_run_id is not None:
+                        conn.execute("""DELETE FROM decision_labels
+                                        WHERE checkpoint_event_id IN
+                                         (SELECT event_id FROM events WHERE run_id=%s)""", (db_run_id,))
+                        conn.execute("DELETE FROM goal_results WHERE run_id=%s", (db_run_id,))
+                        conn.execute("DELETE FROM evaluations WHERE run_id=%s", (db_run_id,))
+                        conn.execute("DELETE FROM action_attempts WHERE run_id=%s", (db_run_id,))
+                        conn.execute("UPDATE decision_log SET conflict_id=NULL WHERE run_id=%s", (db_run_id,))
+                        conn.execute("DELETE FROM decision_log WHERE run_id=%s", (db_run_id,))
+                        conn.execute("DELETE FROM conflict_episodes WHERE run_id=%s", (db_run_id,))
+                        conn.execute("DELETE FROM events WHERE run_id=%s", (db_run_id,))
+                        conn.execute("DELETE FROM runs WHERE run_id=%s", (db_run_id,))
+                    conn.execute("DELETE FROM task_goals WHERE task_id=%s", (task_id,))
+                    conn.execute("DELETE FROM tasks WHERE task_id=%s", (task_id,))
+
+
+def exchange(template, action):
+    """Agent2 proposes an edit, the arbiter decides on it, and the result is recorded."""
+    proposal, decision, result = (copy.deepcopy(template[i]) for i in (1, 2, 3))
+    proposal["actor_id"] = "agent2"
+    proposal["payload"] = {"action": {"tool": "edit", "command": "edit docs/a.md"}, "files_touched": ["docs/a.md"]}
+    decision["payload"] = {"action": action, "reason": "Fixture", "affected_agents": ["agent2"], "evidence": {}}
+    result["payload"] = {"outcome": "cancelled"}
+    return [proposal, decision, result]
+
+
 @unittest.skipUnless(os.getenv("ALIGN_TEST_DATABASE_URL"), "Disposable PostgreSQL not configured")
 class EvaluationDatabaseTests(unittest.TestCase):
     def test_recompute_goal_results_conflict_labels_and_views(self):
-        import psycopg
-        key = "evaluate-fixture-" + uuid.uuid4().hex
-        run_key = str(uuid.uuid4())
         events, _ = run_artifacts.load_events(FIXTURE.read_bytes())
-        for event in events:
-            event["run_key"] = run_key
-            event["event_uuid"] = str(uuid.uuid4())
-        events[0]["payload"]["task_key"] = key
         events[1]["payload"] = {"action":{"tool":"bash","command":"test --skip-tests"},"files_touched":[]}
         onset_time = events[5]["occurred_at"]
-        followup = {**events[1],"event_uuid":str(uuid.uuid4()),"actor_id":"agent2",
+        followup = {**events[1],"actor_id":"agent2",
                     "occurred_at":onset_time,"payload":{"action":{"tool":"bash","command":"inspect"},"files_touched":[]}}
-        decision = {**events[2],"event_uuid":str(uuid.uuid4()),"occurred_at":onset_time,"trigger_sequence":7}
+        decision = {**events[2],"occurred_at":onset_time,"trigger_sequence":7}
         events[6:6] = [followup,decision]
         for sequence,event in enumerate(events,1):
             event["sequence_number"] = sequence
-        with tempfile.TemporaryDirectory() as root:
-            dir = Path(root)
-            raw = dir / "events.jsonl"
-            raw.write_text("\n".join(run_artifacts.canonical(e) for e in events) + "\n")
-            bundle = dir / "bundle"
-            run_artifacts.stage(raw, bundle)
-            with psycopg.connect(os.environ["ALIGN_TEST_DATABASE_URL"], autocommit=True) as conn:
-                with conn.transaction():
-                    row = conn.execute("""INSERT INTO tasks
-                           (task_key,dataset_source,repo_url,base_commit,shared_goal,
-                            conflict_type,expected_outcome)
-                           VALUES (%s,'integration','https://github.com/UofT-CSC490-F2026/ALIGN',
-                                   %s,'Integration goal','execution_conflict','complete_all_goals')
-                           RETURNING task_id""", (key, "c" * 40)).fetchone()
-                    task_id = row[0]
-                    conn.execute("""INSERT INTO task_goals
-                           (task_id,goal_key,owner_type,owner_agent_id,description,is_critical)
-                           VALUES (%s,'agent1_change','agent','agent1','Test agent goal',true)""", (task_id,))
-                db_run_id = None
-                try:
-                    db_run_id, _ = process_runs.import_run(conn, bundle)
-                    args = ["evaluate.py", "--run-key", run_key, "--evaluator-version", "rules-v1", "--apply"]
-                    with patch.dict(os.environ,{"ALIGN_DATABASE_URL":os.environ["ALIGN_TEST_DATABASE_URL"]}), \
-                         patch.object(sys,"argv",args), contextlib.redirect_stdout(io.StringIO()) as output:
-                        evaluate.main()
-                    result = json.loads(output.getvalue())
-                    self.assertEqual(result["goals_evaluated"], 1)
-                    self.assertEqual(result["conflicts"], 1)
-                    self.assertTrue(result["outcome_correct"])
-                    conflict_id = conn.execute("SELECT conflict_id FROM conflict_episodes WHERE run_id=%s",
-                                               (db_run_id,)).fetchone()[0]
-                    self.assertEqual(conn.execute("SELECT COUNT(*) FROM decision_log WHERE conflict_id=%s",
-                                                  (conflict_id,)).fetchone()[0],1)
-                    self.assertEqual(conn.execute("SELECT expected_actions FROM decision_labels WHERE label_source='rules' "
-                                                  "AND checkpoint_event_id IN (SELECT event_id FROM events WHERE run_id=%s)",
-                                                  (db_run_id,)).fetchone()[0],["block"])
-                    conn.execute("UPDATE conflict_episodes SET review_status='reviewed' WHERE conflict_id=%s",(conflict_id,))
-                    self.assertEqual(evaluate.evaluate(conn, run_key, "rules-v1")["run_id"], db_run_id)
-                    self.assertEqual(conn.execute("SELECT conflict_id FROM conflict_episodes WHERE run_id=%s",
-                                                  (db_run_id,)).fetchone()[0],conflict_id)
-                    conn.execute("UPDATE runs SET finished_at=NULL WHERE run_id=%s",(db_run_id,))
-                    evaluate.evaluate(conn,run_key,"rules-v1")
-                    self.assertIsNone(conn.execute("SELECT runtime_seconds FROM evaluations WHERE run_id=%s",
-                                                   (db_run_id,)).fetchone()[0])
-                    row = conn.execute("SELECT goals_passed,num_conflicts,outcome_correct FROM v_run_summary WHERE run_id=%s",
-                                       (db_run_id,)).fetchone()
-                    self.assertEqual(row, (1, 1, True))
-                    manual = {events[1]["event_uuid"]: {
-                        "event_uuid": events[1]["event_uuid"], "expected_actions": ["continue"],
-                        "reviewer": "test-reviewer", "rationale": "Clear"}}
-                    evaluate.evaluate(conn, run_key, "rules-v1", manual)
-                    evaluate.evaluate(conn, run_key, "rules-v1", manual)
-                    self.assertEqual(conn.execute("""SELECT COUNT(*) FROM decision_labels dl
-                           JOIN events e ON dl.checkpoint_event_id=e.event_id
-                           WHERE e.run_id=%s AND dl.is_reference""", (db_run_id,)).fetchone()[0], 1)
-                    conn.execute("""UPDATE events SET payload = payload || '{"result":"not_evaluated"}'::jsonb
-                                    WHERE run_id=%s AND event_type='test_result'""", (db_run_id,))
-                    missing = evaluate.evaluate(conn, run_key, "rules-v1")
-                    self.assertEqual(missing["goals_evaluated"], 0)
-                    self.assertIsNone(missing["outcome_correct"])
-                finally:
-                    with conn.transaction():
-                        if db_run_id is not None:
-                            conn.execute("""DELETE FROM decision_labels
-                                            WHERE checkpoint_event_id IN
-                                             (SELECT event_id FROM events WHERE run_id=%s)""", (db_run_id,))
-                            conn.execute("DELETE FROM goal_results WHERE run_id=%s", (db_run_id,))
-                            conn.execute("DELETE FROM evaluations WHERE run_id=%s", (db_run_id,))
-                            conn.execute("DELETE FROM action_attempts WHERE run_id=%s", (db_run_id,))
-                            conn.execute("UPDATE decision_log SET conflict_id=NULL WHERE run_id=%s", (db_run_id,))
-                            conn.execute("DELETE FROM decision_log WHERE run_id=%s", (db_run_id,))
-                            conn.execute("DELETE FROM conflict_episodes WHERE run_id=%s", (db_run_id,))
-                            conn.execute("DELETE FROM events WHERE run_id=%s", (db_run_id,))
-                            conn.execute("DELETE FROM runs WHERE run_id=%s", (db_run_id,))
-                        conn.execute("DELETE FROM task_goals WHERE task_id=%s", (task_id,))
-                        conn.execute("DELETE FROM tasks WHERE task_id=%s", (task_id,))
+        with ingested_run(events) as (conn, run_key, db_run_id):
+            args = ["evaluate.py", "--run-key", run_key, "--evaluator-version", "rules-v1", "--apply"]
+            with patch.dict(os.environ,{"ALIGN_DATABASE_URL":os.environ["ALIGN_TEST_DATABASE_URL"]}), \
+                 patch.object(sys,"argv",args), contextlib.redirect_stdout(io.StringIO()) as output:
+                evaluate.main()
+            result = json.loads(output.getvalue())
+            self.assertEqual(result["goals_evaluated"], 1)
+            self.assertEqual(result["conflicts"], 1)
+            self.assertTrue(result["outcome_correct"])
+            conflict_id = conn.execute("SELECT conflict_id FROM conflict_episodes WHERE run_id=%s",
+                                       (db_run_id,)).fetchone()[0]
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM decision_log WHERE conflict_id=%s",
+                                          (conflict_id,)).fetchone()[0],1)
+            self.assertEqual(conn.execute("SELECT expected_actions FROM decision_labels WHERE label_source='rules' "
+                                          "AND checkpoint_event_id IN (SELECT event_id FROM events WHERE run_id=%s)",
+                                          (db_run_id,)).fetchone()[0],["block"])
+            conn.execute("UPDATE conflict_episodes SET review_status='reviewed' WHERE conflict_id=%s",(conflict_id,))
+            self.assertEqual(evaluate.evaluate(conn, run_key, "rules-v1")["run_id"], db_run_id)
+            self.assertEqual(conn.execute("SELECT conflict_id FROM conflict_episodes WHERE run_id=%s",
+                                          (db_run_id,)).fetchone()[0],conflict_id)
+            conn.execute("UPDATE runs SET finished_at=NULL WHERE run_id=%s",(db_run_id,))
+            evaluate.evaluate(conn,run_key,"rules-v1")
+            self.assertIsNone(conn.execute("SELECT runtime_seconds FROM evaluations WHERE run_id=%s",
+                                           (db_run_id,)).fetchone()[0])
+            row = conn.execute("SELECT goals_passed,num_conflicts,outcome_correct FROM v_run_summary WHERE run_id=%s",
+                               (db_run_id,)).fetchone()
+            self.assertEqual(row, (1, 1, True))
+            manual = {events[1]["event_uuid"]: {
+                "event_uuid": events[1]["event_uuid"], "expected_actions": ["continue"],
+                "reviewer": "test-reviewer", "rationale": "Clear"}}
+            evaluate.evaluate(conn, run_key, "rules-v1", manual)
+            evaluate.evaluate(conn, run_key, "rules-v1", manual)
+            self.assertEqual(conn.execute("""SELECT COUNT(*) FROM decision_labels dl
+                   JOIN events e ON dl.checkpoint_event_id=e.event_id
+                   WHERE e.run_id=%s AND dl.is_reference""", (db_run_id,)).fetchone()[0], 1)
+            conn.execute("""UPDATE events SET payload = payload || '{"result":"not_evaluated"}'::jsonb
+                            WHERE run_id=%s AND event_type='test_result'""", (db_run_id,))
+            missing = evaluate.evaluate(conn, run_key, "rules-v1")
+            self.assertEqual(missing["goals_evaluated"], 0)
+            self.assertIsNone(missing["outcome_correct"])
+
+    def test_decision_after_resolution_is_not_linked_to_the_closed_conflict(self):
+        # Regression: a decision made after a conflict was resolved used to be attributed to it,
+        # which made the arbiter look like it had acted on a conflict it actually missed.
+        base, _ = run_artifacts.load_events(FIXTURE.read_bytes())
+        before_conflict = base[:6]            # run_start, proposal, decision, result, test, onset
+        resolution, run_end = base[6], base[7]
+        events = [*before_conflict, *exchange(base, "mediate"), resolution, *exchange(base, "block"), run_end]
+        proposal_sequence = None
+        for number, event in enumerate(events, 1):
+            event["sequence_number"] = number
+            if event["event_type"] == "proposed_action":
+                proposal_sequence = number
+            elif event["event_type"] in {"arbiter_decision", "action_result"}:
+                event["trigger_sequence"] = proposal_sequence
+        with ingested_run(events) as (conn, run_key, db_run_id):
+            evaluate.evaluate(conn, run_key, "rules-v1")
+            linked = dict(conn.execute("""SELECT e.sequence_number, dl.conflict_id IS NOT NULL
+                   FROM decision_log dl JOIN events e ON dl.event_id=e.event_id
+                   WHERE e.run_id=%s""", (db_run_id,)).fetchall())
+        self.assertEqual(linked, {3: False,    # before the conflict began
+                                  8: True,     # while the conflict was open
+                                  12: False})  # after it was resolved
 
 
 if __name__ == "__main__":
