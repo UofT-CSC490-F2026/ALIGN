@@ -42,7 +42,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install -r requirements-coverage.txt
+      - name: Install coverage and test dependencies
+        run: |
+          requirements=(-r requirements-coverage.txt)
+          if [[ -d arbiter_training ]]; then
+            requirements+=(-r arbiter_training/requirements-test.txt)
+          fi
+          python -m pip install "${requirements[@]}"
       - name: Prepare integration fixtures
         env:
           PG_CONTAINER: ${{ job.services.postgres.id }}
@@ -52,9 +58,12 @@ jobs:
           done
           docker pull "$ALIGN_TEST_DOCKER_IMAGE"
       - name: Run pytest and collect line and branch coverage
-        run: >-
-          python -m pytest scripts/tests infra/modules/compute/tests infra/tests/e2e a5/test_concurrent.py --cov -ra
-          --cov-report=term-missing --cov-report=json:coverage.json
+        run: |
+          tests=(scripts/tests infra/modules/compute/tests infra/tests/e2e a5/test_concurrent.py)
+          if [[ -d arbiter_training ]]; then
+            tests+=(arbiter_training/tests)
+          fi
+          python -m pytest "${tests[@]}" --cov -ra --cov-report=term-missing --cov-report=json:coverage.json
       - name: Read missing line count
         id: totals
         run: |

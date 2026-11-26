@@ -3,6 +3,8 @@ branch = True
 source =
     runner
     scripts
+    evaluation
+    arbiter_training
     infra/modules/compute/scripts
     infra/tests/e2e
 omit =
