@@ -1,0 +1,12 @@
+[run]
+source =
+    runner
+    scripts
+
+[report]
+include =
+    runner/*
+    scripts/evaluate.py
+    scripts/process_runs.py
+precision = 2
+show_missing = True
