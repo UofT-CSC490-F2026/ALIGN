@@ -1,5 +1,7 @@
 """Offline contract and optional disposable PostgreSQL integration tests for PR 5."""
 import copy
+import contextlib
+import io
 import json
 import os
 import sys
@@ -7,6 +9,7 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
@@ -25,6 +28,15 @@ class RunProcessorTests(unittest.TestCase):
 
     def test_partial_run_is_failed_not_silently_completed(self):
         self.assertEqual(process_runs.derived_end(self.events[:-1]), ("failed", "other", "Missing run_end event"))
+
+    def test_failure_details_are_validated(self):
+        ending = {"event_type":"run_end","payload":{"status":"failed"}}
+        self.assertEqual(process_runs.derived_end([ending]),("failed","other",None))
+        ending["payload"].update(failure_category="timeout",failure_reason="Deadline reached")
+        self.assertEqual(process_runs.derived_end([ending]),("failed","timeout","Deadline reached"))
+        ending["payload"]["status"] = "completed"
+        with self.assertRaisesRegex(ValueError,"Only failed run"):
+            process_runs.derived_end([ending])
 
     def test_prevent_reserved_event_identity_collision(self):
         event = copy.deepcopy(self.events[1])
@@ -48,6 +60,13 @@ class RunProcessorTests(unittest.TestCase):
 
     def test_no_rules_does_not_claim_safe(self):
         self.assertEqual(process_runs.safety_rules(self.events[1], {}), [])
+
+    def test_test_removal_and_skip_are_provisional_rule_hits(self):
+        event = copy.deepcopy(self.events[1])
+        event["payload"] = {"action":{"command":"remove fixture --skip-tests"},
+                            "files_touched":["tests/fixture.py"]}
+        rules = process_runs.safety_rules(event,{"allowed_paths_by_agent":{"agent1":["tests/"]}})
+        self.assertEqual(rules,["delete_tests","skip_tests"])
 
     def test_invalid_proposal_shape_rejected(self):
         proposed = copy.deepcopy(self.events[1])
@@ -81,10 +100,17 @@ class RunProcessorDatabaseTests(unittest.TestCase):
                         VALUES (%s,'integration','https://github.com/UofT-CSC490-F2026/ALIGN',
                                 %s,'Integration goal','none','complete_all_goals')""",
                                  (key, "a" * 40))
+                db_run_id = None
                 try:
-                    db_run_id, new = process_runs.import_run(conn, bundle)
-                    self.assertTrue(new)
-                    self.assertEqual(process_runs.import_run(conn, bundle), (db_run_id, False))
+                    uri = "s3://align-fixture/runs/bundle"
+                    args = ["process_runs.py", "--run-dir", str(bundle), "--artifact-uri", uri, "--apply"]
+                    with patch.dict(os.environ,{"ALIGN_DATABASE_URL":os.environ["ALIGN_TEST_DATABASE_URL"]}), \
+                         patch.object(sys,"argv",args), contextlib.redirect_stdout(io.StringIO()) as output:
+                        process_runs.main()
+                    imported = json.loads(output.getvalue().splitlines()[-1])
+                    db_run_id = imported["db_run_id"]
+                    self.assertTrue(imported["inserted"])
+                    self.assertEqual(process_runs.import_run(conn, bundle, uri), (db_run_id, False))
                     row = conn.execute("""SELECT
                         (SELECT COUNT(*) FROM events WHERE run_id=%s),
                         (SELECT COUNT(*) FROM decision_log WHERE run_id=%s),
@@ -97,15 +123,16 @@ class RunProcessorDatabaseTests(unittest.TestCase):
                     other = base / "changed"
                     run_artifacts.stage(raw, other)
                     with self.assertRaisesRegex(ValueError, "Conflicting replay"):
-                        process_runs.import_run(conn, other)
+                        process_runs.import_run(conn, other, uri)
                     self.assertEqual(conn.execute("SELECT COUNT(*) FROM events WHERE run_id=%s",
                                                   (db_run_id,)).fetchone()[0], 8)
                 finally:
                     with conn.transaction():
-                        conn.execute("DELETE FROM action_attempts WHERE run_id=%s", (db_run_id,))
-                        conn.execute("DELETE FROM decision_log WHERE run_id=%s", (db_run_id,))
-                        conn.execute("DELETE FROM events WHERE run_id=%s", (db_run_id,))
-                        conn.execute("DELETE FROM runs WHERE run_id=%s", (db_run_id,))
+                        if db_run_id is not None:
+                            conn.execute("DELETE FROM action_attempts WHERE run_id=%s", (db_run_id,))
+                            conn.execute("DELETE FROM decision_log WHERE run_id=%s", (db_run_id,))
+                            conn.execute("DELETE FROM events WHERE run_id=%s", (db_run_id,))
+                            conn.execute("DELETE FROM runs WHERE run_id=%s", (db_run_id,))
                         conn.execute("DELETE FROM tasks WHERE task_key=%s", (key,))
 
 

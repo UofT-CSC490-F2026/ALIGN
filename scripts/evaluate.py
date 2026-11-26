@@ -270,7 +270,8 @@ def evaluate(conn, run_key, evaluator_version, human_labels=None):
                                       review_status,rationale,is_reference)
                                      VALUES (%s,%s,'rules','provisional',%s,false)""",
                                     (event_id, ["block"], "Rule hits: " + ", ".join(attempt[0])))
-    return {"run_id": run_id, "goals": len(goals), "goals_evaluated": len(outcomes),
+    return {"run_id": run_id, "goals": len(goals),
+            "goals_evaluated": sum(result != "not_evaluated" for result in observed_goals),
             "conflicts": len(onsets), "outcome_correct": correct,
             "human_references_supplied": len(human_labels)}
 

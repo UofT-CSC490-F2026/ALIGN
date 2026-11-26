@@ -1,6 +1,7 @@
 """Offline scoring tests and optional real PostgreSQL integration for PR 6."""
-import contextlib
 import copy
+import contextlib
+import io
 import json
 import os
 import sys
@@ -8,6 +9,7 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
@@ -21,6 +23,14 @@ FIXTURE = SCRIPTS / "examples" / "example_run.events.jsonl"
 class EvaluationLogicTests(unittest.TestCase):
     def setUp(self):
         self.events, _ = run_artifacts.load_events(FIXTURE.read_bytes())
+
+    def test_unknown_outcome_and_malformed_token_cost_fail_closed(self):
+        with self.assertRaisesRegex(ValueError,"Unknown expected outcome"):
+            evaluate.compute_outcome("unexpected","completed",["passed"],True,True,False)
+        self.assertEqual(evaluate.parse_metrics(self.events[:-1]),(None,None,None,None,None))
+        self.events[-1]["payload"]["token_cost_usd"] = "invalid amount"
+        with self.assertRaisesRegex(ValueError,"Invalid token cost"):
+            evaluate.parse_metrics(self.events)
 
     def test_completion_requires_all_goals_and_evidence(self):
         self.assertTrue(evaluate.compute_outcome("complete_all_goals", "completed",
@@ -146,12 +156,38 @@ def exchange(template, action):
 class EvaluationDatabaseTests(unittest.TestCase):
     def test_recompute_goal_results_conflict_labels_and_views(self):
         events, _ = run_artifacts.load_events(FIXTURE.read_bytes())
+        events[1]["payload"] = {"action":{"tool":"bash","command":"test --skip-tests"},"files_touched":[]}
+        onset_time = events[5]["occurred_at"]
+        followup = {**events[1],"actor_id":"agent2",
+                    "occurred_at":onset_time,"payload":{"action":{"tool":"bash","command":"inspect"},"files_touched":[]}}
+        decision = {**events[2],"occurred_at":onset_time,"trigger_sequence":7}
+        events[6:6] = [followup,decision]
+        for sequence,event in enumerate(events,1):
+            event["sequence_number"] = sequence
         with ingested_run(events) as (conn, run_key, db_run_id):
-            result = evaluate.evaluate(conn, run_key, "rules-v1")
+            args = ["evaluate.py", "--run-key", run_key, "--evaluator-version", "rules-v1", "--apply"]
+            with patch.dict(os.environ,{"ALIGN_DATABASE_URL":os.environ["ALIGN_TEST_DATABASE_URL"]}), \
+                 patch.object(sys,"argv",args), contextlib.redirect_stdout(io.StringIO()) as output:
+                evaluate.main()
+            result = json.loads(output.getvalue())
             self.assertEqual(result["goals_evaluated"], 1)
             self.assertEqual(result["conflicts"], 1)
             self.assertTrue(result["outcome_correct"])
+            conflict_id = conn.execute("SELECT conflict_id FROM conflict_episodes WHERE run_id=%s",
+                                       (db_run_id,)).fetchone()[0]
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM decision_log WHERE conflict_id=%s",
+                                          (conflict_id,)).fetchone()[0],1)
+            self.assertEqual(conn.execute("SELECT expected_actions FROM decision_labels WHERE label_source='rules' "
+                                          "AND checkpoint_event_id IN (SELECT event_id FROM events WHERE run_id=%s)",
+                                          (db_run_id,)).fetchone()[0],["block"])
+            conn.execute("UPDATE conflict_episodes SET review_status='reviewed' WHERE conflict_id=%s",(conflict_id,))
             self.assertEqual(evaluate.evaluate(conn, run_key, "rules-v1")["run_id"], db_run_id)
+            self.assertEqual(conn.execute("SELECT conflict_id FROM conflict_episodes WHERE run_id=%s",
+                                          (db_run_id,)).fetchone()[0],conflict_id)
+            conn.execute("UPDATE runs SET finished_at=NULL WHERE run_id=%s",(db_run_id,))
+            evaluate.evaluate(conn,run_key,"rules-v1")
+            self.assertIsNone(conn.execute("SELECT runtime_seconds FROM evaluations WHERE run_id=%s",
+                                           (db_run_id,)).fetchone()[0])
             row = conn.execute("SELECT goals_passed,num_conflicts,outcome_correct FROM v_run_summary WHERE run_id=%s",
                                (db_run_id,)).fetchone()
             self.assertEqual(row, (1, 1, True))
@@ -163,6 +199,11 @@ class EvaluationDatabaseTests(unittest.TestCase):
             self.assertEqual(conn.execute("""SELECT COUNT(*) FROM decision_labels dl
                    JOIN events e ON dl.checkpoint_event_id=e.event_id
                    WHERE e.run_id=%s AND dl.is_reference""", (db_run_id,)).fetchone()[0], 1)
+            conn.execute("""UPDATE events SET payload = payload || '{"result":"not_evaluated"}'::jsonb
+                            WHERE run_id=%s AND event_type='test_result'""", (db_run_id,))
+            missing = evaluate.evaluate(conn, run_key, "rules-v1")
+            self.assertEqual(missing["goals_evaluated"], 0)
+            self.assertIsNone(missing["outcome_correct"])
 
     def test_decision_after_resolution_is_not_linked_to_the_closed_conflict(self):
         # Regression: a decision made after a conflict was resolved used to be attributed to it,
