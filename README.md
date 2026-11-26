@@ -11,8 +11,8 @@ Git broker and pre-execution arbitration. See the [runner quickstart](runner/QUI
 
 | Scope | Covered | Total | Coverage |
 | --- | ---: | ---: | ---: |
-| Executable lines | 2110 | 2638 | 79.98% |
-| Branches | 662 | 834 | 79.38% |
+| Executable lines | 2638 | 2638 | 100.00% |
+| Branches | 833 | 834 | 99.88% |
 
 <!-- project-coverage:end -->
 
