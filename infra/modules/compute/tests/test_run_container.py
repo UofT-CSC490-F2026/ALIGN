@@ -120,6 +120,21 @@ class ServiceImageTests(RuntimeTestCase):
         self.assertEqual(self.prepare.call_count, 5)
         self.assertEqual(self.delays, [5, 10, 20, 40])
 
+    def test_fifth_attempt_can_succeed(self):
+        self.prepare.side_effect = [RuntimeError("image unavailable")] * 4 + [["docker"]]
+        self.assertEqual(runner.prepare_service_image(self.config, self.scratch), ["docker"])
+        self.assertEqual(self.prepare.call_args_list, [call(self.config, self.scratch, 900)] * 5)
+        self.assertEqual(self.delays, [5, 10, 20, 40])
+
+    def test_deadline_reached_during_last_backoff_prevents_fifth_attempt(self):
+        self.replace(runner, "SERVICE_IMAGE_TIMEOUT_SECONDS", new=75)
+        self.prepare.side_effect = RuntimeError("image unavailable")
+        with self.assertRaises(subprocess.TimeoutExpired):
+            runner.prepare_service_image(self.config, self.scratch)
+        self.assertEqual(self.prepare.call_count, 4)
+        self.assertEqual(self.delays, [5, 10, 20, 40])
+        self.assertEqual(self.now, 75)
+
     def test_backoff_cannot_extend_shared_deadline(self):
         self.replace(runner, "SERVICE_IMAGE_TIMEOUT_SECONDS", new=12)
         self.prepare.side_effect = RuntimeError("mock failure")
