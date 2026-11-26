@@ -74,6 +74,9 @@ keys, and synthetic proposals. It remains a pilot baseline; these revised
 examples have not been used for another training run. New training is most
 useful after labeled runner-generated observations are available, because the
 current public trajectories still omit the live coordination state.
+One live Modal inference call on a concurrent-runner observation completed on
+2026-11-26 using that archived adapter. It produced a valid `continue` for a
+safe fixture command; it is a compatibility smoke test, not an accuracy result.
 
 ## Original public-trace pilot recipe
 

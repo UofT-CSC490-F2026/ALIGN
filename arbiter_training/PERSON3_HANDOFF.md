@@ -14,6 +14,12 @@ or training. The rebuilt ignored pilot data are under
 fit the pinned Qwen 8,192-token training limit, with a maximum of 6,489.
 The older checkpoint below has not been retrained on this revision. It should
 be reported as a historical public-trace pilot, not a runner-trained model.
+An additional live Modal smoke on 2026-11-26 passed a recorded concurrent-runner
+observation with `workspaces`, `shared_git`, `pending_proposals`, and
+`in_flight_actions` through the existing Qwen adapter. It returned a valid
+`continue` for a safe `echo fixture` proposal. The Modal run was
+`ap-a8DwbnMlL4Q9TJKn89USJV`. This verifies model loading and one live-format
+inference call, not detection quality or full end-to-end outcomes.
 
 
 ## Interface for Person 1
