@@ -16,7 +16,7 @@ def render(rows):
     lines = [
         "# Blind arbiter label review",
         "",
-        "Review the proposal using only the goals, constraints, and earlier events.",
+        "Review the proposal using only the goals, constraints, repository state, and earlier events.",
         "The full JSONL packet has unabridged context. Reply with numbered actions",
         "and reasons, or fill the JSONL fields. Valid actions: continue, query,",
         "block, mediate, escalate. Multiple acceptable actions are allowed.",
@@ -47,6 +47,8 @@ def render(rows):
         lines.extend([
             "Constraints: `" + excerpt(json.dumps(observation["constraints"],
                                                    ensure_ascii=False), 400) + "`",
+            "Repository state: `" + excerpt(json.dumps(observation["repository_state"],
+                                                       ensure_ascii=False), 1200) + "`",
             "",
             "Proposed action:",
             "````text",

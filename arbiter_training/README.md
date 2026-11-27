@@ -33,23 +33,24 @@ The CooperBench Lite split now uses the same revision-qualified task keys as
 UUIDs, so the 21 human reviews still attach to the same proposals. The new
 ignored build is `data/runner-aligned-v2/`: 10 imported public runs, 49 observed
 labels, and 34 marked synthetic counterfactuals (61 train, 22 validation).
-The split still holds out the same repositories. The new train and validation
+The split still holds out the same repositories. The archived v2 train and validation
 SHA256 values are respectively
 `a833a6f5022ecb7f27b896b0fa9496387b856e311ab3bfab5822dba484fe2e77`
 and `701a613a79050192b7f0b4d565074006714869353e091d0d1b97a886f8ed26ad`.
-The audit reports no warnings.
+The archived audit reports no warnings. Regenerating with the current source
+categories and synthetic example will produce different hashes.
 
 To reproduce the revised build from the existing pinned teacher labels and
 tracked human review file, use new output paths so the historical pilot stays
 available:
 
 ```powershell
-python -m arbiter_training.split_cooperbench --subset lite --output arbiter_training/data/runner-aligned-v2/cooperbench-lite-split.json
-python -m arbiter_training.import_traces --split-manifest arbiter_training/data/runner-aligned-v2/cooperbench-lite-split.json --output-dir arbiter_training/data/runner-aligned-v2/public-traces --max-pairs-per-split 5
-python -m arbiter_training.merge_review --teacher-labels arbiter_training/data/public-trace-v1/teacher-labels-v2-provisional.jsonl --reviewed-packet arbiter_training/reviews/human-labels-20261125.jsonl --output arbiter_training/data/runner-aligned-v2/human-merged-labels.jsonl
-python -m arbiter_training.prepare --tasks arbiter_training/data/runner-aligned-v2/public-traces/tasks.jsonl --events-dir arbiter_training/data/runner-aligned-v2/public-traces --labels arbiter_training/data/runner-aligned-v2/human-merged-labels.jsonl --output-dir arbiter_training/data/runner-aligned-v2/prepared --history-limit 8
-python -m arbiter_training.synthetic --tasks arbiter_training/data/runner-aligned-v2/public-traces/tasks.jsonl --prepared-dir arbiter_training/data/runner-aligned-v2/prepared --output-dir arbiter_training/data/runner-aligned-v2/combined
-python -m arbiter_training.audit --prepared-dir arbiter_training/data/runner-aligned-v2/combined --output arbiter_training/data/runner-aligned-v2/combined/audit.json
+python -m arbiter_training.split_cooperbench --subset lite --output arbiter_training/data/runner-aligned-v3/cooperbench-lite-split.json
+python -m arbiter_training.import_traces --split-manifest arbiter_training/data/runner-aligned-v3/cooperbench-lite-split.json --output-dir arbiter_training/data/runner-aligned-v3/public-traces --max-pairs-per-split 5
+python -m arbiter_training.merge_review --teacher-labels arbiter_training/data/public-trace-v1/teacher-labels-v2-provisional.jsonl --reviewed-packet arbiter_training/reviews/human-labels-20261125.jsonl --output arbiter_training/data/runner-aligned-v3/human-merged-labels.jsonl
+python -m arbiter_training.prepare --tasks arbiter_training/data/runner-aligned-v3/public-traces/tasks.jsonl --events-dir arbiter_training/data/runner-aligned-v3/public-traces --labels arbiter_training/data/runner-aligned-v3/human-merged-labels.jsonl --split-manifest arbiter_training/data/runner-aligned-v3/cooperbench-lite-split.json --output-dir arbiter_training/data/runner-aligned-v3/prepared --history-limit 8
+python -m arbiter_training.synthetic --tasks arbiter_training/data/runner-aligned-v3/public-traces/tasks.jsonl --split-manifest arbiter_training/data/runner-aligned-v3/cooperbench-lite-split.json --prepared-dir arbiter_training/data/runner-aligned-v3/prepared --output-dir arbiter_training/data/runner-aligned-v3/combined
+python -m arbiter_training.audit --prepared-dir arbiter_training/data/runner-aligned-v3/combined --output arbiter_training/data/runner-aligned-v3/combined/audit.json
 ```
 
 `prepare.py` uses a runner bundle's `arbiter_observation` event linked by
@@ -59,6 +60,13 @@ events and do not establish repository state. The merged-runner offline
 integration test checks an actual bundle and all synthetic tool proposals.
 The training contract calls the runner's proposal and decision validators
 directly, so both paths use its tool vocabulary and affected-agent checks.
+For normalized runner tasks without `metadata.split`, pass the pinned
+`--split-manifest` to preparation, review queue generation, and synthetic data
+generation. An unknown or held-out task cannot be assigned by hash fallback.
+The review queue uses the same recorded observation and deduplicated bundle as
+preparation; `inspect_queue.py` displays the observation's repository state.
+Prepared runner examples carry `scenario_source: runner_trajectory` for separate
+evaluation reporting.
 
 Inference and training now reject inputs exceeding 8,192 tokens; inference
 reserves 256 output tokens. With the pinned Qwen tokenizer, all 83 new pilot
@@ -125,6 +133,7 @@ python -m arbiter_training.prepare `
   --tasks PATH_TO_NORMALIZED_TASKS_JSONL `
   --events-dir PATH_TO_RUN_BUNDLES `
   --labels PATH_TO_REVIEWED_LABELS_JSONL `
+  --split-manifest PATH_TO_COOPERBENCH_SPLIT_JSON `
   --exclude-task-keys heldout.txt `
   --output-dir arbiter_training/data
 ```

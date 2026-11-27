@@ -1,7 +1,6 @@
 """Make provenance-tracked decision-level SFT records from A2 run bundles."""
 
 import argparse
-import hashlib
 import json
 from pathlib import Path
 
@@ -39,6 +38,90 @@ def task_context(task):
     }
 
 
+def task_splits_for(tasks, split_manifest=None):
+    manifest_splits = {}
+    if split_manifest is not None:
+        manifest = json.loads(Path(split_manifest).read_text(encoding="utf-8"))
+        for pair in manifest["pairs"]:
+            key, split = pair["task_key"], pair["split"]
+            if key in manifest_splits or split not in {"train", "validation", "test"}:
+                raise ValueError(f"Invalid or duplicate split for {key}")
+            manifest_splits[key] = split
+    result = {}
+    for key, task in tasks.items():
+        embedded = task.get("metadata", {}).get("split")
+        manifest_split = manifest_splits.get(key)
+        if split_manifest is not None and manifest_split is None:
+            raise ValueError(f"Task missing from split manifest: {key}")
+        if embedded and manifest_split and embedded != manifest_split:
+            raise ValueError(f"Task split disagrees with manifest for {key}")
+        split = manifest_split or embedded
+        if split not in {"train", "validation", "test"}:
+            raise ValueError(f"Missing valid split for {key}; provide --split-manifest")
+        result[key] = split
+    return result
+
+
+def event_bundles(events_dir):
+    files = sorted(Path(events_dir).rglob("events.jsonl"))
+    if not files:
+        raise ValueError("No events.jsonl bundles found")
+    file_set = set(files)
+    raw_copies = set()
+    for path in files:
+        raw = path.parent.parent / "events.jsonl"
+        if path.parent.name == "bundle" and raw in file_set:
+            if raw.read_bytes() != path.read_bytes():
+                raise ValueError(f"Raw events differ from staged bundle: {path}")
+            raw_copies.add(raw)
+    for path in files:
+        if path not in raw_copies:
+            events = list(read_jsonl(path))
+            if not events or events[0].get("event_type") != "run_start":
+                raise ValueError(f"Missing run_start in {path}")
+            run_key = events[0].get("run_key")
+            for number, item in enumerate(events, 1):
+                if item.get("run_key") != run_key or item.get("sequence_number") != number:
+                    raise ValueError(f"Invalid run identity or event order in {path}")
+            yield path, events
+
+
+def recorded_observations(events, path):
+    observations = {}
+    for number, item in enumerate(events, 1):
+        if item.get("event_type") != "arbiter_observation":
+            continue
+        trigger = item.get("trigger_sequence")
+        if (type(trigger) is not int or not 0 < trigger < number
+                or events[trigger - 1].get("event_type") != "proposed_action"
+                or trigger in observations):
+            raise ValueError(f"Invalid arbiter_observation link in {path}")
+        observations[trigger] = item["payload"]
+    return observations
+
+
+def observation_for_proposal(events, index, task, history, observations, path):
+    event = events[index - 1]
+    if observations:
+        if index not in observations:
+            raise ValueError(f"Missing arbiter_observation for proposal {index} in {path}")
+        observation = observations[index]
+        if (observation.get("task_key") != task["task_key"]
+                or observation.get("proposal_sequence") != index
+                or observation.get("actor_id") != event.get("actor_id")
+                or observation.get("proposed_action") != event.get("payload")):
+            raise ValueError(f"arbiter_observation disagrees with proposal {index} in {path}")
+        return observation
+    checkpoint = {
+        "schema_version": SCHEMA_VERSION, "task": task,
+        "run_key": event.get("run_key"),
+        "checkpoint_event_uuid": event["event_uuid"],
+        "sequence_number": index, "agent_id": event.get("actor_id"),
+        "proposal": event.get("payload", {}), "prior_events": history,
+    }
+    return observation_from_checkpoint(checkpoint)
+
+
 def validated_labels(path):
     labels = {}
     for item in read_jsonl(path):
@@ -68,37 +151,21 @@ def validated_labels(path):
 
 
 def build_records(tasks_path, events_dir, labels_path, history_limit=20,
-                  excluded_tasks=frozenset(), include_test=False):
+                  excluded_tasks=frozenset(), include_test=False, split_manifest=None):
     tasks = {}
-    task_splits = {}
+    raw_tasks = {}
     for task in read_jsonl(tasks_path):
         key = task["task_key"]
         if key in tasks:
             raise ValueError(f"Duplicate task_key {key}")
         tasks[key] = task_context(task)
-        task_splits[key] = task.get("metadata", {}).get("split")
+        raw_tasks[key] = task
+    task_splits = task_splits_for(raw_tasks, split_manifest)
     labels = validated_labels(labels_path)
     used = set()
     withheld = set()
     records = []
-    files = sorted(Path(events_dir).rglob("events.jsonl"))
-    if not files:
-        raise ValueError("No events.jsonl bundles found")
-    # The runner retains a raw file beside its staged bundle; both contain the
-    # same events. Read the verified bundle copy once, and reject divergence.
-    file_set = set(files)
-    raw_copies = set()
-    for path in files:
-        raw = path.parent.parent / "events.jsonl"
-        if path.parent.name == "bundle" and raw in file_set:
-            if raw.read_bytes() != path.read_bytes():
-                raise ValueError(f"Raw events differ from staged bundle: {path}")
-            raw_copies.add(raw)
-    files = [path for path in files if path not in raw_copies]
-    for path in files:
-        events = list(read_jsonl(path))
-        if not events or events[0].get("event_type") != "run_start":
-            raise ValueError(f"Missing run_start in {path}")
+    for path, events in event_bundles(events_dir):
         task_key = events[0].get("payload", {}).get("task_key")
         if task_key not in tasks:
             raise ValueError(f"Unknown task_key {task_key} in {path}")
@@ -108,19 +175,7 @@ def build_records(tasks_path, events_dir, labels_path, history_limit=20,
                             if e.get("event_type") == "proposed_action")
             continue
         run_key = events[0].get("run_key")
-        observations = {}
-        has_runner_observations = False
-        for number, item in enumerate(events, 1):
-            if item.get("run_key") != run_key or item.get("sequence_number") != number:
-                raise ValueError(f"Invalid run identity or event order in {path}")
-            if item.get("event_type") == "arbiter_observation":
-                has_runner_observations = True
-                trigger = item.get("trigger_sequence")
-                if (type(trigger) is not int or not 0 < trigger < number
-                        or events[trigger - 1].get("event_type") != "proposed_action"
-                        or trigger in observations):
-                    raise ValueError(f"Invalid arbiter_observation link in {path}")
-                observations[trigger] = item["payload"]
+        observations = recorded_observations(events, path)
         history = []
         for index, event in enumerate(events, 1):
             if event.get("event_type") == "proposed_action" and event.get("event_uuid") in labels:
@@ -136,19 +191,10 @@ def build_records(tasks_path, events_dir, labels_path, history_limit=20,
                     "sequence_number": index,
                     "agent_id": event.get("actor_id"),
                     "proposal": event.get("payload", {}),
-                    "prior_events": history[-history_limit:],
+                    "prior_events": history[-history_limit:] if history_limit else [],
                 }
-                if has_runner_observations:
-                    if index not in observations:
-                        raise ValueError(f"Missing arbiter_observation for proposal {index} in {path}")
-                    observation = observations[index]
-                    if (observation.get("task_key") != task_key
-                            or observation.get("proposal_sequence") != index
-                            or observation.get("actor_id") != event.get("actor_id")
-                            or observation.get("proposed_action") != event.get("payload")):
-                        raise ValueError(f"arbiter_observation disagrees with proposal {index} in {path}")
-                else:
-                    observation = observation_from_checkpoint(checkpoint)
+                observation = observation_for_proposal(
+                    events, index, tasks[task_key], checkpoint["prior_events"], observations, path)
                 messages = messages_for_observation(observation)
                 records.append({
                     "schema_version": SCHEMA_VERSION,
@@ -156,7 +202,8 @@ def build_records(tasks_path, events_dir, labels_path, history_limit=20,
                     "run_key": run_key,
                     "checkpoint_event_uuid": event_uuid,
                     "source_bundle": str(path),
-                    "observation_source": "runner_event" if has_runner_observations else "public_reconstruction",
+                    "observation_source": "runner_event" if observations else "public_reconstruction",
+                    "scenario_source": "runner_trajectory" if observations else "public_trace",
                     "expected_actions": actions,
                     "primary_action": primary,
                     "reviewer": reviewer,
@@ -187,15 +234,13 @@ def split_records(records, validation_fraction):
         raise ValueError("validation_fraction must be between zero and one")
     train, validation = [], []
     for record in records:
-        # Split entire tasks together; the evaluation owner's held-out tasks stay outside input.
-        digest = hashlib.sha256(record["task_key"].encode()).digest()
-        fraction = int.from_bytes(digest[:8], "big") / 2**64
+        # Use the pinned task split; never assign an unknown task by fallback.
         if record.get("split") == "validation":
             validation.append(record)
         elif record.get("split") == "train":
             train.append(record)
         else:
-            (validation if fraction < validation_fraction else train).append(record)
+            raise ValueError(f"Record split is missing or invalid for {record['task_key']}")
     return train, validation
 
 
@@ -204,6 +249,8 @@ def main():
     parser.add_argument("--tasks", type=Path, required=True, help="Normalized A2 tasks.jsonl")
     parser.add_argument("--events-dir", type=Path, required=True, help="Directory of events.jsonl bundles")
     parser.add_argument("--labels", type=Path, required=True, help="Reviewed A2 human-label JSONL")
+    parser.add_argument("--split-manifest", type=Path,
+                        help="CooperBench split JSON; required when tasks lack metadata.split")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--validation-fraction", type=float, default=0.2)
     parser.add_argument("--history-limit", type=int, default=20)
@@ -216,7 +263,8 @@ def main():
     if args.exclude_task_keys:
         excluded = {line.strip() for line in args.exclude_task_keys.read_text(encoding="utf-8").splitlines()
                     if line.strip() and not line.lstrip().startswith("#")}
-    records = build_records(args.tasks, args.events_dir, args.labels, args.history_limit, excluded)
+    records = build_records(args.tasks, args.events_dir, args.labels, args.history_limit,
+                            excluded, split_manifest=args.split_manifest)
     if not records:
         parser.error("No labeled checkpoint examples were found")
     train, validation = split_records(records, args.validation_fraction)

@@ -248,6 +248,10 @@ def test_modal_comparison_report_and_rejections(tmp_path, monkeypatch, capsys):
     modal_app.main(mode="compare", validation_file=str(validation), models="qwen", output_file=str(report))
     assert json.loads(capsys.readouterr().out)["models"]["qwen"]["accepted_decisions"] == 1
     assert json.loads(report.read_text())["models"]["qwen"]["predictions"][0]["valid"] is True
+    monkeypatch.setattr(modal_app, "infer_batch", SimpleNamespace(remote=lambda *a: []))
+    with pytest.raises(RuntimeError, match="different number of decisions"):
+        modal_app.main(mode="compare", validation_file=str(validation), models="qwen")
+    monkeypatch.setattr(modal_app, "infer_batch", SimpleNamespace(remote=lambda *a: [{"text": json.dumps(decision)}]))
     with pytest.raises(ValueError, match="models must"):
         modal_app.main(mode="compare", validation_file=str(validation), models="qwen,qwen")
     with pytest.raises(ValueError, match="adapter-path comparison"):

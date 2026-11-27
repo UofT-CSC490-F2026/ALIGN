@@ -5,6 +5,13 @@ from runner.arbitration import ACTIONS, ENFORCED as ENFORCED_ACTIONS, validate_d
 from runner.orchestrator import validate_proposal
 
 SCHEMA_VERSION = 1
+
+
+def require_output_count(outputs, inputs):
+    if len(outputs) != len(inputs):
+        raise RuntimeError("Modal returned a different number of decisions")
+
+
 SYSTEM_PROMPT = (
     "You are the ALIGN arbiter. Decide what to do before a coding agent's proposed "
     "action executes. Use only the supplied task, proposal, and earlier events. "

@@ -100,6 +100,20 @@ def test_inspect_queue_formats_selected_prefix(tmp_path, monkeypatch, capsys):
     assert "GOAL agent1: goal" in printed and "PRIOR 2" in printed and "PROPOSAL: git diff" in printed
     assert inspect_queue.short({"x": "a b"}, 100).startswith('{"x"')
     assert inspect_queue.short("a  b\nc", 3) == "a b..."
+    original = json.loads(queue.read_text(encoding="utf-8").splitlines()[0])
+    original["observation"] = {
+        "proposal_sequence": 4, "actor_id": "agent1", "shared_goal": "Ship both features",
+        "agent_goals": {"agent1": "goal"}, "constraints": {},
+        "repository_state": {"pending_proposals": {"agent2": "queued"}},
+        "recent_events": [{"sequence_number": 2, "actor_id": "agent2",
+                           "event_type": "proposed_action", "payload": {"action": "git status"}}],
+        "proposed_action": {"action": {"tool": "bash", "command": "git diff"}},
+    }
+    jsonl(queue, [original])
+    invoke(monkeypatch, inspect_queue, queue, "abcd")
+    printed = capsys.readouterr().out
+    assert "REPOSITORY STATE:" in printed and "pending_proposals" in printed
+    assert "SHARED GOAL: Ship both features" in printed and "PRIOR 2" in printed
 
 
 def test_trace_action_parser_handles_missing_and_duplicate_calls():

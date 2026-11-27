@@ -131,6 +131,7 @@ def test_prepare_records_and_split(tmp_path):
     assert row["review_status"] == "reviewed"
     assert row["primary_action"] == "continue"
     assert row["observation_source"] == "public_reconstruction"
+    assert row["scenario_source"] == "public_trace"
     assert json.loads(row["prompt"][1]["content"])["recent_events"][0]["event_type"] == "run_start"
     assert json.loads(row["completion"][0]["content"])["action"] == "continue"
     assert prepare.split_records(rows, .2) == (rows, [])
@@ -157,6 +158,7 @@ def test_prepare_uses_recorded_runner_observation(tmp_path):
     write_jsonl(path, rows)
     result = prepare.build_records(tasks, events_dir, labels)[0]
     assert result["observation_source"] == "runner_event"
+    assert result["scenario_source"] == "runner_trajectory"
     assert json.loads(result["prompt"][1]["content"]) == recorded
     write_jsonl(path, [*rows, {**rows[2], "sequence_number": 5}])
     with pytest.raises(ValueError, match="Invalid arbiter_observation link"):
@@ -183,6 +185,42 @@ def test_prepare_uses_staged_copy_once_and_rejects_divergence(tmp_path):
     staged.write_text("different", encoding="utf-8")
     with pytest.raises(ValueError, match="Raw events differ"):
         prepare.build_records(tasks, events_dir, labels)
+
+
+def test_split_manifest_controls_runner_tasks_and_excludes_test(tmp_path):
+    tasks, events_dir, labels = fixture_files(tmp_path)
+    runner_task = task()
+    runner_task.pop("metadata")
+    write_jsonl(tasks, [runner_task])
+    manifest = tmp_path / "split.json"
+    with pytest.raises(ValueError, match="split-manifest"):
+        prepare.build_records(tasks, events_dir, labels)
+    manifest.write_text(json.dumps({"pairs": [{"task_key": runner_task["task_key"],
+                                                "split": "test"}]}), encoding="utf-8")
+    assert prepare.build_records(tasks, events_dir, labels, split_manifest=manifest) == []
+    rows = prepare.build_records(tasks, events_dir, labels, include_test=True,
+                                 split_manifest=manifest)
+    assert len(rows) == 1 and rows[0]["split"] == "test"
+    assert list(review_queue.checkpoints(tasks, events_dir, 8, manifest))[0]["split"] == "test"
+    with pytest.raises(ValueError, match="Record split"):
+        prepare.split_records(rows, .2)
+    manifest.write_text(json.dumps({"pairs": []}), encoding="utf-8")
+    with pytest.raises(ValueError, match="missing from split manifest"):
+        prepare.build_records(tasks, events_dir, labels, split_manifest=manifest)
+    runner_task["metadata"] = {"split": "train"}
+    write_jsonl(tasks, [runner_task])
+    manifest.write_text(json.dumps({"pairs": [{"task_key": runner_task["task_key"],
+                                                "split": "test"}]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="disagrees with manifest"):
+        prepare.build_records(tasks, events_dir, labels, split_manifest=manifest)
+    manifest.write_text(json.dumps({"pairs": [{"task_key": runner_task["task_key"],
+                                                "split": "wrong"}]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="Invalid or duplicate split"):
+        prepare.build_records(tasks, events_dir, labels, split_manifest=manifest)
+    manifest.write_text(json.dumps({"pairs": [{"task_key": runner_task["task_key"],
+                                                "split": "train"}] * 2}), encoding="utf-8")
+    with pytest.raises(ValueError, match="Invalid or duplicate split"):
+        prepare.build_records(tasks, events_dir, labels, split_manifest=manifest)
 
 
 def test_prepare_rejects_bad_inputs(tmp_path):
@@ -310,6 +348,21 @@ def test_synthetic_record_preserves_provenance(tmp_path, monkeypatch, capsys):
     with pytest.raises(ValueError, match="No imported task"):
         run_main(monkeypatch, synthetic, "--tasks", tasks, "--prepared-dir", prepared,
                  "--output-dir", output)
+    monkeypatch.setattr(synthetic, "CASES", [case])
+    unmarked = task()
+    unmarked.pop("metadata")
+    write_jsonl(tasks, [unmarked])
+    manifest = tmp_path / "split.json"
+    manifest.write_text(json.dumps({"pairs": [{"task_key": unmarked["task_key"],
+                                                "split": "test"}]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="held-out test task"):
+        run_main(monkeypatch, synthetic, "--tasks", tasks, "--split-manifest", manifest,
+                 "--prepared-dir", prepared, "--output-dir", output)
+    manifest.write_text(json.dumps({"pairs": [{"task_key": unmarked["task_key"],
+                                                "split": "train"}]}), encoding="utf-8")
+    run_main(monkeypatch, synthetic, "--tasks", tasks, "--split-manifest", manifest,
+             "--prepared-dir", prepared, "--output-dir", output)
+    assert list(prepare.read_jsonl(output / "train.jsonl"))[0]["split"] == "train"
 
 
 def test_synthetic_message_uses_structured_runner_tool():
@@ -331,10 +384,28 @@ def test_review_category(command, kind):
     assert review_queue.category(command) == kind
 
 
+def test_review_queue_rejects_unknown_task_and_categorizes_messages(tmp_path):
+    tasks, events_dir, _ = fixture_files(tmp_path)
+    path = events_dir / "one" / "events.jsonl"
+    rows = list(prepare.read_jsonl(path))
+    rows[0]["payload"]["task_key"] = "unknown"
+    write_jsonl(path, rows)
+    with pytest.raises(ValueError, match="Unknown task_key"):
+        list(review_queue.checkpoints(tasks, events_dir, 8))
+    rows[0]["payload"]["task_key"] = task()["task_key"]
+    rows[1]["payload"]["action"] = {
+        "tool": "message", "recipient": "agent2", "content": "Please review the edit"}
+    write_jsonl(path, rows)
+    item = next(review_queue.checkpoints(tasks, events_dir, 0))
+    assert item["category"] == "communication"
+    assert item["observation"]["recent_events"] == []
+
+
 def test_review_checkpoint_and_worksheet(tmp_path, monkeypatch, capsys):
     tasks, events_dir, labels = fixture_files(tmp_path)
     item = next(review_queue.checkpoints(tasks, events_dir, 8))
     assert item["category"] == "git"
+    assert item["observation"]["proposed_action"] == item["checkpoint"]["proposal"]
     assert item["checkpoint"]["sequence_number"] == 2
     queue = tmp_path / "queue.jsonl"
     run_main(monkeypatch, review_queue, "--tasks", tasks, "--events-dir", events_dir,
@@ -350,6 +421,7 @@ def test_review_checkpoint_and_worksheet(tmp_path, monkeypatch, capsys):
     assert review_sheet.excerpt("abcdef", 3) == "abc..."
     rendered = review_sheet.render(list(prepare.read_jsonl(packet)))
     assert "git status" in rendered and "Teacher labels and model predictions are hidden" in rendered
+    assert "Repository state:" in rendered
     sheet = tmp_path / "sheet.md"
     run_main(monkeypatch, review_sheet, "--packet", packet, "--output", sheet)
     assert sheet.read_text(encoding="utf-8") == rendered
@@ -490,7 +562,8 @@ def test_prepare_rejects_invalid_bundles_and_duplicate_labels(tmp_path):
         prepare.validated_labels(labels)
     write_jsonl(labels, [{**row, "label_source": "teacher_gpt", "reviewer": None}])
     assert prepare.validated_labels(labels)["event-2"][-1] == "provisional"
-    assert prepare.split_records([{**row, "task_key": "hashed", "split": None}], .999999)[1]
+    with pytest.raises(ValueError, match="Record split"):
+        prepare.split_records([{**row, "task_key": "hashed", "split": None}], .2)
 
 
 @pytest.mark.parametrize("mutation,message", [

@@ -5,7 +5,8 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-from .prepare import read_jsonl, task_context
+from .prepare import (event_bundles, observation_for_proposal, recorded_observations,
+                      read_jsonl, task_context, task_splits_for)
 
 
 def category(command):
@@ -25,19 +26,30 @@ def category(command):
     return "inspection"
 
 
-def checkpoints(tasks_path, events_dir, history_limit):
+def checkpoints(tasks_path, events_dir, history_limit, split_manifest=None):
     tasks = {t["task_key"]: t for t in read_jsonl(tasks_path)}
-    for path in sorted(Path(events_dir).rglob("events.jsonl")):
-        events = list(read_jsonl(path))
+    splits = task_splits_for(tasks, split_manifest)
+    for path, events in event_bundles(events_dir):
         task_key = events[0]["payload"]["task_key"]
+        if task_key not in tasks:
+            raise ValueError(f"Unknown task_key {task_key} in {path}")
         task = tasks[task_key]
+        observations = recorded_observations(events, path)
         history = []
-        for event in events:
+        for index, event in enumerate(events, 1):
             if event["event_type"] == "proposed_action":
-                command = event["payload"]["action"].get("command", "")
+                proposal = event["payload"]
+                command = proposal["action"].get("command", "")
+                if proposal["action"].get("tool") == "message":
+                    command = "send_message " + proposal["action"].get("content", "")
+                prior_events = history[-history_limit:] if history_limit else []
+                observation = observation_for_proposal(
+                    events, index, task_context(task), prior_events, observations, path)
                 yield {"event_uuid": event["event_uuid"], "task_key": task_key,
-                       "split": task["metadata"]["split"], "category": category(command),
+                       "split": splits[task_key], "category": category(command),
                        "source_bundle": str(path),
+                       "observation_source": "runner_event" if observations else "public_reconstruction",
+                       "observation": observation,
                        "checkpoint": {
                            "schema_version": 1, "task": task_context(task),
                            "run_key": event["run_key"],
@@ -45,7 +57,7 @@ def checkpoints(tasks_path, events_dir, history_limit):
                            "sequence_number": event["sequence_number"],
                            "agent_id": event["actor_id"],
                            "proposal": event["payload"],
-                           "prior_events": history[-history_limit:],
+                           "prior_events": prior_events,
                        }}
             history.append({"sequence_number": event["sequence_number"],
                             "actor_type": event["actor_type"], "actor_id": event["actor_id"],
@@ -56,6 +68,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tasks", type=Path, required=True)
     parser.add_argument("--events-dir", type=Path, required=True)
+    parser.add_argument("--split-manifest", type=Path,
+                        help="CooperBench split JSON; required when tasks lack metadata.split")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--limit-per-split", type=int, default=12)
     parser.add_argument("--train-limit", type=int)
@@ -64,7 +78,8 @@ def main():
     parser.add_argument("--history-limit", type=int, default=8)
     args = parser.parse_args()
     groups = defaultdict(lambda: defaultdict(list))
-    for item in checkpoints(args.tasks, args.events_dir, args.history_limit):
+    for item in checkpoints(args.tasks, args.events_dir, args.history_limit,
+                            args.split_manifest):
         groups[item["split"]][item["category"]].append(item)
     selected = []
     for split in ("train", "validation", "test"):

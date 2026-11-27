@@ -16,11 +16,13 @@ def main():
     parser.add_argument("--tasks", type=Path, required=True)
     parser.add_argument("--events-dir", type=Path, required=True)
     parser.add_argument("--labels", type=Path, required=True)
+    parser.add_argument("--split-manifest", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--history-limit", type=int, default=8)
     args = parser.parse_args()
     records = build_records(args.tasks, args.events_dir, args.labels,
-                            args.history_limit, include_test=True)
+                            args.history_limit, include_test=True,
+                            split_manifest=args.split_manifest)
     if not records:
         raise ValueError("No labeled held-out checkpoints found")
     if any(row["split"] != "test" for row in records):

@@ -269,7 +269,7 @@ def main(mode: str = "infer", model: str = "qwen", checkpoint_file: str = "",
                                            validation_volume_path), indent=2))
         return
     from arbiter_training.contract import (observation_from_checkpoint, messages_for_observation,
-                                           parse_decision)
+                                           parse_decision, require_output_count)
 
     if mode == "infer":
         if not checkpoint_file:
@@ -323,6 +323,7 @@ def main(mode: str = "infer", model: str = "qwen", checkpoint_file: str = "",
         started = time.monotonic()
         outputs = infer_batch.remote(candidate, [r["prompt"] for r in rows],
                                      adapter_path if candidate == "qwen" else "")
+        require_output_count(outputs, rows)
         judged = []
         for row, result in zip(rows, outputs):
             try:
@@ -335,7 +336,9 @@ def main(mode: str = "infer", model: str = "qwen", checkpoint_file: str = "",
                 action, valid = None, False
             judged.append({"task_key": row["task_key"],
                            "checkpoint_event_uuid": row["checkpoint_event_uuid"],
-                           "scenario_source": row.get("scenario_source", "public_trace"),
+                           "scenario_source": row.get(
+                               "scenario_source", "runner_trajectory" if
+                               row.get("observation_source") == "runner_event" else "public_trace"),
                            "gold_action": row["primary_action"],
                            "expected_actions": row["expected_actions"],
                            "predicted_action": action, "valid": valid,

@@ -4,7 +4,7 @@ Use inside ``with arbiter_training.modal_app.app.run():`` for an ephemeral app.
 No endpoint or deployment is created by importing this module.
 """
 
-from .contract import messages_for_observation, parse_decision
+from .contract import messages_for_observation, parse_decision, require_output_count
 from .modal_app import ArbiterModel, _decision_text
 
 
@@ -30,8 +30,7 @@ class ModalArbiter:
             return []
         prompts = [messages_for_observation(item) for item in observations]
         outputs = self.remote_model.decide_batch.remote(prompts)
-        if len(outputs) != len(observations):
-            raise RuntimeError("Modal returned a different number of decisions")
+        require_output_count(outputs, observations)
         decisions = []
         for observation, result in zip(observations, outputs):
             try:

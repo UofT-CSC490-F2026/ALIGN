@@ -22,6 +22,20 @@ def main():
         if not any(item["event_uuid"].startswith(prefix) for prefix in args.ids):
             continue
         checkpoint = item["checkpoint"]
+        observation = item.get("observation")
+        if observation is not None:
+            print(f"\n{item['event_uuid']} {item['split']} {item['task_key']} "
+                  f"seq={observation['proposal_sequence']} {observation['actor_id']}")
+            print(f"SHARED GOAL: {short(observation['shared_goal'], 700)}")
+            for agent, goal in sorted(observation["agent_goals"].items()):
+                print(f"GOAL {agent}: {short(goal, 700)}")
+            print(f"CONSTRAINTS: {short(observation['constraints'], 700)}")
+            print(f"REPOSITORY STATE: {short(observation['repository_state'], 2200)}")
+            for event in observation["recent_events"][-args.history:]:
+                print(f"PRIOR {event['sequence_number']} {event.get('actor_id')} "
+                      f"{event['event_type']}: {short(event.get('payload', {}), 500)}")
+            print(f"PROPOSAL: {short(observation['proposed_action'], 2200)}")
+            continue
         print(f"\n{item['event_uuid']} {item['split']} {item['task_key']} "
               f"seq={checkpoint['sequence_number']} {checkpoint['agent_id']}")
         for goal in checkpoint["task"]["goals"]:

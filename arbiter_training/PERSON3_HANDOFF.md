@@ -169,7 +169,7 @@ Once the held-out runs and human labels exist, prepare a separate test file
 without mixing it into training or validation:
 
 ```powershell
-python -m arbiter_training.prepare_test --tasks PATH_TO_TEST_TASKS_JSONL --events-dir PATH_TO_TEST_BUNDLES --labels PATH_TO_HUMAN_LABELS_JSONL --output arbiter_training/data/heldout/test.jsonl
+python -m arbiter_training.prepare_test --tasks PATH_TO_TEST_TASKS_JSONL --events-dir PATH_TO_TEST_BUNDLES --labels PATH_TO_HUMAN_LABELS_JSONL --split-manifest PATH_TO_COOPERBENCH_SPLIT_JSON --output arbiter_training/data/heldout/test.jsonl
 modal run arbiter_training/modal_app.py --mode compare --validation-file arbiter_training/data/heldout/test.jsonl --models qwen,gpt-oss --output-file arbiter_training/data/heldout/base-comparison.json
 modal run arbiter_training/modal_app.py --mode compare --validation-file arbiter_training/data/heldout/test.jsonl --models qwen --adapter-path /checkpoints/runner-contract-reviewed-60steps-20261125/adapter --output-file arbiter_training/data/heldout/adapter-comparison.json
 ```
