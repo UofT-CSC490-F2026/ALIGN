@@ -8,12 +8,13 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from runner.arbitration import ArbitrationGate, ConstantArbiter
+from runner.event_writer import EventWriter
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))  # These CLIs import their sibling modules.
 from evaluate import conflict_evidence
 from normalize_tasks import normalized_cooperbench
-from process_runs import expected_rows
+
 
 
 def measure(function, args, calls, workload):
@@ -23,6 +24,21 @@ def measure(function, args, calls, workload):
         for _ in range(calls):
             function(*args)
     pstats.Stats(profiler).strip_dirs().sort_stats("cumulative").print_stats(12)
+
+
+def measure_event_writer(payload):
+    for length in (10, 50, 100):
+        writers = [EventWriter(task_key="fixture", arbiter_condition="none",
+                               agent_config={}, arbiter_config={}) for _ in range(20)]
+        # Each constructor has already emitted run_start. Time only proposal appends.
+        print(f"\nEventWriter.emit: 20 traces of {length} events including run_start")
+        profiler = cProfile.Profile()
+        with profiler:
+            for writer in writers:
+                for _ in range(length - 1):
+                    writer.emit("agent", "proposed_action", payload, actor_id="agent1")
+        assert all(len(writer.snapshot()) == length for writer in writers)
+        pstats.Stats(profiler).strip_dirs().sort_stats("cumulative").print_stats(12)
 
 
 def main():
@@ -56,9 +72,7 @@ def main():
     assert action == "block" and error is None
     measure(gate.evaluate, (observation,), 1000, "one proposal, six history events, fixed local decision")
 
-    rows = expected_rows(events)
-    assert len(rows) == 8 and rows[2]["payload"]["trigger_sequence"] == 2
-    measure(expected_rows, (events,), 10000, "eight-event example run")
+    measure_event_writer(events[1]["payload"])
     onsets, resolutions = conflict_evidence(events)
     assert set(onsets) == set(resolutions) == {6}
     measure(conflict_evidence, (events,), 10000, "eight-event example run, one resolved conflict")

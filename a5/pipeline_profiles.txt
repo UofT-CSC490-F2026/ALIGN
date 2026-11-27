@@ -44,18 +44,69 @@ ArbitrationGate.evaluate: 1000 calls; one proposal, six history events, fixed lo
 
 
 
-expected_rows: 10000 calls; eight-event example run
-         490002 function calls in 0.214 seconds
+EventWriter.emit: 20 traces of 10 events including run_start
+         82982 function calls (81362 primitive calls) in 0.022 seconds
 
    Ordered by: cumulative time
+   List reduced from 41 to 12 due to restriction <12>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-    10000    0.176    0.000    0.214    0.000 process_runs.py:65(expected_rows)
-   320000    0.026    0.000    0.026    0.000 {method 'get' of 'dict' objects}
-    80000    0.006    0.000    0.006    0.000 run_artifacts.py:28(check)
-    80000    0.005    0.000    0.005    0.000 {method 'append' of 'list' objects}
-        1    0.000    0.000    0.000    0.000 cProfile.py:118(__exit__)
-        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+      180    0.001    0.000    0.022    0.000 event_writer.py:31(emit)
+      180    0.007    0.000    0.018    0.000 run_artifacts.py:52(validate_events)
+     2160    0.002    0.000    0.007    0.000 run_artifacts.py:33(canonical_uuid)
+     2340    0.003    0.000    0.004    0.000 uuid.py:139(__init__)
+     1080    0.001    0.000    0.002    0.000 run_artifacts.py:42(utc_timestamp)
+     2340    0.001    0.000    0.001    0.000 uuid.py:280(__str__)
+ 1800/180    0.001    0.000    0.001    0.000 redaction.py:16(clean)
+      180    0.000    0.000    0.001    0.000 __init__.py:183(dumps)
+    20880    0.001    0.000    0.001    0.000 run_artifacts.py:28(check)
+    14400    0.001    0.000    0.001    0.000 {method 'get' of 'dict' objects}
+      180    0.000    0.000    0.001    0.000 encoder.py:183(encode)
+      180    0.000    0.000    0.001    0.000 __init__.py:299(loads)
+
+
+
+EventWriter.emit: 20 traces of 50 events including run_start
+         1686582 function calls (1677762 primitive calls) in 0.418 seconds
+
+   Ordered by: cumulative time
+   List reduced from 41 to 12 due to restriction <12>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+      980    0.004    0.000    0.418    0.000 event_writer.py:31(emit)
+      980    0.138    0.000    0.389    0.000 run_artifacts.py:52(validate_events)
+    50960    0.044    0.000    0.163    0.000 run_artifacts.py:33(canonical_uuid)
+    51940    0.065    0.000    0.087    0.000 uuid.py:139(__init__)
+    25480    0.031    0.000    0.046    0.000 run_artifacts.py:42(utc_timestamp)
+    51940    0.027    0.000    0.027    0.000 uuid.py:280(__str__)
+   466480    0.021    0.000    0.021    0.000 run_artifacts.py:28(check)
+   313600    0.019    0.000    0.019    0.000 {method 'get' of 'dict' objects}
+   179340    0.017    0.000    0.017    0.000 {method 'replace' of 'str' objects}
+   199920    0.008    0.000    0.008    0.000 {built-in method builtins.isinstance}
+ 9800/980    0.006    0.000    0.007    0.000 redaction.py:16(clean)
+      980    0.001    0.000    0.007    0.000 __init__.py:183(dumps)
+
+
+
+EventWriter.emit: 20 traces of 100 events including run_start
+         6526082 function calls (6508262 primitive calls) in 2.411 seconds
+
+   Ordered by: cumulative time
+   List reduced from 41 to 12 due to restriction <12>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+     1980    0.021    0.000    2.411    0.001 event_writer.py:31(emit)
+     1980    0.784    0.000    2.281    0.001 run_artifacts.py:52(validate_events)
+   201960    0.263    0.000    0.897    0.000 run_artifacts.py:33(canonical_uuid)
+   203940    0.358    0.000    0.468    0.000 uuid.py:139(__init__)
+   100980    0.158    0.000    0.284    0.000 run_artifacts.py:42(utc_timestamp)
+   203940    0.141    0.000    0.141    0.000 uuid.py:280(__str__)
+   750420    0.112    0.000    0.112    0.000 {built-in method builtins.isinstance}
+  1833480    0.110    0.000    0.110    0.000 run_artifacts.py:28(check)
+  1227600    0.090    0.000    0.090    0.000 {method 'get' of 'dict' objects}
+   708840    0.078    0.000    0.078    0.000 {method 'replace' of 'str' objects}
+   100980    0.043    0.000    0.043    0.000 {method 'utcoffset' of 'datetime.datetime' objects}
+   100980    0.038    0.000    0.038    0.000 {method 'endswith' of 'str' objects}
 
 
 
