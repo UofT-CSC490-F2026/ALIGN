@@ -1,0 +1,31 @@
+{
+  "model": "Qwen/Qwen3.5-9B",
+  "model_revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+  "input_contract": "runner/contracts.py:ProposedAction@7717249",
+  "run_name": "runner-contract-reviewed-60steps-20261125",
+  "train_sha256": "292b81f163d39dca2564cfd93a149d920b368b45fc4cf9185024c474b751fd85",
+  "validation_sha256": "a7afc34c103124060adb4ff64dd51e87c67ef6c180949632bbf82939da291685",
+  "train_examples": 61,
+  "validation_examples": 22,
+  "train_tasks": 5,
+  "validation_tasks": 5,
+  "max_steps": 60,
+  "seed": 3407,
+  "label_sources": [
+    "human",
+    "teacher_gpt"
+  ],
+  "train_actions": {
+    "continue": 33,
+    "query": 13,
+    "mediate": 8,
+    "block": 7
+  },
+  "synthetic_train_examples": 25,
+  "validation_review_status": [
+    "provisional",
+    "reviewed"
+  ],
+  "best_metric": 0.569110631942749,
+  "adapter_path": "/checkpoints/runner-contract-reviewed-60steps-20261125/adapter"
+}

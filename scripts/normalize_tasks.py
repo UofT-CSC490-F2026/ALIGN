@@ -33,6 +33,13 @@ REPOSITORIES = {
 }
 
 
+def cooperbench_task_key(repo: str, task_id: int, a: int, b: int,
+                         revision: str) -> str:
+    """Identity shared by normalized tasks, trajectory splits, and evaluation."""
+    first, second = sorted((a, b))
+    return f"cooperbench:{repo}:task{task_id}:f{first}-f{second}:{revision}"
+
+
 def canonical_json(data: object) -> str:
     return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -171,7 +178,7 @@ def normalized_cooperbench(dataset_dir: Path, revision: str, subset: str) -> lis
         pair_id = f"{repo}:task{task_id}:f{a}-f{b}"
         record = {
             "schema_version": SCHEMA_VERSION,
-            "task_key": f"cooperbench:{pair_id}:{revision}",
+            "task_key": cooperbench_task_key(repo, task_id, a, b, revision),
             "dataset_source": "cooperbench",
             "external_task_id": f"{pair_id}@{revision}",
             "version": 1,
