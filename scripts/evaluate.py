@@ -213,13 +213,14 @@ def evaluate(conn, run_key, evaluator_version, human_labels=None):
                              data["description"]))
                 episode_ids[event_id] = cur.fetchone()[0]
 
-            # Link later arbiter decisions to the latest preceding declared episode;
+            # Link later arbiter decisions to the latest declared episode still open;
             # do not overwrite a previously reviewed conflict attribution.
             ordered_onsets = sorted(onsets)
             for event in events:
                 if event["event_type"] != "arbiter_decision":
                     continue
-                candidates = [seq for seq in ordered_onsets if seq < event["sequence_number"]]
+                candidates = [seq for seq in ordered_onsets if seq < event["sequence_number"] and
+                              (seq not in closings or closings[seq]["sequence_number"] > event["sequence_number"])]
                 if not candidates:
                     continue
                 onset_id = by_sequence[candidates[-1]]["event_id"]
