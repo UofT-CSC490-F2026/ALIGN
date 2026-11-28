@@ -4,8 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
-START = "<!-- runner-coverage:start -->"
-END = "<!-- runner-coverage:end -->"
+START = "<!-- project-coverage:start -->"
+END = "<!-- project-coverage:end -->"
 
 
 def summary(report):
@@ -27,7 +27,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     table = summary(json.loads(args.report.read_text(encoding="utf-8")))
     if args.readme is None:
-        print("### Runner and A2 coverage\n\n" + table)
+        print("### ALIGN project coverage\n\n" + table)
         return
     original = args.readme.read_text(encoding="utf-8")
     before, after_start = original.split(START)

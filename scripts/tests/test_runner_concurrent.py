@@ -2,7 +2,7 @@ import threading
 import unittest
 from copy import deepcopy
 from pathlib import Path
-from queue import Queue
+from queue import Empty, Queue
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
@@ -54,6 +54,24 @@ class ConcurrentTests(unittest.TestCase):
         self.assertEqual([e["sequence_number"] for e in events], list(range(1, len(events)+1)))
         self.assertTrue(env.closed)
         return events
+
+    def test_supervisor_keeps_waiting_after_empty_poll(self):
+        polled = threading.Event()
+
+        class FirstPollEmpty(Queue):
+            def get(self, *args, **kwargs):
+                if not polled.is_set():
+                    polled.set()
+                    raise Empty
+                return super().get(*args, **kwargs)
+
+        def submit_after_poll(context):
+            wait(polled)
+            return None
+
+        with patch("runner.concurrent.Queue", FirstPollEmpty):
+            events = self.run_case({"agent1": Agent(submit_after_poll), "agent2": Agent()}, MockEnvironment())
+        self.assertEqual(events[-1]["payload"]["status"], "completed")
 
     def test_tool_exception_emits_unknown_and_marks_cleanup_failure(self):
         class BrokenEnvironment(MockEnvironment):

@@ -120,3 +120,68 @@ class DockerContractTests(unittest.TestCase):
             self.assertEqual((clone/'committed.txt').read_text(),'after\n')
             self.assertEqual((clone/'new.txt').read_text(),'new file\n')
             self.assertFalse((clone/'deleted.txt').exists())
+
+
+class SharedGitContractTests(unittest.TestCase):
+    def setUp(self):
+        from runner.deadline import TrialDeadline
+        from runner.shared_git import SharedDockerEnvironment
+
+        self.base, self.tip = "a" * 40, "b" * 40
+        self.head = self.base
+        self.fast_forward = True
+
+        def reply(args, **kwargs):
+            command = args[-1]
+            output = b""
+            status = 0
+            if command == "git rev-parse HEAD":
+                output = self.head.encode()
+            elif "rev-parse HEAD" in command:
+                output = self.base.encode()
+            elif "rev-parse refs/align" in command:
+                output = self.tip.encode()
+            elif "merge-base --is-ancestor" in command and not self.fast_forward:
+                status = 1
+            return subprocess.CompletedProcess(args, status, output, b"")
+
+        docker = patch("runner.environment.bounded_run", side_effect=reply)
+        self.docker = docker.start()
+        self.addCleanup(docker.stop)
+        self.env = SharedDockerEnvironment("fixture", self.base, deadline=TrialDeadline())
+        self.addCleanup(self.env.close)
+
+    def test_publish_then_fetch_keeps_peer_branch_separate(self):
+        env = self.env
+        refs = env.shared_state()["published"]
+        fetch = {"tool": "git_fetch", "peer": "agent1"}
+        self.assertEqual(env.execute("agent2", fetch, expected_refs=refs)["exit_code"], 0)
+        self.assertEqual(env.execute("agent1", {"tool": "git_publish"}, expected_refs=refs)["published"], refs)
+        self.head = self.tip
+        with patch("runner.shared_git.subprocess.run", return_value=subprocess.CompletedProcess([], 0, b"bundle", b"")) as binary:
+            published = env.execute("agent1", {"tool": "git_publish"}, expected_refs=refs)["published"]
+            self.assertEqual(published, {"agent1": self.tip, "agent2": self.base})
+            self.assertTrue(env.execute("agent2", fetch, expected_refs=refs)["stale"])
+            self.assertEqual(env.execute("agent2", fetch, expected_refs=published)["exit_code"], 0)
+            self.assertEqual(binary.call_args.kwargs["input"], b"bundle")
+
+    def test_rejected_operations_leave_public_refs_unchanged(self):
+        env = self.env
+        refs = env.shared_state()["published"]
+        self.fast_forward = False
+        rejected = env.execute("agent1", {"tool": "git_publish"}, expected_refs=refs)
+        self.assertEqual(rejected["exit_code"], 1)
+        self.assertEqual(env.shared_state()["published"], refs)
+        for action in ({"tool": "git_fetch", "peer": "agent1"}, {"tool": "unknown"}):
+            with self.subTest(action=action), self.assertRaises(ValueError):
+                env.execute("agent1", action, expected_refs=refs)
+        self.assertEqual(env.execute("agent1", {"tool": "bash", "command": "pwd"})["exit_code"], 0)
+        self.assertEqual(env.state_for("agent1")["head"], self.base)
+
+    def test_final_merge_returns_joint_patch_or_conflict(self):
+        env = self.env
+        with patch.object(env, "_binary", return_value=b"joint diff"):
+            self.assertEqual(env.patches(), {"_merge_status": "clean", "agent1": "joint diff", "agent2": "joint diff"})
+        with patch.object(env, "_import_broker"), patch.object(env, "_broker_exec", side_effect=[
+                Mock(returncode=0), Mock(returncode=1), Mock(stdout="unmerged file")]):
+            self.assertEqual(env.patches(), {"_merge_status": "conflicts", "agent1": "", "agent2": ""})

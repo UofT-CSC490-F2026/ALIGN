@@ -1,22 +1,24 @@
-name: Runner coverage
+name: ALIGN project coverage
 
 on:
   pull_request:
   push:
-    branches: [final-project]
+    branches: [a5, final-project]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: runner-coverage-${{ github.event.pull_request.number || github.ref }}
+  group: project-coverage-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   coverage:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      missing_lines: ${{ steps.totals.outputs.missing_lines }}
     services:
       postgres:
         image: postgres:16-alpine
@@ -40,7 +42,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install -r requirements-coverage.txt
+      - name: Install coverage and test dependencies
+        run: |
+          requirements=(-r requirements-coverage.txt)
+          if [[ -d arbiter_training ]]; then
+            requirements+=(-r arbiter_training/requirements-test.txt)
+          fi
+          python -m pip install "${requirements[@]}"
       - name: Prepare integration fixtures
         env:
           PG_CONTAINER: ${{ job.services.postgres.id }}
@@ -50,9 +58,16 @@ jobs:
           done
           docker pull "$ALIGN_TEST_DOCKER_IMAGE"
       - name: Run pytest and collect line and branch coverage
-        run: >-
-          python -m pytest scripts/tests --cov --cov-branch --cov-fail-under=100
-          --cov-report=term-missing --cov-report=json:coverage.json
+        run: |
+          tests=(scripts/tests infra/modules/compute/tests infra/tests/e2e a5/test_concurrent.py)
+          if [[ -d arbiter_training ]]; then
+            tests+=(arbiter_training/tests)
+          fi
+          python -m pytest "${tests[@]}" --cov -ra --cov-report=term-missing --cov-report=json:coverage.json
+      - name: Read missing line count
+        id: totals
+        run: |
+          python3 -c 'import json; print("missing_lines=", json.load(open("coverage.json"))["totals"]["missing_lines"], sep="")' >> "$GITHUB_OUTPUT"
       - name: Show coverage in the PR check summary
         if: always()
         run: |
@@ -61,13 +76,25 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: runner-coverage
+          name: project-coverage
           path: coverage.json
           if-no-files-found: ignore
 
+  line-target:
+    name: 100% project line coverage
+    needs: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check uncovered executable lines
+        env:
+          MISSING: ${{ needs.coverage.outputs.missing_lines }}
+        run: |
+          echo "Uncovered executable lines: $MISSING (target 0)"
+          test "$MISSING" = 0
+
   publish-readme:
     needs: coverage
-    if: github.event_name == 'push' && github.ref == 'refs/heads/final-project'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -75,11 +102,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: runner-coverage
+          name: project-coverage
       - name: Update coverage in README
         run: |
           python3 scripts/coverage_summary.py coverage.json --readme README.md
           git diff --quiet -- README.md && exit 0
           git add README.md
-          git -c user.name=github-actions -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -m 'Update runner coverage in README [skip ci]'
-          git push origin HEAD:refs/heads/final-project
+          git -c user.name=github-actions -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -m 'Update project coverage in README'
+          git push origin HEAD:"$GITHUB_REF"

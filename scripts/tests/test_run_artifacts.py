@@ -1,4 +1,9 @@
 """Offline tests for run bundle integrity and event contract."""
+import io
+import runpy
+import sys
+from unittest.mock import Mock, patch
+from botocore.exceptions import ClientError
 import importlib.util
 import json
 import tempfile
@@ -23,6 +28,58 @@ class RunArtifactTests(unittest.TestCase):
         path = self.root / "input.jsonl"
         path.write_text("\n".join(json.dumps(e) for e in events) + "\n")
         return path
+
+    def cli(self, *args):
+        with patch.object(sys, "argv", [mod.__file__, *map(str, args)]), patch("sys.stdout", new_callable=io.StringIO) as output:
+            runpy.run_path(mod.__file__, run_name="__main__")
+        return json.loads(output.getvalue())
+
+    def test_invalid_uuid_and_observation_timestamp(self):
+        self.fixture[0]["observed_at"] = "invalidZ"
+        with self.assertRaisesRegex(ValueError, "Invalid timestamp"):
+            mod.validate_events(self.fixture)
+        with self.assertRaisesRegex(ValueError, "Invalid canonical UUID"):
+            mod.canonical_uuid("invalid")
+
+    def test_artifact_cli_round_trip_and_idempotent_upload(self):
+        bundle = self.root / "bundle"
+        manifest = self.cli("stage", "--events", EXAMPLE, "--output-dir", bundle)
+        self.assertEqual(self.cli("verify", "--run-dir", bundle), manifest)
+        objects = {}
+        account, bucket = "fixture-account", "fixture-lake"
+
+        def read(*, Bucket, Key, ExpectedBucketOwner):
+            self.assertEqual((Bucket, ExpectedBucketOwner), (bucket, account))
+            if Key not in objects:
+                raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+            return {"Body": io.BytesIO(objects[Key])}
+
+        def write(*, Bucket, Key, Body, ContentType, IfNoneMatch, ExpectedBucketOwner):
+            self.assertEqual((Bucket, ExpectedBucketOwner, IfNoneMatch), (bucket, account, "*"))
+            self.assertNotIn(Key, objects)
+            objects[Key] = Body
+
+        s3, sts = Mock(), Mock()
+        s3.get_object.side_effect, s3.put_object.side_effect = read, write
+        sts.get_caller_identity.return_value = {"Account": account}
+        with patch("boto3.Session") as session:
+            session.return_value.client.side_effect = {"sts": sts, "s3": s3}.__getitem__
+            flags = ["--bucket", bucket, "--expected-account", account]
+            upload = ["upload", "--run-dir", bundle, *flags]
+            with patch("sys.stderr", new_callable=io.StringIO), self.assertRaises(SystemExit):
+                self.cli(*upload)
+            session.assert_not_called()
+            uri = f"s3://{bucket}/runs/{manifest['run_key']}/"
+            self.assertEqual(self.cli(*upload, "--apply"), uri)
+            self.assertEqual(self.cli(*upload, "--apply"), uri)
+            self.assertEqual(s3.put_object.call_count, 2)
+            target = self.root / "download"
+            self.assertEqual(self.cli("download", "--run-key", manifest["run_key"], "--output-dir", target, *flags), manifest)
+            self.assertEqual((target / "events.jsonl").read_bytes(), EXAMPLE.read_bytes())
+            s3.get_object.side_effect = ClientError({"Error": {"Code": "AccessDenied"}}, "GetObject")
+            with self.assertRaisesRegex(ClientError, "AccessDenied"):
+                mod.upload(bundle, bucket, account)
+            self.assertEqual(s3.put_object.call_count, 2)
 
     def test_fixture_is_valid_and_complete(self):
         records, header = mod.load_events(EXAMPLE.read_bytes())

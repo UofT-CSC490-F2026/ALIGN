@@ -66,7 +66,8 @@ def prepare_image(config, scratch, deadline):
 
 def prepare_service_image(config, scratch):
     deadline = time.monotonic() + SERVICE_IMAGE_TIMEOUT_SECONDS
-    for attempt in range(1, SERVICE_IMAGE_ATTEMPTS + 1):
+    attempt = 1
+    while True:
         if time.monotonic() >= deadline:
             raise subprocess.TimeoutExpired("ECR image preparation", SERVICE_IMAGE_TIMEOUT_SECONDS)
         try:
@@ -81,6 +82,7 @@ def prepare_service_image(config, scratch):
                 attempt, SERVICE_IMAGE_ATTEMPTS, delay,
             )
             time.sleep(delay)
+            attempt += 1
 
 
 def require_clean_smoke_host(deadline):

@@ -71,7 +71,7 @@ class EnvironmentTests(unittest.TestCase):
                     installed_revision()
                 distribution.assert_not_called()
 
-    def test_legacy_preparation_uses_declared_base_and_timeout(self):
+    def test_preparation_uses_declared_base_and_timeout(self):
         task={"dataset_source":"cooperbench","base_commit":"a"*40,
               "metadata":{"cooperbench_repo_directory":"fixture","cooperbench_task_id":1,"feature_ids":[1,2]},
               "goals":[{"goal_key":"feature1","owner_agent_id":"agent1"},
@@ -79,3 +79,9 @@ class EnvironmentTests(unittest.TestCase):
         with patch("runner.cooperbench_adapter.DockerEnvironment") as docker:
             self.assertIs(prepare_environment(task,"image",timeout=3),docker.return_value)
             docker.assert_called_once_with("image",task["base_commit"],timeout=3)
+        with patch("runner.cooperbench_adapter.SharedDockerEnvironment") as shared, \
+                patch("runner.cooperbench_adapter.image_id", return_value="fixture-id") as resolve:
+            env = prepare_environment(task, "image", timeout=9, concurrent=True)
+        deadline = resolve.call_args.args[1]
+        shared.assert_called_once_with("fixture-id", task["base_commit"], timeout=9, deadline=deadline)
+        self.assertEqual(env.image_id, "fixture-id")
