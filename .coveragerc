@@ -1,0 +1,17 @@
+[run]
+branch = True
+source =
+    runner
+    scripts
+    evaluation
+    arbiter_training
+    infra/modules/compute/scripts
+    infra/tests/e2e
+omit =
+    */test_*.py
+    */scripts/tests/*
+    */scripts/coverage_summary.py
+
+[report]
+precision = 2
+show_missing = True

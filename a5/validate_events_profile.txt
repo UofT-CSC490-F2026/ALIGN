@@ -1,0 +1,23 @@
+Python 3.11.5 on Darwin arm64
+example_run.events.jsonl: 8 events per validation, 1000 validations
+         524002 function calls in 0.118 seconds
+
+   Ordered by: cumulative time
+   List reduced from 19 to 15 due to restriction <15>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+     1000    0.043    0.000    0.118    0.000 run_artifacts.py:52(validate_events)
+    16000    0.013    0.000    0.048    0.000 run_artifacts.py:33(canonical_uuid)
+    16000    0.019    0.000    0.025    0.000 uuid.py:139(__init__)
+     8000    0.009    0.000    0.013    0.000 run_artifacts.py:42(utc_timestamp)
+    16000    0.008    0.000    0.008    0.000 uuid.py:280(__str__)
+   157000    0.007    0.000    0.007    0.000 run_artifacts.py:28(check)
+   106000    0.006    0.000    0.006    0.000 {method 'get' of 'dict' objects}
+    56000    0.005    0.000    0.005    0.000 {method 'replace' of 'str' objects}
+    54000    0.002    0.000    0.002    0.000 {built-in method builtins.isinstance}
+    27000    0.001    0.000    0.001    0.000 {method 'strip' of 'str' objects}
+     8000    0.001    0.000    0.001    0.000 {method 'utcoffset' of 'datetime.datetime' objects}
+    16000    0.001    0.000    0.001    0.000 {method 'count' of 'list' objects}
+    18000    0.001    0.000    0.001    0.000 {built-in method builtins.len}
+     8000    0.001    0.000    0.001    0.000 {method 'endswith' of 'str' objects}
+     8000    0.001    0.000    0.001    0.000 {built-in method fromisoformat}

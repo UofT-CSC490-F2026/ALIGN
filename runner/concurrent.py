@@ -1,0 +1,310 @@
+"""Concurrent two-agent trials with serialized authorization, not serialized tools.
+
+Each worker owns its agent history and local workspace. The coordination lock
+protects snapshots, mailboxes and causal event order; no model or tool runs
+while it is held. The arbiter lock serializes model decisions only.
+"""
+from copy import deepcopy
+from queue import Empty, Queue
+from threading import Event, Lock, Thread
+from time import monotonic
+
+from .arbitration import ArbitrationGate
+from .deadline import TrialDeadline
+from .orchestrator import observation, validate_proposal
+from .task_loader import agent_view
+
+
+# Depth-test names below refer to a5/test_concurrent.py.
+def run_concurrent(task, agents, env, writer, *, max_steps=20, gate=None,
+                   evaluator=None, usage=None, deadline=None):
+    """Run independent agent loops; retain a bounded cleanup window on abort."""
+    deadline = deadline or TrialDeadline()
+    gate = gate or ArbitrationGate("none")
+    lock, arbiter_lock = Lock(), Lock()
+    stop = Event()
+    done = Queue()
+    pending, inflight, workspaces = {}, {}, {}
+    mail = {actor: [] for actor in agents}
+    snapshot_status = {actor: "initializing" for actor in agents}
+    finished = set()
+    version = 0
+    failure = None
+    escalated = False
+    metrics = {}
+    threads = []
+    status = "failed"
+
+    def check():
+        if stop.is_set():
+            raise TimeoutError("Trial stopped")
+        deadline.remaining()
+
+    def state_for(actor):
+        check()
+        if hasattr(env, "state_for"):
+            return env.state_for(actor)
+        return env.state().get(actor, {})
+
+    def shared():
+        return env.shared_state() if hasattr(env, "shared_state") else {}
+
+    def state():
+        return {"workspaces": deepcopy(workspaces), "shared_git": shared(),
+                "workspace_snapshot_status": dict(snapshot_status),
+                "pending_proposals": deepcopy(pending),
+                "in_flight_actions": deepcopy(inflight),
+                "submitted_agents": sorted(finished),
+                "coordination_version": version}
+
+    def cancelled(seq, reason):
+        writer.emit("system","action_result",{"outcome":"cancelled","output":reason,"exit_code":1},
+                    trigger_sequence=seq)
+        return {"output":reason,"exit_code":1}
+
+    def stale(seq, observed_version):
+        writer.emit("system","authorization_stale",{"observed_version":observed_version,
+                    "current_version":version},trigger_sequence=seq)
+        return cancelled(seq,"Shared branch changed since authorization; inspect and repropose.")
+
+    def worker(actor, view):
+        nonlocal version, escalated, failure
+        agent = agents[actor]
+        phase = "infrastructure_error"
+        try:
+            initial = state_for(actor)
+            with lock:
+                check()
+                workspaces[actor] = writer.sanitize(initial)
+                snapshot_status[actor] = "current"
+            for _ in range(max_steps):
+                check()
+                with lock:
+                    check()
+                    # test_mailbox_delivers_two_messages_once_in_order: a drained inbox must not replay peer messages.
+                    inbox, mail[actor] = mail[actor], []
+                    context = {"goal":view["agent_goals"][actor],"shared_goal":view["shared_goal"],
+                               "constraints":view["constraints"],"actor_id":actor,
+                               "workspace":deepcopy(workspaces[actor]),"shared_git":shared()}
+                phase = "agent_error"
+                for message in inbox:
+                    agent.receive(message)
+                proposal = agent.propose(writer.sanitize(context))
+                with lock:
+                    check()
+                    if proposal is None:
+                        finished.add(actor)
+                        version += 1
+                        writer.emit("agent","agent_submitted",{},actor_id=actor)
+                        return
+                    validated_proposal = validate_proposal(proposal)
+                    if validated_proposal["action"].get("recipient")==actor or validated_proposal["action"].get("peer")==actor:
+                        raise ValueError("Cannot target self")
+                    # Never dispatch tool_action command containing tool_action configured secret.
+                    if writer.sanitize(validated_proposal) != validated_proposal:
+                        raise ValueError("Proposal contains configured secret")
+                    queued = writer.emit("agent","proposal_queued",validated_proposal,actor_id=actor)
+                    pending[actor] = {"proposed_action":deepcopy(validated_proposal),"phase":"queued","queue_sequence":queued}
+                # Only arbitration is serialized. Waiting workers expose pending proposals.
+                with arbiter_lock:
+                    with lock:
+                        check()
+                        validated_proposal = pending.pop(actor)["proposed_action"]
+                        tool_action = validated_proposal["action"]
+                        git_tool = tool_action["tool"] in {"git_publish","git_fetch"}
+                        seq = writer.emit("agent","proposed_action",validated_proposal,actor_id=actor)
+                        coordination_snapshot = state()
+                        observed_version = version
+                        arbiter_observation = writer.sanitize(observation(view,actor,seq,validated_proposal,writer.snapshot()[:-1],coordination_snapshot))
+                        writer.emit("system","arbiter_observation",arbiter_observation,trigger_sequence=seq)
+                        pending[actor] = {"proposal_sequence":seq, "proposed_action":validated_proposal,"phase":"deciding"}
+                    evaluation = gate.evaluate(arbiter_observation)
+                    with lock:
+                        check()
+                        pending.pop(actor)
+                        # test_monitor_block_advice_still_dispatches_once: advice must leave baseline execution intact.
+                        # test_enforced_arbiter_error_cancels_proposal_once: invalid decisions must leave one cancellation.
+                        # test_monitor_error_records_error_and_continues: observer failure must remain visible without stopping work.
+                        action = gate.record(writer,arbiter_observation,evaluation)
+                        if action != "continue":
+                            # test_enforced_block_allows_safe_reproposal: only the revised action may execute.
+                            # test_query_feedback_stays_with_requesting_agent: clarification belongs to the proposer.
+                            result = writer.sanitize(gate.feedback(action,evaluation[1]))
+                            writer.emit("system","action_result",{"outcome":"cancelled",**result},trigger_sequence=seq)
+                            if action=="mediate":
+                                for peer in evaluation[1]["affected_agents"]:
+                                    if peer!=actor and peer not in finished:
+                                        mail[peer].append({"output":f"Arbiter mediation concerning {actor}: {result['output']}",
+                                                           "exit_code":1})
+                            if action=="escalate":
+                                escalated=True
+                                stop.set()
+                                deadline.cancel()
+                                return
+                        elif (git_tool and shared().get("published",{})
+                              != coordination_snapshot["shared_git"].get("published",{})):
+                            result=stale(seq,observed_version)
+                        else:
+                            inflight[actor]={"proposal_sequence":seq,"proposed_action":validated_proposal,"started":False}
+                            result=None
+                # Release both locks before executing tools.
+                if result is None:
+                    phase="infrastructure_error"
+                    try:
+                        with lock:
+                            check()
+                            inflight[actor]["started"]=True
+                            snapshot_status[actor] = "action_in_flight"
+                            writer.emit("system","action_started",{"actor_id":actor},trigger_sequence=seq)
+                        if tool_action["tool"]=="message":
+                            with lock:
+                                check()
+                                peer=tool_action["recipient"]
+                                if peer in finished:
+                                    result={"output":f"{peer} has submitted; message not delivered","exit_code":1}
+                                else:
+                                    mail[peer].append({"output":f"Message from {actor}: {tool_action['content']}","exit_code":0})
+                                    result={"output":"Message delivered","exit_code":0}
+                        elif git_tool:
+                            result=env.execute(actor,tool_action,expected_refs=coordination_snapshot["shared_git"].get("published",{}))
+                        else:
+                            result=env.execute(actor,tool_action)
+                    except Exception as exc:
+                        with lock:
+                            if not stop.is_set() and actor in inflight:
+                                inflight.pop(actor)
+                                snapshot_status[actor] = "stale"
+                                version+=1
+                                writer.emit("system","action_result",{"outcome":"unknown","error_type":type(exc).__name__},
+                                            trigger_sequence=seq)
+                        raise
+                    with lock:
+                        check()
+                        inflight.pop(actor)
+                        snapshot_status[actor] = "refreshing"
+                        version+=1
+                        result=writer.sanitize(result)
+                        if result.get("stale") is True and git_tool:
+                            result=stale(seq,observed_version)
+                        else:
+                            writer.emit("system","action_result",{**result,"outcome":"dispatched"},trigger_sequence=seq)
+                    after=state_for(actor)
+                    with lock:
+                        check()
+                        workspaces[actor]=writer.sanitize(after)
+                        snapshot_status[actor] = "current"
+                phase="agent_error"
+                check()
+                # test_feedback_failure_preserves_dispatched_result: feedback can fail after the tool has run.
+                agent.receive(result)
+            raise TimeoutError("Agent step limit reached")
+        except Exception as exc:
+            with lock:
+                if not stop.is_set():
+                    failure={"failure_category":"timeout" if isinstance(exc,TimeoutError) else phase,
+                             "failure_reason":type(exc).__name__}
+                    stop.set()
+                    deadline.cancel()
+        finally:
+            done.put(actor)
+
+    try:
+        view=agent_view(task)
+        if set(agents)!=set(view["agent_goals"]) or type(max_steps) is not int or max_steps<1:
+            raise ValueError("Invalid agents or step limit")
+        for actor in sorted(agents):
+            thread=Thread(target=worker,args=(actor,view),name=f"align-{actor}",daemon=True)
+            threads.append(thread)
+            thread.start()
+        exits=set()
+        while len(exits)<len(threads) and not stop.is_set():
+            try:
+                actor=done.get(timeout=min(.1,deadline.remaining()))
+            except Empty:
+                continue
+            exits.add(actor)
+        with lock:
+            if escalated:
+                metrics["termination_reason"]="escalated"
+                status="completed"
+            elif failure is None and len(finished)==len(agents):
+                status="completed"
+                metrics["termination_reason"]="agents_submitted"
+        # test_evaluation_waits_for_both_submissions: scoring too early misses the last edit.
+        # test_escalation_skips_patch_collection_and_evaluation: escalation ends work before solution grading.
+        if status=="completed" and not escalated and evaluator is not None:
+            # No workers can mutate workspaces after all have submitted.
+            deadline.remaining()
+            evidence=evaluator(task,env.patches())
+            for goal in task["goals"]:
+                key=goal["goal_key"]
+                # test_missing_goal_result_is_recorded_as_not_evaluated: missing evidence must remain distinct from failure.
+                result=evidence.get("goal_results",{}).get(key,"not_evaluated")
+                if result not in {"passed","failed","not_evaluated"}:
+                    raise ValueError("Invalid evaluator evidence")
+                writer.emit("system","test_result",{"goal_key":key,"result":result})
+            metrics.update({k:evidence.get(k) for k in ("shared_goal_satisfied","critical_constraints_passed","merge_status")})
+            if evidence.get("evaluation_output_truncated"):
+                metrics["evaluation_output_truncated"] = True
+                metrics["evaluation_exit_code"] = evidence.get("evaluation_exit_code")
+            if evidence.get("evaluation_error"):
+                status="failed"
+                failure={"failure_category":"timeout" if evidence.get("evaluation_timeout") else "infrastructure_error",
+                         "failure_reason":"Evaluator failed"}
+            elif deadline.end<=monotonic():
+                status="failed"
+                failure={"failure_category":"timeout","failure_reason":"Trial deadline exceeded after evaluation"}
+    except Exception as exc:
+        status="failed"
+        with lock:
+            if escalated and isinstance(exc,TimeoutError):
+                status="completed"
+                metrics["termination_reason"]="escalated"
+            elif failure is None:
+                failure={"failure_category":"timeout" if isinstance(exc,TimeoutError) else "infrastructure_error",
+                         "failure_reason":type(exc).__name__}
+    finally:
+        # Stop all authorization and prevent late writes before removing resources.
+        with lock:
+            stop.set()
+        deadline.cancel()
+        try:
+            env.close()
+        except Exception as exc:
+            status="failed"
+            # test_cleanup_failure_preserves_original_agent_error: teardown must preserve the initiating fault.
+            metrics["cleanup_failed"]=True
+            if failure is None:
+                failure={"failure_category":"infrastructure_error","failure_reason":"Environment cleanup failed: "+type(exc).__name__}
+        # A remote model call cannot necessarily be killed. It may return later,
+        # but cannot authorize or dispatch after stop, or append to the bundle.
+        grace=monotonic()+1
+        for thread in threads:
+            thread.join(max(0,grace-monotonic()))
+        with lock:
+            for item in inflight.values():
+                writer.emit("system","action_result",{"outcome":"unknown" if item["started"] else "cancelled",
+                                                       "output":"Trial stopped during execution" if item["started"] else "Trial stopped before execution"},
+                            trigger_sequence=item["proposal_sequence"])
+            for actor,item in pending.items():
+                if "proposal_sequence" in item:
+                    writer.emit("system","action_result",{"outcome":"cancelled","output":"Trial stopped before authorization"},
+                                trigger_sequence=item["proposal_sequence"])
+                else:
+                    writer.emit("system","proposal_cancelled",{"actor_id":actor,"reason":"Trial stopped while queued"},
+                                trigger_sequence=item["queue_sequence"])
+            # test_usage_failure_preserves_completed_trial: missing cost data must not invalidate a completed trial.
+            if usage is not None:
+                try:
+                    if all(not t.is_alive() for t in threads):
+                        metrics.update(usage())
+                    else:
+                        metrics["usage_incomplete"]=True
+                except Exception:
+                    metrics["usage_error"]=True
+            if failure:
+                status="failed"
+            if status=="failed" and failure is None:
+                failure={"failure_category":"agent_error","failure_reason":"Trial stopped before submission"}
+            writer.finish(status,**(failure or {}),**metrics)
+    return writer.snapshot()
